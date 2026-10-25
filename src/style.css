@@ -209,6 +209,7 @@ body {
 .money,
 .orders-toggle,
 .orders-panel,
+.goal,
 .progress,
 .paid {
   position: absolute;
@@ -297,6 +298,39 @@ body {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* Goal banner: where the active order goes next. The open orders panel covers it. */
+.goal {
+  top: max(24px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  align-items: center;
+  padding: 8px 16px 8px 12px;
+  white-space: nowrap;
+}
+
+.goal[hidden] {
+  display: none;
+}
+
+.goal i {
+  grid-row: span 2;
+  font-size: 32px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.goal span {
+  font-weight: 600;
+}
+
+.goal small {
+  opacity: 0.7;
 }
 
 .progress {

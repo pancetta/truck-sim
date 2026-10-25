@@ -46,12 +46,13 @@ export function createRenderer(canvas, tables, map) {
     scene.add(mesh);
   }
 
-  // Active order's zone: a see-through column, one colour for the pickup and one for the drop-off.
+  // Active order's zone: a see-through column, one colour for the pickup and one for the drop-off,
+  // tall enough to show over the roofs.
   const marker = new THREE.Mesh(
-    new THREE.BoxGeometry(ts, 4, ts),
+    new THREE.BoxGeometry(ts, city.markerHeight, ts),
     new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.35, depthWrite: false }),
   );
-  marker.position.y = 2;
+  marker.position.y = city.markerHeight / 2;
   scene.add(marker);
 
   // Placeholder truck: cargo box with the cab at the front (+z).

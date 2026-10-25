@@ -15,6 +15,8 @@ export const strings = {
   activeOrder: 'Aktiver Auftrag',
   toPickup: 'Fahrt zur Beladestelle',
   toDropoff: 'Fahrt zur Entladestelle',
+  stopToLoad: 'Zum Beladen in der markierten Zone anhalten',
+  stopToUnload: 'Zum Entladen in der markierten Zone anhalten',
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',

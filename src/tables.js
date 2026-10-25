@@ -54,6 +54,7 @@ export const city = {
     pole: { length: 0.3, width: 0.3, height: 4 }, // m
   },
   buildingHeight: [6, 24], // m, lowest and highest; the renderer picks per tile
+  markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
 };
 
 export const controls = {
