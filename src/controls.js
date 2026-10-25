@@ -1,14 +1,17 @@
 // On-screen steering wheel and pedals. Mouse and touch both arrive as pointer
 // events; each widget captures its own pointer, so wheel and pedal work together.
 
+const RELEASE_EVENTS = ['pointerup', 'pointercancel', 'lostpointercapture'];
+
 export function createControls(root, tables, strings) {
   const { wheelLock, wheelCentreTime } = tables.controls;
   const input = { steer: 0, gas: 0, brake: 0 };
 
-  const wheel = el('div', 'wheel', strings.wheel);
-  const gas = el('div', 'pedal gas', strings.gas);
-  const brake = el('div', 'pedal brake', strings.brake);
+  const wheel = touchTarget('wheel');
+  wheel.setAttribute('aria-label', strings.wheel);
+  const gas = touchTarget('pedal gas');
   gas.textContent = strings.gas;
+  const brake = touchTarget('pedal brake');
   brake.textContent = strings.brake;
   const pedals = document.createElement('div');
   pedals.className = 'pedals';
@@ -17,28 +20,26 @@ export function createControls(root, tables, strings) {
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // Wheel: rotate by dragging around its centre; clockwise steers right.
+  // The first pointer on the wheel owns it until it lifts.
   let angle = 0; // degrees
   let dragPointer = null;
   let lastPointerAngle = 0;
 
-  function pointerAngle(e) {
-    const r = wheel.getBoundingClientRect();
-    return (Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180) / Math.PI;
-  }
-
   wheel.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || dragPointer !== null) return;
     wheel.setPointerCapture(e.pointerId);
     dragPointer = e.pointerId;
-    lastPointerAngle = pointerAngle(e);
+    lastPointerAngle = polar(wheel, e).angle;
   });
   wheel.addEventListener('pointermove', (e) => {
     if (e.pointerId !== dragPointer) return;
-    const a = pointerAngle(e);
+    const { angle: a, nearHub } = polar(wheel, e);
     const delta = ((a - lastPointerAngle + 540) % 360) - 180; // shortest way round
     lastPointerAngle = a;
-    angle = Math.max(-wheelLock, Math.min(wheelLock, angle + delta));
+    // Near the hub the direction swings wildly, so the wheel doesn't follow it there.
+    if (!nearHub) angle = Math.max(-wheelLock, Math.min(wheelLock, angle + delta));
   });
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  for (const type of RELEASE_EVENTS) {
     wheel.addEventListener(type, (e) => {
       if (e.pointerId === dragPointer) dragPointer = null;
     });
@@ -60,22 +61,36 @@ export function createControls(root, tables, strings) {
   return { update };
 }
 
-function el(tag, className, label) {
-  const node = document.createElement(tag);
+function touchTarget(className) {
+  const node = document.createElement('div');
   node.className = className;
   node.setAttribute('role', 'button');
-  node.setAttribute('aria-label', label);
   return node;
 }
 
+// Pointer position relative to the element's centre: angle in degrees, and
+// whether it is within the inner quarter of the radius.
+function polar(node, e) {
+  const r = node.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2);
+  const dy = e.clientY - (r.top + r.height / 2);
+  return { angle: (Math.atan2(dy, dx) * 180) / Math.PI, nearHub: Math.hypot(dx, dy) < r.width / 8 };
+}
+
+// A pedal stays down while any pointer holds it.
 function holdPedal(node, set) {
+  const holding = new Set();
   node.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
     node.setPointerCapture(e.pointerId);
+    holding.add(e.pointerId);
     node.classList.add('down');
     set(true);
   });
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-    node.addEventListener(type, () => {
+  for (const type of RELEASE_EVENTS) {
+    node.addEventListener(type, (e) => {
+      holding.delete(e.pointerId);
+      if (holding.size > 0) return;
       node.classList.remove('down');
       set(false);
     });
