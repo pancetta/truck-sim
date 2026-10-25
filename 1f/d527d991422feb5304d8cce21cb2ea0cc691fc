@@ -1,0 +1,19 @@
+src/autopilot.test.js
+  s_7722916dd98c5a::t_6b9be94aa840aa 29-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1fd527d991422feb5304d8cce21cb2ea0cc691fc",
+  "prompts": {},
+  "sessions": {
+    "s_7722916dd98c5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b8311a9-792b-43f5-af13-74c4e947647d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
