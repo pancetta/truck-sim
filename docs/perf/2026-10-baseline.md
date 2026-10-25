@@ -179,6 +179,56 @@ All 71 Sim tests pass with the tile index switched on.
 9. **T9 (phase 3) Pedestrians:** SoA + grid, instanced per sector.
 10. **T10 (phase 3, optional) Asset pipeline:** meshopt, KTX2 and baked colours.
 
+## Harness baseline (#26)
+
+The `?perf` harness (T1) is now in the repo, so the numbers below are the ones to compare later tickets against. They come from the harness, not the scratch instrumentation above. The two differ: 8 cars (fresh profile, rank tier 0) rather than 12, a seeded Sim, and the code of `2abeec4` plus the harness. Don't mix the two tables.
+
+**How to measure:**
+- Open the game with `?perf` for the overlay, or `?perf&auto` to let the autopilot drive the loop on rows 8/36 and columns 1/57 with an order accepted. The autopilot starts from a fresh profile with the Sim seeded (`tables.perf.seed`), plays unsaved, and never touches the player's save.
+- The overlay shows median / p95 / mean over the last 1200 frames (20 s at 60 Hz), refreshed every second, so read it 25 s after loading, or 25 s after a camera switch. The camera button switches cab and chase.
+- **busy** is the sum of sim, render, dom (HUD, orders, Werkstatt) and minimap. It leaves out the browser's own style, layout and paint.
+- **steps** is the highest number of Sim steps in one frame within the window. It is at most `tables.loop.maxSteps` (4); after a stall the rest of the time is dropped.
+- Renderer stats come from the last frame. WebGPURenderer counts programs per shader stage, so its program count isn't comparable with WebGL's.
+- Safari coarsens `performance.now` unless the page is cross-origin isolated, and GitHub Pages can't send COOP/COEP headers. On the live site, trust the **mean**, not the median.
+- Locally the build was served by `vite preview` with COOP/COEP headers (a scratch config), as in the baseline above.
+
+**Chrome 155 headless**, GPU `ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)`, 1180×820 at DPR 2 (buffer 2360×1640), vsync 60 Hz, load average about 6:
+
+| ms, median / p95 / mean | cab | chase |
+|---|---|---|
+| Frame | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Busy | 0.59 / 1.39 / 0.72 | 0.56 / 1.67 / 0.70 |
+| Sim | 0.14 / 0.36 / 0.18 | 0.14 / 0.40 / 0.18 |
+| Render | 0.25 / 0.69 / 0.32 | 0.24 / 0.84 / 0.32 |
+| DOM | 0.09 / 0.18 / 0.10 | 0.08 / 0.19 / 0.09 |
+| Minimap | 0.10 / 0.22 / 0.12 | 0.08 / 0.23 / 0.10 |
+| Sim steps per frame, max | 1 | 1 |
+| Draw calls / triangles | 37 / 312k | 33 / 314k |
+| Programs / geometries / textures | 5 / 34 / 0 | 6 / 35 / 0 |
+| JS heap | 39 MB | 9 MB |
+
+The heap reading depends on when GC last ran, so read it as a trend, not a size.
+
+**iPad (A16) simulator**, iPadOS 27.0 Safari, GPU `Apple GPU` (the Mac's GPU), landscape at DPR 2 (buffer 2360×1376 below Safari's toolbar):
+
+| ms, median / p95 / mean | cab | chase |
+|---|---|---|
+| Frame | 16.66 / 16.74 / 16.67 | 16.66 / 16.74 / 16.76 |
+| Busy | 0.60 / 0.76 / 0.60 | 0.60 / 0.78 / 0.60 |
+| Sim | 0.16 / 0.22 / 0.17 | 0.16 / 0.22 / 0.17 |
+| Render | 0.20 / 0.26 / 0.20 | 0.20 / 0.28 / 0.21 |
+| DOM | 0.12 / 0.16 / 0.12 | 0.12 / 0.16 / 0.13 |
+| Minimap | 0.10 / 0.14 / 0.10 | 0.10 / 0.14 / 0.11 |
+| Draw calls / triangles | 33 / 304k | 33 / 314k |
+| Programs / geometries / textures | 5 / 34 / 0 | 6 / 35 / 0 |
+| JS heap | n/a | n/a |
+
+As before, the simulator uses the Mac's GPU, so this checks compatibility, not iPad speed. The owner runs `?perf&auto` on the real iPad.
+
+**WebGPURenderer check** (a scratch copy with `three/webgpu` and `renderer.init()`, Chrome, cab, about 10 s): the overlay showed every value on both backends. On WebGPU (`apple metal-3`): busy 1.62 / 2.43, render 0.90 / 1.46, 38 calls, 312k triangles, 39 programs. On its WebGL 2 fallback: busy 1.41 / 2.42, render 0.79 / 1.41. These are smoke-test numbers, not a comparison; #28 measures the switch.
+
+**Step cap:** after a 1 s main-thread stall in Chrome, the overlay's steps maximum rose from 1 to 4. Before the cap it would have been 15 (0.25 s of `maxFrame`).
+
 ## Files
 
-The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. Ticket T1 brings the harness (overlay and autopilot route) into the repo as a dev-only `?perf` mode.
+The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

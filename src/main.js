@@ -12,7 +12,11 @@ import { createOrders } from './orders.js';
 import { createMinimap } from './minimap.js';
 import { createWerkstatt } from './werkstatt.js';
 
-const { step, maxFrame } = tables.loop;
+const { step, maxFrame, maxSteps } = tables.loop;
+// ?perf loads the dev-only perf harness; ?perf&auto also lets the autopilot drive, unsaved (see perf.js).
+const params = new URLSearchParams(location.search);
+const perf = params.has('perf') ? await import('./perf.js') : null;
+const auto = perf && params.has('auto');
 
 // iPad Safari ignores user-scalable=no and doesn't fully honour touch-action: none, so a
 // pinch or a quick double tap on a pedal zooms the page. Cancel those gestures in script.
@@ -31,8 +35,8 @@ try {
 } catch {
   // storage blocked (e.g. cookies off): the save module then plays unsaved
 }
-const save = createSave(storage, tables);
-const sim = createSim(tables, map, Math.random, save.load());
+const save = createSave(auto ? null : storage, tables);
+const sim = createSim(tables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
 const loading = document.getElementById('loading');
@@ -76,7 +80,8 @@ function frame(now) {
   last = now;
   const input = controls.update(dt);
   // The open Werkstatt pauses the world; drawing and autosave (after a purchase) go on.
-  pending = werkstatt.open ? 0 : pending + dt;
+  // After a stall the Sim catches up at most maxSteps steps; the rest of the time is dropped.
+  pending = werkstatt.open ? 0 : Math.min(pending + dt, maxSteps * step);
   while (pending >= step) {
     sim.step(step, input);
     pending -= step;
@@ -92,6 +97,7 @@ function frame(now) {
 
 // The loading screen covers the controls until the city is in; only then does the Sim start.
 view.ready.then(() => {
+  perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto);
   loading.remove();
   last = performance.now();
   requestAnimationFrame(frame);

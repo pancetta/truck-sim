@@ -194,7 +194,28 @@ export const controls = {
 
 export const loop = {
   step: 1 / 60, // s, fixed Sim timestep
-  maxFrame: 0.25, // s; longer frames (e.g. after a stall) are cut so the Sim doesn't fast-forward
+  maxFrame: 0.25, // s; longer frames (e.g. after a stall) are cut for the controls
+  maxSteps: 4, // Sim steps per frame at most; time beyond them (after a stall) is dropped, not simulated
+};
+
+// The dev-only ?perf harness (perf.js). ?perf&auto drives the truck round a fixed loop of streets with an order
+// accepted, from a fresh profile and a seeded Sim, so runs are comparable (see docs/perf/2026-10-baseline.md).
+export const perf = {
+  window: 1200, // frames the overlay's medians and p95s cover (20 s at 60 Hz)
+  refresh: 1, // s between overlay updates
+  seed: 1, // Sim random seed under ?auto
+  route: [
+    // corner tiles of the loop, driven in this order
+    { col: 1, row: 8 },
+    { col: 57, row: 8 },
+    { col: 57, row: 36 },
+    { col: 1, row: 36 },
+  ],
+  lane: 2, // m right of the road's centre line
+  cruiseSpeed: 12, // m/s on straights
+  turnSpeed: 4.5, // m/s near corners and while off line
+  steerGain: 2.5, // steering input per rad of heading error
+  stuckTime: 2, // s at a standstill before the autopilot resets the truck to the road
 };
 
 export const camera = {

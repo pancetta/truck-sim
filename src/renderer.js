@@ -472,5 +472,5 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let loaded = 0;
   const ready = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
 
-  return { render, toggleCamera, ready };
+  return { render, toggleCamera, ready, renderer };
 }
