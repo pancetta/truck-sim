@@ -772,3 +772,125 @@ describe('Sim: route', () => {
     expect(sim.state.route.length).toBe(offer.pickup === 'A' ? 9 : 5); // A: now 8 round the left, 10 round the right
   });
 });
+
+describe('Sim: traffic lights', () => {
+  // One crossing in the middle; the truck is placed on an approach two tiles out, facing the crossing.
+  const CROSSING = `
+    ###.###
+    ###.###
+    ###.###
+    ...+...
+    ###.###
+    ###.###
+    ###.###`;
+  const EAST = Math.PI / 2;
+  const SOUTH = 0;
+  const money = 500;
+  const profile = { version: 1, money, rankPoints: 0, upgrades: {}, owned: [], equipped: {} };
+
+  function crossingSim(grid = CROSSING) {
+    return createSim(tables, parseMap(grid, tables), seeded(1), profile);
+  }
+
+  function placeAt(sim, col, row, heading) {
+    Object.assign(sim.state.truck, { x: (col + 0.5) * TILE, z: (row + 0.5) * TILE, heading, speed: 0 });
+  }
+
+  // The light the truck meets driving in direction `dir` (a DIRS index).
+  const lightFor = (sim, dir) => sim.state.lights.find((l) => l.dir === dir);
+
+  // Drives with full gas until the truck's rear is past the crossing; returns how many fines were taken.
+  function driveThrough(sim, done) {
+    let fines = 0;
+    let last = sim.state.lastFine;
+    timeUntil(sim, GAS, () => {
+      if (sim.state.lastFine !== last) [fines, last] = [fines + 1, sim.state.lastFine];
+      return done();
+    }, 20);
+    return fines;
+  }
+
+  test('a map with light junctions parses into one light per approach, with stop lines at the tile edges', () => {
+    const map = parseMap(CROSSING, tables);
+
+    expect(map.isRoad(3, 3)).toBe(true);
+    expect(map.lights).toHaveLength(4);
+    expect(map.lights.find((l) => l.dir === 1)).toMatchObject({ col: 3, row: 3, x: 3 * TILE, z: 3.5 * TILE });
+    expect(map.lights.find((l) => l.dir === 2)).toMatchObject({ col: 3, row: 3, x: 3.5 * TILE, z: 3 * TILE });
+    expect(() => parseMap('.+.', tables)).toThrow(/not a crossing/);
+  });
+
+  test('each axis cycles green, amber, red with the table timings, never green together, offset per junction', () => {
+    const grid = `
+      #.##.#
+      .+..+.
+      #.##.#`;
+    const sim = createSim(tables, parseMap(grid, tables), seeded(1));
+    const { green, amber, junctionOffset } = tables.lights;
+    const ns = (j) => sim.state.lights.find((l) => l.junction === j && l.dir === 2);
+    const ew = (j) => sim.state.lights.find((l) => l.junction === j && l.dir === 1);
+    const changes = [[], []]; // per junction: [time, phase] of its north–south light
+    let t = 0;
+    let before = [ns(0).phase, ns(1).phase];
+    for (; t < 100; t += DT) {
+      sim.step(DT, IDLE);
+      for (const j of [0, 1]) {
+        expect(ns(j).phase === 'green' && ew(j).phase === 'green').toBe(false);
+        if (ns(j).phase !== before[j]) changes[j].push([t, (before[j] = ns(j).phase)]);
+      }
+    }
+
+    const phases = changes[0].map(([, p]) => p);
+    expect(phases.slice(0, 4)).toEqual(['amber', 'red', 'green', 'amber']);
+    expect(changes[0][1][0] - changes[0][0][0]).toBeCloseTo(amber, 1);
+    expect(changes[0][3][0] - changes[0][2][0]).toBeCloseTo(green, 1);
+    // Junction 1 runs ahead by the offset: it turns amber that much earlier.
+    expect(changes[0][0][0] - changes[1][0][0]).toBeCloseTo(junctionOffset, 1);
+  });
+
+  test('crossing the stop line on red fines once', () => {
+    const sim = crossingSim();
+    placeAt(sim, 1, 3, EAST);
+    expect(lightFor(sim, 1).phase).toBe('red');
+
+    const fines = driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
+
+    expect(lightFor(sim, 1).phase).toBe('red');
+    expect(fines).toBe(1);
+    expect(sim.state.lastFine).toEqual({ reason: 'redLight', amount: tables.fines.redLight });
+    expect(sim.state.profile.money).toBe(money - tables.fines.redLight);
+  });
+
+  test('crossing on green does not fine', () => {
+    const sim = crossingSim();
+    placeAt(sim, 3, 1, SOUTH);
+    expect(lightFor(sim, 2).phase).toBe('green');
+
+    const fines = driveThrough(sim, () => sim.state.truck.z > 4.5 * TILE);
+
+    expect(fines).toBe(0);
+    expect(sim.state.lastFine).toBe(null);
+    expect(sim.state.profile.money).toBe(money);
+  });
+
+  test('an unsignalled crossing never fines', () => {
+    const sim = crossingSim(CROSSING.replace('+', '.'));
+    placeAt(sim, 1, 3, EAST);
+
+    const fines = driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
+
+    expect(sim.state.lights).toEqual([]);
+    expect(fines).toBe(0);
+    expect(sim.state.profile.money).toBe(money);
+  });
+
+  test('a fine larger than the money leaves 0', () => {
+    const sim = createSim(tables, parseMap(CROSSING, tables), seeded(1), { ...profile, money: 30 });
+    placeAt(sim, 1, 3, EAST);
+
+    driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
+
+    expect(sim.state.lastFine.amount).toBe(tables.fines.redLight);
+    expect(sim.state.profile.money).toBe(0);
+  });
+});

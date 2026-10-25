@@ -16,13 +16,17 @@ export function freshProfile() {
 // pass a seeded one for repeatable offers. `profile` must already be valid (see save.js); it is copied.
 export function createSim(tables, map, random = Math.random, profile = freshProfile()) {
   const o = tables.orders;
+  const lt = tables.lights;
+  const cycle = 2 * (lt.green + lt.amber + lt.allRed);
   // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
   const base = tables.vehicle;
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
   // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
-  // `lastPayment` is replaced by a new object on every payment, so the UI can tell each one apart.
+  // `lastPayment` is replaced by a new object on every payment, so the UI can tell each one apart;
+  // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
+  // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red').
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
@@ -34,12 +38,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     progress: 0,
     route: [],
     lastPayment: null,
+    lastFine: null,
+    lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
     },
   };
   let v = upgradedVehicle();
   updateRank();
+  let clock = 0; // s of Sim time, drives the light cycles
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
@@ -66,6 +73,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   function step(dt, input) {
+    clock += dt;
+    updateLights();
     const stopped = Math.abs(truck.speed) < v.stopSpeed;
 
     // Reverse: a brake hold at a standstill engages it; a stop with the brake released ends it.
@@ -107,6 +116,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / v.steerFadeSpeed) ** 2);
     const yawRate = -(truck.speed / v.wheelbase) * Math.tan(angle);
     const { x, z, heading } = truck;
+    const frontBefore = frontTile();
     truck.heading += yawRate * dt;
     truck.x += Math.sin(truck.heading) * truck.speed * dt;
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
@@ -114,6 +124,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     // Solid stop, no damage: undo the move that hit something. Reverse backs a stuck truck off.
     state.collision = !fits(truck);
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
+    checkRedLight(frontBefore, frontTile());
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -121,6 +132,40 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
     if (state.order) loadOrUnload(dt);
     updateRoute();
+  }
+
+  // Junction n runs `junctionOffset` s ahead of junction n - 1; the east–west axis runs half a cycle
+  // behind the north–south one.
+  function updateLights() {
+    for (const l of state.lights) {
+      const t = (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
+      l.phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : 'red';
+    }
+  }
+
+  // Tile under the middle of the truck's front bumper.
+  function frontTile() {
+    if (!map) return null;
+    const half = v.length / 2;
+    const col = Math.floor((truck.x + Math.sin(truck.heading) * half) / map.tileSize);
+    const row = Math.floor((truck.z + Math.cos(truck.heading) * half) / map.tileSize);
+    return { col, row };
+  }
+
+  // The front crossing a stop line into a light junction while that approach is red costs a fine.
+  function checkRedLight(from, to) {
+    if (!from || (from.col === to.col && from.row === to.row)) return;
+    const light = state.lights.find(
+      (l) => l.col === to.col && l.row === to.row && DIRS[l.dir][0] === to.col - from.col && DIRS[l.dir][1] === to.row - from.row,
+    );
+    if (light?.phase === 'red') fine('redLight');
+  }
+
+  // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped.
+  function fine(reason) {
+    const amount = tables.fines[reason];
+    state.profile.money = Math.max(0, state.profile.money - amount);
+    state.lastFine = { reason, amount };
   }
 
   // Finds the route again only when the truck's tile or the target changes.
@@ -287,6 +332,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return !(right.every((r) => r >= w) || right.every((r) => r <= -w));
   }
 
+  updateLights();
   if (map) {
     // Start parked on the road nearest the middle of the city.
     Object.assign(truck, { x: (map.cols * map.tileSize) / 2, z: (map.rows * map.tileSize) / 2 });

@@ -133,6 +133,39 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
+  // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
+  // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road.
+  // The lamps are one-sided planes, so a light seen from the side or behind shows no colour.
+  // Right of travel direction (dc, dr) is (-dr, dc).
+  const LAMP_PHASES = ['red', 'amber', 'green'];
+  const lampColours = [palette.lampRed, palette.lampAmber, palette.lampGreen];
+  const signal = mergeGeometries([
+    new THREE.BoxGeometry(0.2, 4.6, 0.2).translate(0, 2.3, 0),
+    new THREE.BoxGeometry(0.5, 1.4, 0.35).translate(0, 3.85, 0.25),
+  ]);
+  const signals = new THREE.InstancedMesh(signal, new THREE.MeshLambertMaterial({ color: palette.signal }), map.lights.length);
+  const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial(), map.lights.length * 3);
+  const stopLines = [];
+  const inset = 0.7; // m from the tile edges to the post
+  const m = new THREE.Matrix4();
+  map.lights.forEach((l, i) => {
+    const [dc, dr] = DIRS[l.dir];
+    const reach = ts / 2 - inset;
+    const [px, pz] = [l.x + dc * (ts - inset) - dr * reach, l.z + dr * (ts - inset) + dc * reach];
+    m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(px, 0, pz);
+    signals.setMatrixAt(i, m);
+    for (let k = 0; k < 3; k++) {
+      lamps.setMatrixAt(i * 3 + k, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 4.3 - k * 0.45, 0.44)));
+    }
+    const lane = ts / 2 - 1.4; // the pavement is the outer 1.4 m
+    const [ax, az] = [l.x - dr * 0.3, l.z + dc * 0.3];
+    const [bx, bz] = [l.x - dc * 0.5 - dr * lane, l.z - dr * 0.5 + dc * lane];
+    stopLines.push({ minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: Math.min(az, bz), maxZ: Math.max(az, bz) });
+  });
+  scene.add(signals, lamps);
+  addBoxes(palette.stopLine, stopLines, 0.045);
+  let shownPhases = null;
+
   function addInstances(geometry, list) {
     const mesh = new THREE.InstancedMesh(geometry, kitMaterial, list.length);
     const m = new THREE.Matrix4();
@@ -268,6 +301,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
     // Same angle as the on-screen wheel; positive is clockwise from the driver's seat.
     wheel.rotation.z = THREE.MathUtils.degToRad(input.steer * tables.controls.wheelLock);
+
+    const phases = state.lights.map((l) => l.phase).join();
+    if (phases !== shownPhases && state.lights.length) {
+      shownPhases = phases;
+      const c = new THREE.Color();
+      state.lights.forEach((l, i) =>
+        LAMP_PHASES.forEach((p, k) => lamps.setColorAt(i * 3 + k, c.setHex(l.phase === p ? lampColours[k] : palette.lampOff))),
+      );
+      lamps.instanceColor.needsUpdate = true;
+    }
 
     const { order } = state;
     marker.visible = !!order;

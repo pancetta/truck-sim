@@ -69,6 +69,20 @@ export const upgrades = {
 };
 export const visuals = {}; // id → { slot, ... }
 
+// Each light junction runs green → amber → red for one axis while the other is red, then swaps, with a
+// short all-red gap between. Junction n starts its cycle n × junctionOffset seconds ahead of junction 0.
+export const lights = {
+  green: 14, // s
+  amber: 3, // s
+  allRed: 2, // s, both axes red
+  junctionOffset: 7, // s
+};
+
+// € per offence; money never drops below 0, the unpaid rest is dropped.
+export const fines = {
+  redLight: 100,
+};
+
 export const city = {
   tileSize: 14, // m per ASCII map tile; road width
   // m; kerbGap is the space between the obstacle and the tile edge. The road models' pavement
@@ -140,6 +154,12 @@ export const palette = {
   truckCab: 0xd1495b,
   dashboard: 0x3b4252,
   steeringWheel: 0x1f232b,
+  signal: 0x2b2d33, // traffic light pole and housing
+  lampOff: 0x1f232b,
+  lampRed: 0xff4a3d,
+  lampAmber: 0xffb02e,
+  lampGreen: 0x4ce07a,
+  stopLine: 0xf4f1ea,
 };
 
 // The kit models (CREDITS.md) are recoloured face by face: each face takes the palette colour

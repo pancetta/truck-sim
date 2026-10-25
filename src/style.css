@@ -502,6 +502,10 @@ body {
 .werkstatt-panel .werkstatt-actions button {
   background: rgb(255 255 255 / 0.15);
   color: #fff;
+
+.fined {
+  top: calc(40% + 52px);
+  color: #ff6b5e;
 }
 
 /* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals.

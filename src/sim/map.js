@@ -3,9 +3,10 @@
 //   .  road               ,  open ground (drivable, not road; listed in `open`)
 //   #  building           A–Z  spot: a building whose zone is the road tile beside it
 //   c  parked car, p  pole: a road tile with the obstacle at its kerb
+//   +  light junction: a road crossing with traffic lights on each road approach
 // The road graph is the grid itself: road tiles are nodes, neighbouring road tiles are edges.
 
-const ROAD = ['.', 'c', 'p'];
+const ROAD = ['.', 'c', 'p', '+'];
 const OBSTACLES = { c: 'car', p: 'pole' };
 export const DIRS = [
   [0, -1],
@@ -24,6 +25,8 @@ export function parseMap(text, tables) {
   const open = [];
   const spots = [];
   const colliders = [];
+  const lights = [];
+  let junctions = 0;
 
   tiles.forEach((line, row) => {
     if (line.length !== cols) throw new Error(`Map row ${row + 1} has ${line.length} tiles, expected ${cols}`);
@@ -53,6 +56,15 @@ export function parseMap(text, tables) {
         // Long side along the kerb.
         const [hx, hz] = d[0] ? [width / 2, length / 2] : [length / 2, width / 2];
         colliders.push({ kind, ...box(x + d[0] * offset, z + d[1] * offset, hx, hz) });
+      } else if (t === '+') {
+        const approaches = DIRS.filter(([dc, dr]) => isRoad(col - dc, row - dr));
+        if (approaches.length < 3) throw new Error(`Map light junction ${where} is not a crossing`);
+        // One light per approach; `dir` is the DIRS index of travel into the junction, and (x, z) is the
+        // middle of its stop line, the tile edge the approach crosses.
+        for (const [dc, dr] of approaches) {
+          lights.push({ junction: junctions, col, row, dir: DIRS.findIndex((d) => d[0] === dc && d[1] === dr), x: x - dc * half, z: z - dr * half });
+        }
+        junctions++;
       } else if (t !== '.' && t !== ',') {
         throw new Error(`Unknown map tile '${t}' ${where}`);
       }
@@ -117,7 +129,7 @@ export function parseMap(text, tables) {
     return exits.length ? pathFrom(next, exits.reduce((a, b) => (trip(b) < trip(a) ? b : a))) : null;
   }
 
-  return { cols, rows, tileSize, isRoad, roads, open, spots, colliders, route, routeFrom };
+  return { cols, rows, tileSize, isRoad, roads, open, spots, colliders, lights, route, routeFrom };
 }
 
 function box(x, z, hx, hz) {

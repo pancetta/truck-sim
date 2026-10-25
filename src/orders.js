@@ -1,4 +1,4 @@
-// Money counter, orders button and panel, goal banner, load/unload progress bar and payment notice.
+// Money counter, orders button and panel, goal banner, load/unload progress bar, payment and fine notices.
 // Reads Sim state each frame; changes it only through the Sim's order commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
@@ -7,11 +7,13 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="paid" hidden></div>`;
+    <div class="paid" hidden></div>
+    <div class="paid fined" hidden></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
   const paid = root.querySelector('.paid');
+  const fined = root.querySelector('.fined');
   const goal = root.querySelector('.goal');
   const [arrow, goalText, hint] = goal.children;
   const eur = (n) => `${n.toLocaleString('de-DE')} €`;
@@ -23,7 +25,9 @@ export function createOrders(root, sim, map, tables, strings) {
   let lastMoney = sim.state.profile.money;
   money.textContent = eur(lastMoney);
   let lastPayment = sim.state.lastPayment;
+  let lastFine = sim.state.lastFine;
   let paidTimer;
+  let finedTimer;
 
   root.querySelector('.orders-toggle').addEventListener('click', () => {
     panel.hidden = !panel.hidden;
@@ -48,18 +52,26 @@ export function createOrders(root, sim, map, tables, strings) {
     return [(t.col + 0.5) * map.tileSize - x, (t.row + 0.5) * map.tileSize - z];
   }
 
-  function update({ profile, lastPayment: payment, order, offers, progress: p, truck, route }) {
+  function update({ profile, lastPayment: payment, lastFine: fine, order, offers, progress: p, truck, route }) {
     if (profile.money !== lastMoney) {
       lastMoney = profile.money;
       money.textContent = eur(lastMoney);
     }
-    // Only payments show the notice; fines and purchases change the money too.
+    // Only payments show the payment notice and only fines the fine notice; purchases change the money too.
     if (payment !== lastPayment) {
       lastPayment = payment;
       paid.textContent = `${strings.paid}: +${eur(payment.amount)}`;
       paid.hidden = false;
       clearTimeout(paidTimer);
       paidTimer = setTimeout(() => (paid.hidden = true), tables.orders.paidNoticeTime * 1000);
+    }
+
+    if (fine !== lastFine) {
+      lastFine = fine;
+      fined.textContent = `${strings.fine}: ${strings[fine.reason]} −${eur(fine.amount)}`;
+      fined.hidden = false;
+      clearTimeout(finedTimer);
+      finedTimer = setTimeout(() => (fined.hidden = true), tables.orders.paidNoticeTime * 1000);
     }
 
     progress.hidden = p === 0;
