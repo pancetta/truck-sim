@@ -6,13 +6,13 @@
 - Agent skills configured (`CLAUDE.md`, `docs/agents/`): GitHub Issues, default triage labels,
   single-context domain docs, external peers host-only.
 - No code written. The design was settled in two `/supermatt:grill-me` sessions (decisions below).
-- Spec not written yet.
+- Spec published as GitHub issue #1 ("Spec: Truck Sim MVP", `ready-for-agent`). It supersedes
+  this file where they differ: one headless Sim test seam, reverse after a ~0.5 s brake hold.
 
 ## Next steps
 
-1. Run `/supermatt:to-spec`: synthesize the decisions below into a spec, no re-grilling needed.
-   Test seams are agreed (see below).
-2. Then `/supermatt:to-tickets` and implement.
+1. Run `/supermatt:to-tickets` on issue #1, then implement.
+2. Run a ponytail review on all new code (see `CLAUDE.md`).
 
 ## Goal
 

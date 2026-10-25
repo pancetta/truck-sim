@@ -1,3 +1,7 @@
+## Code review
+
+Always run a ponytail review (`/ponytail:ponytail-review`) on new code before considering it done.
+
 ## Agent skills
 
 ### Issue tracker
