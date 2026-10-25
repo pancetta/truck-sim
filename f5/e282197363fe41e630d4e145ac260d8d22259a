@@ -1,0 +1,19 @@
+README.md
+  s_cb0ca5b52d19d8::t_c58901f01f7bde 3-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f5e282197363fe41e630d4e145ac260d8d22259a",
+  "prompts": {},
+  "sessions": {
+    "s_cb0ca5b52d19d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "483ae0e4-d0d7-4b1a-9ff9-cbae8f506eb6",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
