@@ -2,24 +2,17 @@
 
 ## Where things stand
 
-- Repo: this folder (`~/Private/Code/truck-sim`), `git init` on `main`, **no commits yet**.
-  Files: `README.md`, `.gitignore`, this `HANDOFF.md`.
-- Not on GitHub yet. Target: private repo `pancetta/truck-sim`.
-- No code written. The design was settled in a `/supermatt:grill-me` session (decisions below).
-- Spec not written yet: `/supermatt:to-spec` stopped because the repo had no issue tracker
-  configured (`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md` missing).
+- Repo: this folder (`~/Private/Code/truck-sim`), pushed to private GitHub repo `pancetta/truck-sim`.
+- Agent skills configured (`CLAUDE.md`, `docs/agents/`): GitHub Issues, default triage labels,
+  single-context domain docs, external peers host-only.
+- No code written. The design was settled in two `/supermatt:grill-me` sessions (decisions below).
+- Spec not written yet.
 
 ## Next steps
 
-1. Commit and push:
-   ```
-   git add . && git commit -m "Initial commit"
-   gh repo create pancetta/truck-sim --private --source . --push
-   ```
-2. Run `/supermatt:setup-supermatt-skills` (choose GitHub Issues as tracker).
-3. Run `/supermatt:to-spec` — synthesize the decisions below into a spec; no re-grilling needed.
+1. Run `/supermatt:to-spec`: synthesize the decisions below into a spec, no re-grilling needed.
    Test seams are agreed (see below).
-4. Then `/supermatt:to-tickets` and implement.
+2. Then `/supermatt:to-tickets` and implement.
 
 ## Goal
 
