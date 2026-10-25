@@ -1,0 +1,27 @@
+src/werkstatt.js
+  s_4aa82e5171ad8b::t_99720c75d24317 132
+src/orders.js
+  s_4aa82e5171ad8b::t_99720c75d24317 32-38,88,90-91,96,106-110,112-114,116,118-119
+src/minimap.js
+  s_4aa82e5171ad8b::t_aeb0be55c7fe44 2,5,11-12,15,18-20,24,35-48,54-56,90
+src/tables.js
+  s_4aa82e5171ad8b::t_aeb0be55c7fe44 192
+src/hud.js
+  s_4aa82e5171ad8b::t_04e9989cb08361 25,35-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5ad291ba053e16fdb03531cdbbd5ce8ae8be31f4",
+  "prompts": {},
+  "sessions": {
+    "s_4aa82e5171ad8b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89a242b3-42ae-4341-92fe-0ca0c0ee3e19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
