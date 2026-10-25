@@ -118,6 +118,8 @@ body {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
 /* Dashboard: speed, gear and RPM, bottom centre between wheel and pedals. */
 .dash {
   position: fixed;
