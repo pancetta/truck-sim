@@ -120,9 +120,12 @@ export function createRenderer(canvas, tables, map, onProgress) {
     place(POLE, { x, z, angle, size: [1, 1, 1] });
   }
 
+  // The kit cars, loaded once for the parked cars and the AI cars.
+  const carModels = CARS.map((file) => loadModel(file));
   for (const [file, list] of placements) {
     // Building walls are white so their per-building tint shows as is.
-    loads.push(loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette).then((geometry) => {
+    const model = CARS.includes(file) ? carModels[CARS.indexOf(file)] : loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette);
+    loads.push(model.then((geometry) => {
       // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
       if (file === POLE) {
         const { min, max } = geometry.boundingBox;
@@ -136,10 +139,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // AI cars: one instanced mesh per kit car with room for the busiest rank tier; a car's id picks its model.
   const maxTraffic = Math.max(...tables.rank.tiers.map((t) => t.traffic));
-  const trafficMeshes = CARS.map((file) => {
+  const trafficMeshes = carModels.map((model) => {
     const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), kitMaterial, maxTraffic);
     mesh.frustumCulled = false; // the cars move, so bounds computed once would go stale
-    loads.push(loadModel(file).then((geometry) => (mesh.geometry = unitBox(geometry))));
+    loads.push(model.then((geometry) => (mesh.geometry = unitBox(geometry))));
     scene.add(mesh);
     return mesh;
   });

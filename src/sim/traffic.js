@@ -24,25 +24,23 @@ export function createTraffic(tables, map, random) {
   // Turning right is to = from + 1 (DIRS run clockwise seen from above).
   const laneLength = (p) => (p.from === p.to ? ts : (Math.PI / 2) * (p.to === (p.from + 1) % 4 ? half - t.laneOffset : half + t.laneOffset));
 
-  // Sets the car's x, z and heading from its lane piece and `s`. Right of travel (dc, dr) is (-dr, dc).
-  function place(car) {
-    const p = car.lane;
+  // { x, z, heading } at `s` m along lane piece `p`. Right of travel (dc, dr) is (-dr, dc).
+  function pose(p, s) {
     const [a, b] = [DIRS[p.from], DIRS[p.to]];
     const [cx, cz] = [(p.col + 0.5) * ts, (p.row + 0.5) * ts];
     const o = t.laneOffset;
     const [ex, ez] = [cx - a[0] * half - a[1] * o, cz - a[1] * half + a[0] * o]; // entry
     const [xx, xz] = [cx + b[0] * half - b[1] * o, cz + b[1] * half + b[0] * o]; // exit
-    const f = car.s / laneLength(p);
-    if (p.from === p.to) {
-      Object.assign(car, { x: ex + (xx - ex) * f, z: ez + (xz - ez) * f, heading: Math.atan2(a[0], a[1]) });
-      return;
-    }
+    const f = s / laneLength(p);
+    if (p.from === p.to) return { x: ex + (xx - ex) * f, z: ez + (xz - ez) * f, heading: Math.atan2(a[0], a[1]) };
     // Round the corner k: (u, w) are the equal, perpendicular radii to the entry and the exit.
     const [kx, kz] = [cx + (b[0] - a[0]) * half, cz + (b[1] - a[1]) * half];
     const [ux, uz, wx, wz] = [ex - kx, ez - kz, xx - kx, xz - kz];
-    const [c, s] = [Math.cos((f * Math.PI) / 2), Math.sin((f * Math.PI) / 2)];
-    Object.assign(car, { x: kx + c * ux + s * wx, z: kz + c * uz + s * wz, heading: Math.atan2(c * wx - s * ux, c * wz - s * uz) });
+    const [cos, sin] = [Math.cos((f * Math.PI) / 2), Math.sin((f * Math.PI) / 2)];
+    return { x: kx + cos * ux + sin * wx, z: kz + cos * uz + sin * wz, heading: Math.atan2(cos * wx - sin * ux, cos * wz - sin * uz) };
   }
+
+  const place = (car) => Object.assign(car, pose(car.lane, car.s));
 
   // Ways out of tile (col, row) when entering it travelling `from`: every road side but the way back.
   const exits = (col, row, from) => [0, 1, 2, 3].filter((k) => k !== (from + 2) % 4 && map.isRoad(col + DIRS[k][0], row + DIRS[k][1]));
@@ -59,14 +57,15 @@ export function createTraffic(tables, map, random) {
   }
 
   // shortcut: "out of view" is far enough away and not on the truck's row or column of tiles, the streets the
-  // cameras look along; the blocks hide the rest. Upgrade if the city gets low buildings or long open views.
+  // cameras look along; the blocks hide the rest. Across the open plaza cars can still appear or vanish in view
+  // at 100–180 m; upgrade to a real line-of-sight test if players notice.
   function hidden(x, z, truck, distance) {
     const sameStreet = Math.floor(x / ts) === Math.floor(truck.x / ts) || Math.floor(z / ts) === Math.floor(truck.z / ts);
     return !sameStreet && Math.hypot(x - truck.x, z - truck.z) >= distance;
   }
 
-  // One new car at the start of a random hidden road tile in the spawn ring, standing, unless another car is
-  // within the look-ahead there.
+  // One new car in the middle of a random hidden road tile in the spawn ring, standing, unless another car is
+  // within the look-ahead there. Mid-tile, so none of it sticks out into the truck's street.
   function spawn(truck) {
     const [near, far] = t.spawnDistance;
     const centre = ({ col, row }) => [(col + 0.5) * ts, (row + 0.5) * ts];
@@ -81,7 +80,7 @@ export function createTraffic(tables, map, random) {
     if (!out.length) return;
     const route = [{ col, row, from, to: pick(out) }];
     extend(route);
-    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: 0 };
+    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: laneLength(route[0]) / 2 };
     place(car);
     if (cars.some((c) => Math.hypot(c.x - car.x, c.z - car.z) < t.lookAhead)) return;
     cars.push(car);
@@ -133,12 +132,18 @@ export function createTraffic(tables, map, random) {
       if (light && light.phase !== 'green' && short > 0 && car.speed ** 2 <= 2 * t.maxBrake * short) limit(short - t.stopGap);
       dist += laneLength(p);
     }
+    // Looking ahead along the heading; in a turn also from the turn's end, so a queue just round the
+    // corner is seen before the car is half way round. `extra` is the lane from the car to that view.
+    const views = [[car, 0]];
+    if (car.lane.from !== car.lane.to) views.push([pose(car.lane, laneLength(car.lane)), laneLength(car.lane) - car.s]);
     const reach = t.lookAhead + size.length;
-    for (const other of cars) {
-      if (other === car || Math.hypot(other.x - car.x, other.z - car.z) > reach || !follows(car, other)) continue;
-      limit(aheadOf(car, corners(other, size)) - size.length / 2 - t.followGap);
+    for (const [view, extra] of views) {
+      for (const other of cars) {
+        if (other === car || Math.hypot(other.x - view.x, other.z - view.z) > reach || !follows(view, other)) continue;
+        limit(extra + aheadOf(view, corners(other, size)) - size.length / 2 - t.followGap);
+      }
+      limit(extra + aheadOf(view, truckBox) - size.length / 2 - t.followGap);
     }
-    limit(aheadOf(car, truckBox) - size.length / 2 - t.followGap);
     return speed;
   }
 

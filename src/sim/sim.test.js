@@ -385,6 +385,7 @@ function laneSim(seed = 1, profile) {
 function acceptFrom(sim, pickup) {
   let offer;
   for (let i = 0; i < 20 && !offer; i++) offer = sim.requestOffers().find((o) => o.pickup === pickup);
+  expect(offer, `an offer from ${pickup}`).toBeTruthy();
   sim.acceptOrder(offer.id);
   return offer;
 }
@@ -1318,6 +1319,26 @@ describe('Sim: traffic', () => {
 
     expect(sim.state.traffic).toContain(car);
     expect(short(car, light)).toBeLessThan(0);
+  });
+
+  test("new cars appear out of the truck's view: on a tile far enough away and off the truck's street", () => {
+    const sim = trafficSim(GRID, 4);
+    const [near, far] = tables.traffic.spawnDistance;
+    const seen = new Set();
+    for (let t = 0; t < 90; t += DT) {
+      // Move the truck to a corner after a while, so cars left far behind give way to new ones.
+      if (t > 30 && t < 30 + DT) Object.assign(sim.state.truck, { x: 1.5 * TILE, z: 1.5 * TILE });
+      sim.step(DT, IDLE);
+      const { x, z } = sim.state.truck;
+      for (const { id, lane } of sim.state.traffic.filter((c) => !seen.has(c.id))) {
+        seen.add(id);
+        const away = Math.hypot((lane.col + 0.5) * TILE - x, (lane.row + 0.5) * TILE - z);
+        expect(away).toBeGreaterThanOrEqual(near);
+        expect(away).toBeLessThanOrEqual(far);
+        expect(lane.col === Math.floor(x / TILE) || lane.row === Math.floor(z / TILE)).toBe(false);
+      }
+    }
+    expect(seen.size).toBeGreaterThan(tiers[0].traffic); // some cars left and new ones came
   });
 
   test('traffic is the same for the same seed', () => {
