@@ -129,7 +129,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     // Solid stop, no damage to the truck: undo the move that hit something. Reverse backs a stuck truck off.
     const shed = speedBefore - Math.abs(truck.speed);
     const blocked = !fits(truck);
-    const hit = blocked && !state.collision;
+    const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
@@ -148,7 +148,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // Loaded fragile cargo takes damage from speed shed by hard braking (m/s) and from each new hit; the Fahrwerk slows both.
+  // Loaded fragile cargo takes damage from speed shed by hard braking (m/s) and from each new hit faster than a touch;
+  // the Fahrwerk slows both.
   function damageCargo(braked, hit) {
     const order = state.order;
     if (order?.type !== 'fragile' || order.phase !== 'dropoff') return;
@@ -225,8 +226,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         { label: 'time', amount: Math.round(o.timeBonus * timeShare * order.pay) },
       ];
       // Damage takes its share of the fragile premium and never more, so the pay never drops below the base.
-      const care = order.type === 'fragile' ? 1 - order.damage : 0;
-      if (order.type === 'fragile') lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * care * order.pay) });
+      let care = 0;
+      if (order.type === 'fragile') {
+        care = 1 - order.damage;
+        lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * care * order.pay) });
+      }
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
       const { pointsPerDelivery, timeBonusPoints, fragilePoints } = tables.rank;
@@ -314,8 +318,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const typeOf = (cargo) => (cargo.fragile ? 'fragile' : cargo.weight > o.maxCargo ? 'heavy' : 'normal');
 
   // New offers between distinct spots, paid by the road route length; none while an order is active.
-  // Cargo is only what the Ladefläche carries, of the offer types the rank tier allows. The expected time is the truck's route to the pickup plus the
-  // paid route, at reference speed, plus loading, unloading and slack.
+  // Cargo is only what the Ladefläche carries, of the offer types the rank tier allows. The expected time is
+  // the truck's route to the pickup plus the paid route, at reference speed, plus loading, unloading and slack.
   function requestOffers() {
     state.offers = [];
     if (state.order) return state.offers;

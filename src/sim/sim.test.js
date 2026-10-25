@@ -922,6 +922,20 @@ describe('Sim: fragile cargo', () => {
     expect(sim.state.order.damage).toBe(0);
   });
 
+  test('touching a wall at a crawl does no damage', () => {
+    const sim = longSim();
+    loadAtA(sim); // up against A's end wall
+
+    let touched = false;
+    for (let t = 0; t < 2; t += DT) {
+      sim.step(DT, BRAKE); // reverse engages and backs into the wall
+      touched ||= sim.state.collision;
+    }
+
+    expect(touched).toBe(true);
+    expect(sim.state.order.damage).toBe(0);
+  });
+
   test('a higher Fahrwerk level means less damage for the same braking', () => {
     function brakingDamage(suspension) {
       const sim = longSim({ ...fragileTier, upgrades: suspension ? { suspension } : {} });
@@ -938,11 +952,13 @@ describe('Sim: fragile cargo', () => {
   });
 
   test('worked example: one hit with fragile cargo loaded is damage 0.25, and the fragile line is 30 on the 100', () => {
-    const sim = nookSim();
+    const noTimePoints = { ...example, rank: { ...example.rank, timeBonusPoints: 0 } }; // the bump costs time
+    const sim = createSim(noTimePoints, parseMap('A.B', example), seeded(1), fragileTier);
     sim.acceptOrder(sim.requestOffers()[0].id);
     drive(sim, 30.1, IDLE); // loaded at 30 s
 
     timeUntil(sim, GAS, () => sim.state.collision, 10); // into the map edge, still in the zone
+    drive(sim, 1, GAS); // pushing on against it is the same hit
     expect(sim.state.collision).toBe(true);
     drive(sim, 0.1, IDLE);
     expect(sim.state.order.damage).toBe(0.25);
@@ -951,6 +967,8 @@ describe('Sim: fragile cargo', () => {
     expect(sim.state.order).toBe(null);
     expect(sim.state.lastPayment.lines).toContainEqual({ label: 'base', amount: 100 });
     expect(sim.state.lastPayment.lines).toContainEqual({ label: 'fragile', amount: 30 });
+    const { pointsPerDelivery, fragilePoints } = tables.rank;
+    expect(sim.state.profile.rankPoints).toBe(fragileTier.rankPoints + pointsPerDelivery + Math.round(fragilePoints * 0.75));
   });
 
   test('an undamaged fragile delivery gets the full premium and the extra rank points', () => {

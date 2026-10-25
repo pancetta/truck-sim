@@ -49,7 +49,8 @@ export const orders = {
   fragilePremium: 0.4,
   hardBrake: 2.5, // m/s² of deceleration; coasting stays well below
   brakeDamage: 0.005, // per m/s of speed shed while braking hard: ~0.07 for a full stop from 50 km/h
-  hitDamage: 0.2, // per new collision
+  hitDamage: 0.2, // per new collision at hitSpeed or faster
+  hitSpeed: 1.5, // m/s; slower touches, e.g. while manoeuvring, do no damage
   maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade; heavier is a 'heavy' offer
   // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
   // the cargo: fragile if marked so, else heavy above maxCargo, else normal.

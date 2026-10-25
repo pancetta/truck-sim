@@ -20,9 +20,9 @@ export function createOrders(root, sim, map, tables, strings) {
   const km = (m) => `${(m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
   const clock = (s) => `${Math.floor(Math.ceil(s) / 60)}:${String(Math.ceil(s) % 60).padStart(2, '0')}`;
   const offerHtml = (o) =>
-    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t · ${strings.offerTypes[o.type]}<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)} · ` +
-    `${strings.expectedTime} ${clock(o.expectedTime)}</small>` +
-    `<strong>${eur(o.pay)}</strong>`;
+    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)} · ` +
+    `${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
+    `<small>${strings.offerTypes[o.type]}</small><strong>${eur(o.pay)}</strong>`;
   let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.profile.money;
   money.textContent = eur(lastMoney);
