@@ -271,9 +271,6 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const parts = createTruckParts(tables);
   truck.add(parts.exterior);
 
-  // Visual items by slot; a slot left out of a look shows its free stock item.
-  const stock = {};
-  for (const [id, { slot, price }] of Object.entries(tables.visuals)) if (price === 0) stock[slot] = id;
   let shownLook = null;
 
   function paint({ body, cab }) {
@@ -288,11 +285,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
 
   function showLook(look) {
-    const ids = Object.keys(stock).map((slot) => look[slot] ?? stock[slot]);
+    const ids = Object.values(look);
     const key = ids.join();
     if (key === shownLook) return;
     shownLook = key;
-    paint(tables.visuals[look.paint ?? stock.paint]);
+    paint(tables.visuals[look.paint]);
     parts.show(ids);
   }
 
@@ -349,7 +346,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   window.addEventListener('resize', resize);
   resize();
 
-  // `look` is slot → visual item id (the equipped items plus any Werkstatt previews). `showroom` is null
+  // `look` is slot → visual item id for every slot (the equipped items plus any Werkstatt previews). `showroom` is null
   // while driving, 'orbit' for the Werkstatt's circling camera, or 'cab' to show the gimmick from the seat.
   function render(state, input, look, showroom) {
     const now = performance.now();

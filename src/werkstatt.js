@@ -100,6 +100,7 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
     if (id) answer(sim.buyUpgrade(id));
     if (target('tab')) {
       tab = target('tab').tab;
+      focus = null; // back to the orbit
       answer({ ok: true });
     }
     // An owned item is worn at once; any other is only tried on until it's bought.
