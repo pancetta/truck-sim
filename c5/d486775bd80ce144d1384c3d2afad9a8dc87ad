@@ -1,0 +1,19 @@
+src/orders.js
+  s_755aeca752ae59::t_eda3cb2c1ed565 39-40,45-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5d486775bd80ce144d1384c3d2afad9a8dc87ad",
+  "prompts": {},
+  "sessions": {
+    "s_755aeca752ae59": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9777eab8-ad15-4090-b88a-14f8781f81e3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
