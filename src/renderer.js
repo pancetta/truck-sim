@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
+import { createTruckParts } from './truckLook.js';
 
 // CC0 kit models in public/models/ (see CREDITS.md).
 const MODELS = `${import.meta.env.BASE_URL}models/`;
@@ -245,16 +246,55 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return best;
   }
 
-  // Truck from the kit, stretched to the collision footprint; the cab is at the front (+z).
+  // Truck from the kit, stretched to the collision footprint; the cab is at the front (+z). Its body and cab
+  // faces load in marker colours, so a paint item can recolour them later (see paint()).
   const truck = new THREE.Group();
   const exterior = new THREE.Mesh(new THREE.BufferGeometry(), kitMaterial);
-  loads.push(loadModel(TRUCK, { ...palette, green: palette.truckBody, wall: palette.truckCab }).then((geometry) => {
+  const MARKS = { body: 0xff00ff, cab: 0x00ffff }; // in no palette
+  const painted = { body: [], cab: [] }; // vertex indices
+  loads.push(loadModel(TRUCK, { ...palette, green: MARKS.body, wall: MARKS.cab }).then((geometry) => {
     const { min, max } = geometry.boundingBox;
     const s = tables.vehicle.width / (max.x - min.x);
     exterior.geometry = unitBox(geometry);
     exterior.scale.set(tables.vehicle.width, (max.y - min.y) * s, tables.vehicle.length);
+    const colour = geometry.getAttribute('color');
+    const c = new THREE.Color();
+    for (const [part, hex] of Object.entries(MARKS)) {
+      c.setHex(hex);
+      for (let i = 0; i < colour.count; i++) {
+        if (colour.getX(i) === Math.fround(c.r) && colour.getY(i) === Math.fround(c.g) && colour.getZ(i) === Math.fround(c.b)) painted[part].push(i);
+      }
+    }
+    shownLook = null; // paint the loaded truck
   }));
   truck.add(exterior);
+  const parts = createTruckParts(tables);
+  truck.add(parts.exterior);
+
+  // Visual items by slot; a slot left out of a look shows its free stock item.
+  const stock = {};
+  for (const [id, { slot, price }] of Object.entries(tables.visuals)) if (price === 0) stock[slot] = id;
+  let shownLook = null;
+
+  function paint({ body, cab }) {
+    const colour = exterior.geometry.getAttribute('color');
+    if (!colour) return; // not loaded yet
+    const c = new THREE.Color();
+    for (const [part, key] of [['body', body], ['cab', cab]]) {
+      c.setHex(palette[key]);
+      for (const i of painted[part]) colour.setXYZ(i, c.r, c.g, c.b);
+    }
+    colour.needsUpdate = true;
+  }
+
+  function showLook(look) {
+    const ids = Object.keys(stock).map((slot) => look[slot] ?? stock[slot]);
+    const key = ids.join();
+    if (key === shownLook) return;
+    shownLook = key;
+    paint(tables.visuals[look.paint ?? stock.paint]);
+    parts.show(ids);
+  }
 
   // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view.
   const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshLambertMaterial({ color: palette.dashboard }));
@@ -277,32 +317,51 @@ export function createRenderer(canvas, tables, map, onProgress) {
   );
   column.add(shaft, wheel);
   const interior = new THREE.Group();
-  interior.add(dashboard, column);
+  interior.add(dashboard, column, parts.cab);
   truck.add(interior);
   scene.add(truck);
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
   const eye = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
-  let cabView;
-  setCabView(true);
+  let lastFrame = performance.now();
+  let cabView = true;
+  let orbit = 0; // rad, showroom camera angle round the truck
+  let shifted = false; // whether the picture is moved aside for the Werkstatt panel
 
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    shifted = false; // shift() sets the offset again for the new size
+    camera.clearViewOffset();
+  }
+
+  function shift(on) {
+    if (on === shifted) return;
+    shifted = on;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (on) camera.setViewOffset(w, h, w * tables.showroom.shift, 0, w, h);
+    else camera.clearViewOffset();
   }
   window.addEventListener('resize', resize);
   resize();
 
-  function render(state, input) {
+  // `look` is slot → visual item id (the equipped items plus any Werkstatt previews). `showroom` is null
+  // while driving, 'orbit' for the Werkstatt's circling camera, or 'cab' to show the gimmick from the seat.
+  function render(state, input, look, showroom) {
+    const now = performance.now();
+    const dt = Math.min((now - lastFrame) / 1000, 0.1);
+    lastFrame = now;
     const { x, z, heading, roll } = state.truck;
     truck.position.set(x, 0, z);
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
     // Same angle as the on-screen wheel; positive is clockwise from the driver's seat.
     wheel.rotation.z = THREE.MathUtils.degToRad(input.steer * tables.controls.wheelLock);
+    showLook(look);
+    parts.sway(roll, dt);
 
     const phases = state.lights.map((l) => l.phase).join();
     if (phases !== shownPhases && state.lights.length) {
@@ -323,10 +382,22 @@ export function createRenderer(canvas, tables, map, onProgress) {
       marker.material.color.setHex(order.phase === 'pickup' ? palette.pickup : palette.dropoff);
     }
 
-    if (cabView) {
+    // Each view shows one side of the cab: the kit's cab is lower than our interior.
+    const inCab = showroom ? showroom === 'cab' : cabView;
+    exterior.visible = parts.exterior.visible = !inCab;
+    interior.visible = inCab;
+    shift(!!showroom);
+    if (!showroom) orbit = 0;
+    if (showroom === 'orbit') {
+      const { radius, height, lookHeight, speed } = tables.showroom;
+      orbit += speed * dt;
+      const a = heading + Math.PI + 0.7 + orbit; // starts behind the truck, off to one side
+      camera.position.set(x + Math.sin(a) * radius, height, z + Math.cos(a) * radius);
+      camera.lookAt(x, lookHeight, z);
+    } else if (inCab) {
       // Truck-space points, so the camera follows anything that moves the truck.
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye)));
-      camera.lookAt(truck.localToWorld(lookAt.fromArray(cam.cabLook)));
+      camera.lookAt(truck.localToWorld(lookAt.fromArray(showroom ? cam.gimmickLook : cam.cabLook)));
     } else {
       // Basic chase camera: fixed offset behind and above the truck.
       camera.position.set(
@@ -339,15 +410,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     renderer.render(scene, camera);
   }
 
-  // Each view shows one side of the cab: the kit's cab is lower than our interior.
-  function setCabView(on) {
-    cabView = on;
-    exterior.visible = !on;
-    interior.visible = on;
-  }
-
   function toggleCamera() {
-    setCabView(!cabView);
+    cabView = !cabView;
   }
 
   // A model that fails to load is logged and left out, as before; it doesn't hold up the game.

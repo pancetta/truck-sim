@@ -572,6 +572,60 @@ describe('Sim: Werkstatt', () => {
   });
 });
 
+describe('Sim: visual items', () => {
+  const OK = { ok: true, reason: null };
+  const items = Object.entries(tables.visuals);
+  const [id, item] = items.find(([, v]) => v.price > 0);
+  const { slot } = item;
+  const [other] = items.find(([k, v]) => k !== id && v.slot === slot && v.price > 0);
+  const [stock] = items.find(([, v]) => v.slot === slot && v.price === 0);
+  const plane = (profile) => createSim(tables, undefined, Math.random, { ...freshProfile(), ...profile });
+
+  test('every slot has exactly one free stock item', () => {
+    const slots = new Set(items.map(([, v]) => v.slot));
+    for (const s of slots) expect(items.filter(([, v]) => v.slot === s && v.price === 0), s).toHaveLength(1);
+  });
+
+  test('buying takes the price with no rank needed, and wears the item', () => {
+    const sim = plane({ money: item.price }); // rank 0
+
+    expect(sim.buyVisual(id)).toEqual(OK);
+
+    expect(sim.state.profile).toMatchObject({ money: 0, owned: [id], equipped: { [slot]: id } });
+  });
+
+  test('owned items switch for free, and the stock item empties the slot', () => {
+    const sim = plane({ money: 50, owned: [id, other], equipped: { [slot]: id } });
+
+    expect(sim.equipVisual(other)).toEqual(OK);
+    expect(sim.state.profile).toMatchObject({ money: 50, equipped: { [slot]: other } });
+
+    expect(sim.equipVisual(stock)).toEqual(OK);
+    expect(sim.state.profile).toMatchObject({ money: 50, owned: [id, other], equipped: {} });
+  });
+
+  test('each refusal gives its reason and changes nothing', () => {
+    const moving = plane({ money: 100000, owned: [id] });
+    drive(moving, 1, GAS);
+    const cases = [
+      [plane({ money: item.price - 1 }), 'buyVisual', id, 'noMoney'],
+      [plane({ money: 100000 }), 'buyVisual', 'neonUnderglow', 'unknown'],
+      [plane({ money: 100000 }), 'equipVisual', 'toString', 'unknown'],
+      [plane({ money: 100000, owned: [id] }), 'buyVisual', id, 'owned'],
+      [plane({ money: 100000 }), 'buyVisual', stock, 'owned'],
+      [plane({ money: 100000 }), 'equipVisual', id, 'notOwned'],
+      [moving, 'buyVisual', other, 'notIdle'],
+      [moving, 'equipVisual', id, 'notIdle'],
+    ];
+
+    for (const [sim, command, itemId, reason] of cases) {
+      const before = structuredClone(sim.state.profile);
+      expect(sim[command](itemId), reason).toEqual({ ok: false, reason });
+      expect(sim.state.profile, reason).toEqual(before);
+    }
+  });
+});
+
 describe('Sim: rank', () => {
   const { pointsPerDelivery, tiers } = tables.rank;
   const at = (rankPoints) => laneSim(1, { ...freshProfile(), rankPoints });

@@ -81,7 +81,7 @@ function frame(now) {
     sim.step(step, input);
     pending -= step;
   }
-  view.render(sim.state, input);
+  view.render(sim.state, input, werkstatt.look, werkstatt.showroom);
   hud.update(sim.state);
   orders.update(sim.state);
   minimap.update(sim.state);

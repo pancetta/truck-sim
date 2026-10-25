@@ -13,4 +13,4 @@ only read to pick each face's colour and are never shown.
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. Each kit's own `License.txt`
 sits next to its models. Only the models the game loads are kept, not the whole kits.
 
-Everything else (code, cab interior, dashboard, palette, city map) is the project's own.
+Everything else (code, cab interior, dashboard, the truck's visual items, palette, city map) is the project's own.

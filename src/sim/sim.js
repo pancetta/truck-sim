@@ -244,9 +244,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     };
   }
 
+  const refuse = (reason) => ({ ok: false, reason });
+  const OK = { ok: true, reason: null };
+
   // Raises one upgrade by a level. Returns { ok, reason }; a refusal changes nothing.
   function buyUpgrade(id) {
-    const refuse = (reason) => ({ ok: false, reason });
     if (!Object.hasOwn(tables.upgrades, id)) return refuse('unknown');
     if (!state.garageAvailable) return refuse('notIdle');
     const level = state.profile.upgrades[id] ?? 0;
@@ -258,7 +260,34 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.profile.upgrades[id] = level + 1;
     v = upgradedVehicle();
     state.offers = []; // the orders panel then asks again, with what the new Ladefläche carries
-    return { ok: true, reason: null };
+    return OK;
+  }
+
+  // A slot's free stock item is everyone's.
+  const owns = (id) => tables.visuals[id].price === 0 || state.profile.owned.includes(id);
+
+  // Buys a visual item and wears it; no rank needed. Returns { ok, reason }; a refusal changes nothing.
+  function buyVisual(id) {
+    if (!Object.hasOwn(tables.visuals, id)) return refuse('unknown');
+    if (!state.garageAvailable) return refuse('notIdle');
+    if (owns(id)) return refuse('owned');
+    const { price } = tables.visuals[id];
+    if (state.profile.money < price) return refuse('noMoney');
+    state.profile.money -= price;
+    state.profile.owned.push(id);
+    return equipVisual(id);
+  }
+
+  // Wears an owned visual item in its slot, free of charge. The stock item empties the slot, so `equipped`
+  // only ever holds bought items (as save.js expects).
+  function equipVisual(id) {
+    if (!Object.hasOwn(tables.visuals, id)) return refuse('unknown');
+    if (!state.garageAvailable) return refuse('notIdle');
+    if (!owns(id)) return refuse('notOwned');
+    const { slot, price } = tables.visuals[id];
+    if (price === 0) delete state.profile.equipped[slot];
+    else state.profile.equipped[slot] = id;
+    return OK;
   }
 
   const spot = (id) => map.spots.find((s) => s.id === id);
@@ -358,5 +387,5 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     resetToRoad();
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual };
 }

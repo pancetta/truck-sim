@@ -105,6 +105,18 @@ describe('save module', () => {
     expect(writes).toHaveLength(4);
   });
 
+  test("the game's own visual items, bought through the Sim, survive a save", () => {
+    const sim = createSim(baseTables, undefined, Math.random, { ...fresh, money: 5000 });
+    sim.buyVisual('paintBlue');
+    sim.buyVisual('gimmickDice');
+    sim.equipVisual('gimmickNone'); // owned, but the stock item is worn
+    const storage = fakeStorage();
+    createSave(storage, baseTables).save(sim.state.profile);
+
+    expect(createSave(storage, baseTables).load()).toEqual(sim.state.profile);
+    expect(sim.state.profile).toMatchObject({ owned: ['paintBlue', 'gimmickDice'], equipped: { paint: 'paintBlue' } });
+  });
+
   test('save never throws, even when setItem does (full storage, private mode)', () => {
     const storage = { ...fakeStorage(), setItem: () => { throw new Error('QuotaExceededError'); } };
     expect(() => createSave(storage, tables).save(valid)).not.toThrow();

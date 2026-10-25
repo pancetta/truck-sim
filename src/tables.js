@@ -72,7 +72,34 @@ export const upgrades = {
   suspension: { levels: [{ price: 700, rank: 0, factor: 0.8 }, { price: 1800, rank: 1, factor: 0.6 }, { price: 4000, rank: 3, factor: 0.45 }] },
   cargoBed: { levels: [{ price: 1500, rank: 0, maxCargo: 14 }, { price: 3500, rank: 2, maxCargo: 18 }, { price: 7000, rank: 4, maxCargo: 24 }] },
 };
-export const visuals = {}; // id → { slot, ... }
+// Werkstatt visual items by id (names in strings.visuals, slot names in strings.visualSlots), bought with
+// money and no rank. Each slot's one free item is the stock look, which everyone owns. Colours name palette
+// entries. The renderer (truckLook.js) draws them; the save module drops ids not listed here.
+export const visuals = {
+  paintStock: { slot: 'paint', price: 0, body: 'truckBody', cab: 'truckCab' },
+  paintBlue: { slot: 'paint', price: 500, body: 'blue', cab: 'wall' },
+  paintGreen: { slot: 'paint', price: 500, body: 'green', cab: 'yellow' },
+  paintRed: { slot: 'paint', price: 600, body: 'red', cab: 'dark' },
+  paintNight: { slot: 'paint', price: 800, body: 'dark', cab: 'orange' },
+  liveryNone: { slot: 'livery', price: 0 },
+  liveryStripes: { slot: 'livery', price: 700, design: 'stripes', colours: ['red', 'dark'] },
+  liveryChevrons: { slot: 'livery', price: 900, design: 'chevrons', colours: ['blue'] },
+  liveryChecker: { slot: 'livery', price: 1100, design: 'checker', colours: ['dark', 'wall'] },
+  liveryZigzag: { slot: 'livery', price: 1000, design: 'zigzag', colours: ['orange'] },
+  lightBarNone: { slot: 'lightBar', price: 0 },
+  lightBarBeacons: { slot: 'lightBar', price: 900, lamp: 'lampAmber' },
+  lightBarSpots: { slot: 'lightBar', price: 1200, lamp: 'wall' },
+  gimmickNone: { slot: 'gimmick', price: 0 },
+  gimmickDice: { slot: 'gimmick', price: 250, kind: 'dice', colour: 'red' },
+  gimmickFigure: { slot: 'gimmick', price: 400, kind: 'figure', colour: 'blue' },
+  rimsStock: { slot: 'rims', price: 0 },
+  rimsChrome: { slot: 'rims', price: 800, colour: 'chrome' },
+  rimsRed: { slot: 'rims', price: 600, colour: 'red' },
+  rimsStar: { slot: 'rims', price: 1000, colour: 'wall', spokes: 5 },
+  chromeNone: { slot: 'chrome', price: 0 },
+  chromeBumpers: { slot: 'chrome', price: 1200 },
+  chromeBullBar: { slot: 'chrome', price: 1800, bullBar: true },
+};
 
 // Each light junction runs green → amber → red for one axis while the other is red, then swaps, with a
 // short all-red gap between. Junction n starts its cycle n × junctionOffset seconds ahead of junction 0.
@@ -126,6 +153,23 @@ export const camera = {
   lookHeight: 2, // m above the truck's position the camera aims at
   cabEye: [0.55, 2.45, 2.75], // driver's eye in truck space (x left, y up, z forward), m
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
+  gimmickLook: [0.2, 2.3, 3.55], // where it aims in the Werkstatt to show the cab gimmick
+};
+
+// The Werkstatt's view: the camera circles the standing truck, aimed so the truck shows beside the panel.
+export const showroom = {
+  radius: 12, // m from the truck
+  height: 4.5, // m above the ground
+  lookHeight: 1.4, // m, the point on the truck the camera aims at
+  speed: 0.25, // rad/s
+  shift: 0.18, // share of the screen width the picture moves left, clear of the panel
+};
+
+// The cab gimmick hangs like a damped pendulum that leans `perRoll` times the body roll.
+export const gimmickSway = {
+  perRoll: 5,
+  frequency: 1.4, // Hz
+  damping: 0.12, // share of critical damping
 };
 
 export const lighting = {
@@ -165,6 +209,7 @@ export const palette = {
   lampAmber: 0xffb02e,
   lampGreen: 0x4ce07a,
   stopLine: 0xf4f1ea,
+  chrome: 0xdfe4ea, // chrome bumpers and rims
 };
 
 // The kit models (CREDITS.md) are recoloured face by face: each face takes the palette colour

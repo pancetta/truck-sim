@@ -433,8 +433,8 @@ body {
   z-index: 3;
   display: flex; /* not grid: the panel's max-height % needs this definite height */
   align-items: center;
-  justify-content: center;
-  background: rgb(0 0 0 / 0.35);
+  justify-content: flex-end; /* the truck circles in view on the left (tables.showroom.shift) */
+  padding-right: max(24px, env(safe-area-inset-right));
   color: #fff;
   font-variant-numeric: tabular-nums;
 }
@@ -502,6 +502,40 @@ body {
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+}
+
+.werkstatt-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.werkstatt-panel .werkstatt-tabs button,
+.werkstatt-panel .werkstatt-items button {
+  background: rgb(255 255 255 / 0.15);
+  color: #fff;
+}
+
+.werkstatt-panel .werkstatt-tabs button[aria-pressed='true'],
+.werkstatt-panel .werkstatt-items button[aria-pressed='true'] {
+  background: #fff;
+  color: #1f232b;
+}
+
+.werkstatt-panel li.werkstatt-slot {
+  flex-wrap: wrap;
+}
+
+.werkstatt-items {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 6px;
+}
+
+.werkstatt-panel .werkstatt-items button {
+  padding: 7px 10px;
+  font-weight: 600;
 }
 
 .werkstatt-refusal {
