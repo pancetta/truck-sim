@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createSim } from './sim.js';
+import { createSim, freshProfile } from './sim.js';
 import * as tables from '../tables.js';
 import { parseMap } from './map.js';
 import city from '../city.txt?raw';
@@ -392,6 +392,16 @@ function parkAt(sim, id) {
   timeUntil(sim, id === 'B' ? GAS : BRAKE, () => sim.state.collision, 30);
 }
 
+// Takes an order from A to B on the lane and delivers it; returns the offer.
+function deliver(sim) {
+  const offer = acceptFrom(sim, 'A');
+  parkAt(sim, 'A');
+  drive(sim, tables.orders.loadTime + 0.1, IDLE);
+  parkAt(sim, 'B');
+  drive(sim, tables.orders.loadTime + 0.1, IDLE);
+  return offer;
+}
+
 describe('Sim: profile', () => {
   const profile = { version: 1, money: 500, rankPoints: 7, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
 
@@ -405,19 +415,143 @@ describe('Sim: profile', () => {
     const sim = laneSim(1, profile);
     expect(sim.state.profile).toEqual(profile);
 
-    const offer = acceptFrom(sim, 'A');
-    parkAt(sim, 'A');
-    drive(sim, tables.orders.loadTime + 0.1, IDLE);
-    parkAt(sim, 'B');
-    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    const offer = deliver(sim);
 
-    expect(sim.state.profile).toEqual({ ...profile, money: 500 + offer.pay });
+    expect(sim.state.profile).toEqual({ ...profile, money: 500 + offer.pay, rankPoints: 7 + tables.rank.pointsPerDelivery });
     expect(profile.money).toBe(500); // the caller's object is left alone
   });
 
   test('the profile round-trips into a new Sim', () => {
     const sim = laneSim(1, laneSim(1, profile).state.profile);
     expect(sim.state.profile).toEqual(profile);
+  });
+});
+
+describe('Sim: Werkstatt', () => {
+  const MONEY = 100000;
+  const rich = (upgrades = {}, rankPoints = 0) => ({ ...freshProfile(), money: MONEY, rankPoints, upgrades });
+  const plane = (profile = rich()) => createSim(tables, undefined, Math.random, profile);
+
+  test('the Werkstatt is available only at a standstill with no active order', () => {
+    const sim = laneSim(1, rich());
+    expect(sim.state.garageAvailable).toBe(true);
+
+    drive(sim, 0.5, GAS);
+    expect(sim.state.garageAvailable).toBe(false);
+
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+    expect(sim.state.garageAvailable).toBe(true);
+
+    acceptFrom(sim, 'A');
+    expect(sim.state.garageAvailable).toBe(false);
+  });
+
+  test('Motor level 1 costs its price, and the truck reaches 50 km/h sooner', () => {
+    const tuned = plane();
+
+    expect(tuned.buyUpgrade('motor')).toEqual({ ok: true, reason: null });
+
+    expect(tuned.state.profile.money).toBe(MONEY - tables.upgrades.motor.levels[0].price);
+    expect(tuned.state.profile.upgrades.motor).toBe(1);
+    const to50 = (sim) => timeUntil(sim, GAS, () => sim.state.truck.speed >= 50 / 3.6);
+    expect(to50(tuned)).toBeLessThan(to50(plane()) * 0.95);
+  });
+
+  test('Bremsen level 1 stops the truck from 60 km/h in a shorter distance', () => {
+    function stopDistance(sim) {
+      timeUntil(sim, GAS, () => sim.state.truck.speed >= 60 / 3.6);
+      const start = snapshot(sim);
+      timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+      return moved(sim, start).forward;
+    }
+    const tuned = plane();
+    tuned.buyUpgrade('brakes');
+
+    expect(stopDistance(tuned)).toBeLessThan(stopDistance(plane()) * 0.9);
+  });
+
+  test('Reifen turn sharper at speed, and Fahrwerk leans the body less', () => {
+    function corner(id) {
+      const sim = plane();
+      if (id) sim.buyUpgrade(id);
+      timeUntil(sim, GAS, () => sim.state.truck.speed >= 40 / 3.6);
+      const { heading } = sim.state.truck;
+      drive(sim, 1, { steer: 0.5, gas: 0, brake: 0 });
+      return { turn: Math.abs(sim.state.truck.heading - heading), roll: Math.abs(sim.state.truck.roll) };
+    }
+    const base = corner();
+
+    expect(corner('tyres').turn).toBeGreaterThan(base.turn * 1.1);
+    expect(corner('suspension').roll).toBeLessThan(base.roll * 0.9);
+  });
+
+  test('Ladefläche raises the heaviest cargo offered', () => {
+    function heaviest(sim) {
+      let max = 0;
+      for (let i = 0; i < 100; i++) for (const o of sim.requestOffers()) max = Math.max(max, o.cargo.weight);
+      return max;
+    }
+    const sim = laneSim(3, rich());
+    expect(heaviest(sim)).toBe(tables.orders.maxCargo);
+
+    sim.buyUpgrade('cargoBed');
+
+    expect(heaviest(sim)).toBe(tables.upgrades.cargoBed.levels[0].maxCargo);
+  });
+
+  test('each refused purchase gives its reason and changes nothing', () => {
+    const moving = plane();
+    drive(moving, 1, GAS);
+    const onOrder = laneSim(1, rich());
+    acceptFrom(onOrder, 'A');
+    const cases = [
+      [plane(), 'turbo', 'unknown'],
+      [plane(), 'toString', 'unknown'],
+      [moving, 'motor', 'notIdle'],
+      [onOrder, 'motor', 'notIdle'],
+      [plane(freshProfile()), 'motor', 'noMoney'],
+      [plane(rich({ motor: 1 })), 'motor', 'rankTooLow'], // level 2 needs tables.upgrades.motor.levels[1].rank
+      [plane(rich({ motor: 3 }, 1000)), 'motor', 'maxLevel'],
+    ];
+
+    for (const [sim, id, reason] of cases) {
+      const before = structuredClone(sim.state.profile);
+      expect(sim.buyUpgrade(id), reason).toEqual({ ok: false, reason });
+      expect(sim.state.profile, reason).toEqual(before);
+    }
+  });
+
+  test('with enough rank the next level sells', () => {
+    const { rank } = tables.upgrades.motor.levels[1];
+    const sim = plane(rich({ motor: 1 }, tables.rank.tiers[rank].points));
+
+    expect(sim.buyUpgrade('motor').ok).toBe(true);
+    expect(sim.state.profile.upgrades.motor).toBe(2);
+  });
+});
+
+describe('Sim: rank', () => {
+  const { pointsPerDelivery, tiers } = tables.rank;
+  const at = (rankPoints) => laneSim(1, { ...freshProfile(), rankPoints });
+
+  test('a fresh Sim starts at the lowest tier', () => {
+    expect(laneSim().state.rank).toEqual({ tier: 0, title: tiers[0].title, progress: 0 });
+  });
+
+  test('a delivery adds rank points, and crossing a threshold changes the tier and title', () => {
+    const sim = at(tiers[1].points - pointsPerDelivery);
+    expect(sim.state.rank.tier).toBe(0);
+
+    deliver(sim);
+
+    expect(sim.state.profile.rankPoints).toBe(tiers[1].points);
+    expect(sim.state.rank).toEqual({ tier: 1, title: tiers[1].title, progress: 0 });
+    expect(tiers[1].title).not.toBe(tiers[0].title);
+  });
+
+  test('progress runs towards the next tier and stays full at the top', () => {
+    expect(at((tiers[1].points + tiers[2].points) / 2).state.rank).toMatchObject({ tier: 1, progress: 0.5 });
+    expect(at(tiers.at(-1).points + 1).state.rank).toMatchObject({ tier: tiers.length - 1, progress: 1 });
   });
 });
 

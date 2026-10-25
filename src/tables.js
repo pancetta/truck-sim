@@ -1,4 +1,5 @@
 // All tunables live here (see spec #1: "Tables").
+import { strings } from './strings.js';
 
 export const vehicle = {
   emptyMass: 8000, // kg
@@ -38,16 +39,34 @@ export const orders = {
   basePay: 200, // € per delivery
   payPerKm: 150, // € per km of road route from pickup to drop-off
   paidNoticeTime: 3, // s the payment confirmation stays on screen
+  maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade
   cargo: [
     { name: 'Paletten', weight: 6 }, // t
     { name: 'Getränke', weight: 10 },
     { name: 'Möbel', weight: 4 },
     { name: 'Stahl', weight: 14 },
+    { name: 'Baumaschine', weight: 18 },
+    { name: 'Betonteile', weight: 24 },
   ],
 };
 
-// Werkstatt items by id, filled in by the garage tickets; the save module drops ids not listed here.
-export const upgrades = {}; // id → { levels: [...] }
+// Rank points per delivery; a tier is reached at its points. Titles are in strings.rankTitles, same order.
+export const rank = {
+  pointsPerDelivery: 10,
+  tiers: [0, 30, 80, 160, 300].map((points, i) => ({ points, title: strings.rankTitles[i] })),
+};
+
+// Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
+// rank tier that may buy a level. `factor` scales a base vehicle constant: motor the torque curve, brakes
+// brakeForce, tyres steerFadeSpeed, suspension rollPerAccel. cargoBed's `maxCargo` replaces orders.maxCargo.
+// The save module drops ids not listed here.
+export const upgrades = {
+  motor: { levels: [{ price: 1200, rank: 0, factor: 1.15 }, { price: 3000, rank: 1, factor: 1.3 }, { price: 6000, rank: 3, factor: 1.45 }] },
+  brakes: { levels: [{ price: 800, rank: 0, factor: 1.2 }, { price: 2000, rank: 1, factor: 1.4 }, { price: 4500, rank: 3, factor: 1.6 }] },
+  tyres: { levels: [{ price: 800, rank: 0, factor: 1.25 }, { price: 2000, rank: 1, factor: 1.5 }, { price: 4500, rank: 3, factor: 1.8 }] },
+  suspension: { levels: [{ price: 700, rank: 0, factor: 0.8 }, { price: 1800, rank: 1, factor: 0.6 }, { price: 4000, rank: 3, factor: 0.45 }] },
+  cargoBed: { levels: [{ price: 1500, rank: 0, maxCargo: 14 }, { price: 3500, rank: 2, maxCargo: 18 }, { price: 7000, rank: 4, maxCargo: 24 }] },
+};
 export const visuals = {}; // id → { slot, ... }
 
 export const city = {

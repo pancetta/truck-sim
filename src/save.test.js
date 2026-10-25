@@ -3,10 +3,10 @@ import { createSave } from './save.js';
 import { createSim } from './sim/sim.js';
 import * as baseTables from './tables.js';
 
-// Test garage items, so the save rules have known ids to keep and unknown ones to drop.
+// Test visual items, so the save rules have known ids to keep and unknown ones to drop; the upgrades are the
+// real ones (motor has 3 levels).
 const tables = {
   ...baseTables,
-  upgrades: { motor: { levels: [{}, {}, {}] } },
   visuals: { red: { slot: 'paint' }, blue: { slot: 'paint' }, dice: { slot: 'gimmick' } },
 };
 const fresh = createSim(tables).state.profile;

@@ -10,6 +10,7 @@ import { createRenderer } from './renderer.js';
 import { createHud } from './hud.js';
 import { createOrders } from './orders.js';
 import { createMinimap } from './minimap.js';
+import { createWerkstatt } from './werkstatt.js';
 
 const { step, maxFrame } = tables.loop;
 
@@ -49,6 +50,11 @@ document.getElementById('controls').append(cameraButton);
 const hud = createHud(document.getElementById('dash'), tables, strings);
 const orders = createOrders(document.getElementById('orders'), sim, map, tables, strings);
 const minimap = createMinimap(document.getElementById('minimap'), map, tables);
+// A reset clears the save and reloads, which starts a fresh Sim and rebuilds everything wired to it.
+const werkstatt = createWerkstatt(document.getElementById('werkstatt'), sim, tables, strings, () => {
+  save.reset();
+  location.reload();
+});
 
 const resetButton = document.createElement('button');
 resetButton.type = 'button';
@@ -70,7 +76,8 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, maxFrame);
   last = now;
   const input = controls.update(dt);
-  pending += dt;
+  // The open Werkstatt pauses the world; drawing and autosave (after a purchase) go on.
+  pending = werkstatt.open ? 0 : pending + dt;
   while (pending >= step) {
     sim.step(step, input);
     pending -= step;
@@ -79,7 +86,8 @@ function frame(now) {
   hud.update(sim.state);
   orders.update(sim.state);
   minimap.update(sim.state);
-  // Autosave whenever the profile changes (a payment now; fines and purchases later).
+  werkstatt.update(sim.state);
+  // Autosave whenever the profile changes (a payment or a purchase now; fines later).
   const profile = JSON.stringify(sim.state.profile);
   if (profile !== savedProfile) {
     save.save(sim.state.profile);

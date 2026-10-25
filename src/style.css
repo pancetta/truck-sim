@@ -104,6 +104,7 @@ body {
     font-size: 1.75rem;
     font-weight: 600;
     text-align: center;
+    z-index: 4; /* over the Werkstatt */
   }
 }
 
@@ -364,6 +365,129 @@ body {
   padding: 10px 16px;
   color: #e8c547;
   font-weight: 700;
+}
+
+/* Rank title and progress to the next tier, under the RPM bar. */
+.dash-rank {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.dash-rank i {
+  height: 4px;
+  border-radius: 2px;
+  background: #6cc551;
+  transform-origin: left;
+}
+
+/* Werkstatt: button under the orders button; the open panel is modal over the paused game. */
+.werkstatt-toggle {
+  position: fixed;
+  top: calc(max(24px, env(safe-area-inset-top)) + 120px);
+  left: max(24px, env(safe-area-inset-left));
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.85);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.werkstatt-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.werkstatt {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.35);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.werkstatt[hidden] {
+  display: none;
+}
+
+.werkstatt-panel {
+  box-sizing: border-box;
+  width: min(440px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  overflow-y: auto;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.95);
+}
+
+.werkstatt-panel h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.werkstatt-panel h2 small {
+  float: right;
+  color: #e8c547;
+  font-size: 15px;
+}
+
+.werkstatt-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.werkstatt-panel li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgb(255 255 255 / 0.15);
+}
+
+.werkstatt-panel li p {
+  flex: 1;
+  margin: 0;
+}
+
+.werkstatt-panel li small {
+  opacity: 0.7;
+}
+
+.werkstatt-panel button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #e8c547;
+  color: #1f232b;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.werkstatt-refusal {
+  min-height: 1.2em;
+  margin: 8px 0;
+  color: #f08a4b;
+  font-weight: 600;
+}
+
+.werkstatt-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.werkstatt-panel .werkstatt-actions button {
+  background: rgb(255 255 255 / 0.15);
+  color: #fff;
 }
 
 /* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals.

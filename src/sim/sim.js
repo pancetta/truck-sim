@@ -15,24 +15,31 @@ export function freshProfile() {
 // (and resetToRoad() and requestOffers() have nowhere to go). `random` returns floats in [0, 1);
 // pass a seeded one for repeatable offers. `profile` must already be valid (see save.js); it is copied.
 export function createSim(tables, map, random = Math.random, profile = freshProfile()) {
-  const v = tables.vehicle;
   const o = tables.orders;
   // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
-  const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: v.emptyMass, gear: 'N', rpm: v.idleRpm, roll: 0 };
+  const base = tables.vehicle;
+  const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
   // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
   // `lastPayment` is replaced by a new object on every payment, so the UI can tell each one apart.
+  // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
     collision: false,
     profile: structuredClone(profile),
+    rank: null,
     offers: [],
     order: null,
     progress: 0,
     route: [],
     lastPayment: null,
+    get garageAvailable() {
+      return truck.speed === 0 && !state.order;
+    },
   };
+  let v = upgradedVehicle();
+  updateRank();
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
@@ -145,9 +152,52 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     } else {
       truck.mass = v.emptyMass;
       state.profile.money += order.pay;
+      state.profile.rankPoints += tables.rank.pointsPerDelivery;
       state.lastPayment = { amount: order.pay };
       state.order = null;
+      updateRank();
     }
+  }
+
+  function updateRank() {
+    const { tiers } = tables.rank;
+    const points = state.profile.rankPoints;
+    const tier = tiers.findLastIndex((t) => points >= t.points);
+    const next = tiers[tier + 1];
+    const progress = next ? (points - tiers[tier].points) / (next.points - tiers[tier].points) : 1;
+    state.rank = { tier, title: tiers[tier].title, progress };
+  }
+
+  // The profile's bought level of an upgrade (undefined while it has none).
+  function levelOf(id) {
+    return tables.upgrades[id].levels[(state.profile.upgrades[id] ?? 0) - 1];
+  }
+
+  // Effective vehicle constants: the base table with the bought upgrades applied.
+  function upgradedVehicle() {
+    return {
+      ...base,
+      torqueCurve: base.torqueCurve.map(([rpm, torque]) => [rpm, torque * (levelOf('motor')?.factor ?? 1)]),
+      brakeForce: base.brakeForce * (levelOf('brakes')?.factor ?? 1),
+      steerFadeSpeed: base.steerFadeSpeed * (levelOf('tyres')?.factor ?? 1),
+      rollPerAccel: base.rollPerAccel * (levelOf('suspension')?.factor ?? 1),
+    };
+  }
+
+  // Raises one upgrade by a level. Returns { ok, reason }; a refusal changes nothing.
+  function buyUpgrade(id) {
+    const refuse = (reason) => ({ ok: false, reason });
+    if (!Object.hasOwn(tables.upgrades, id)) return refuse('unknown');
+    if (!state.garageAvailable) return refuse('notIdle');
+    const level = state.profile.upgrades[id] ?? 0;
+    const next = tables.upgrades[id].levels[level];
+    if (!next) return refuse('maxLevel');
+    if (state.rank.tier < next.rank) return refuse('rankTooLow');
+    if (state.profile.money < next.price) return refuse('noMoney');
+    state.profile.money -= next.price;
+    state.profile.upgrades[id] = level + 1;
+    v = upgradedVehicle();
+    return { ok: true, reason: null };
   }
 
   const spot = (id) => map.spots.find((s) => s.id === id);
@@ -155,11 +205,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const pick = (list) => list[Math.floor(random() * list.length)];
 
   // New offers between distinct spots, paid by the road route length; none while an order is active.
+  // Cargo is only what the Ladefläche carries.
   function requestOffers() {
     state.offers = [];
     if (state.order) return state.offers;
+    const maxCargo = levelOf('cargoBed')?.maxCargo ?? o.maxCargo;
+    const cargoes = o.cargo.filter((c) => c.weight <= maxCargo);
     for (let i = 0; i < o.offerCount; i++) {
-      const cargo = pick(o.cargo);
+      const cargo = pick(cargoes);
       const from = pick(map.spots);
       const to = pick(map.spots.filter((s) => s !== from));
       const path = map.route(from.zoneTile, to.zoneTile);
@@ -239,5 +292,5 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     resetToRoad();
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade };
 }
