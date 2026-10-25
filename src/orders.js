@@ -36,12 +36,14 @@ export function createOrders(root, sim, map, tables, strings) {
   });
 
   // Offset from the truck to the centre of the route tile just past the route's first turn (or its last
-  // tile), so the arrow leans into a turn while the truck is still approaching the junction.
+  // tile), so the arrow leans into a turn while the truck is still approaching the junction. Off the road
+  // it aims at the route's first tile instead, where the truck joins the road.
   function pastNextTurn(route, { x, z }) {
     const step = (i) => `${route[i + 1].col - route[i].col},${route[i + 1].row - route[i].row}`;
     let i = 1;
     while (i < route.length - 1 && step(i) === step(0)) i++;
-    const t = route[Math.min(i + 1, route.length - 1)];
+    const onRoute = Math.floor(x / map.tileSize) === route[0].col && Math.floor(z / map.tileSize) === route[0].row;
+    const t = onRoute ? route[Math.min(i + 1, route.length - 1)] : route[0];
     return [(t.col + 0.5) * map.tileSize - x, (t.row + 0.5) * map.tileSize - z];
   }
 
