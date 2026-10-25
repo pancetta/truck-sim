@@ -3,14 +3,19 @@ import { readdirSync, readFileSync } from 'node:fs';
 
 // The Sim must stay headless so it runs in Node and can be swapped out (spec #1).
 test('Sim modules use neither Three.js nor DOM APIs', () => {
-  const dir = new URL('./', import.meta.url);
-  const sources = readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.js') && !f.endsWith('.test.js'));
+  const simDir = new URL('./', import.meta.url);
+  const tables = new URL('../tables.js', simDir).href;
+  const sources = readdirSync(simDir, { recursive: true }).filter((f) => f.endsWith('.js') && !f.endsWith('.test.js'));
 
   for (const file of sources) {
-    const code = readFileSync(new URL(file, dir), 'utf8');
-    expect(code, file).not.toMatch(/['"]three['"/]/);
+    const fileUrl = new URL(file, simDir);
+    const code = readFileSync(fileUrl, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+
+    // Only relative imports that stay in src/sim/, plus the tables (plain data).
+    for (const [, , spec] of code.matchAll(/\b(?:import|export)\b[^'"`;]*?(['"`])([^'"`]+)\1/g)) {
+      const target = spec.startsWith('.') ? new URL(spec, fileUrl).href : spec;
+      expect(target === tables || target.startsWith(simDir.href), `${file} imports ${spec}`).toBe(true);
+    }
     expect(code, file).not.toMatch(/\b(document|window|navigator)\b/);
-    // Nothing outside src/sim/ except the tables, which are plain data.
-    expect(code, file).not.toMatch(/['"](\.\.\/)+(?!tables\.js['"])[^'"]*['"]/);
   }
 });
