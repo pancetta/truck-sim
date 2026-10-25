@@ -53,7 +53,7 @@ export function createMinimap(canvas, map, tables) {
   function update({ truck, order, route }) {
     if (devicePixelRatio !== ratio) resize();
     const now = performance.now();
-    if (now - drawn < 1000 / rate) return;
+    if (now - drawn < 1000 / rate - 2) return; // 2 ms slack, so frame jitter doesn't push a redraw a frame late
     drawn = now;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(base, 0, 0);
