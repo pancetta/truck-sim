@@ -1,0 +1,23 @@
+src/truckLook.js
+  s_2eaf2920ce751e::t_fdb2ba6ba4b41e 95-96
+src/tables.js
+  s_2eaf2920ce751e::t_fdb2ba6ba4b41e 80,160
+src/style.css
+  s_2eaf2920ce751e::t_fdb2ba6ba4b41e 446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7af6722b183bace0ae4cda30b5e17eb16e239a0",
+  "prompts": {},
+  "sessions": {
+    "s_2eaf2920ce751e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84c1822c-90ec-4292-aafb-1bcd51672533",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
