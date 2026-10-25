@@ -1,0 +1,41 @@
+src/sim/sim.js
+  s_a167e49ae498e1::t_9aa0025f73daef 205-207,209,216-217,219-220,330,397-398,400-405,461
+src/tables.js
+  s_a167e49ae498e1::t_330c3ad5866293 209,211
+  s_a167e49ae498e1::t_a7f9ef6d0d442e 159-161,163
+  s_a167e49ae498e1::t_225f21268e21a8 220-222
+  s_a167e49ae498e1::t_bf5a51a8ce2110 177-179
+src/sim/sim.test.js
+  s_a167e49ae498e1::t_51f8ebe5ad9493 1681-1682,1685-1696,1701-1720,1724-1759,1761-1773
+  s_a167e49ae498e1::t_abd8d800cc334a 1760
+  s_a167e49ae498e1::t_3362d00988a4a9 1185-1187,1197,1238,1351,1357,1360-1398,1807
+  s_a167e49ae498e1::t_a756b4cf8cb36f 1774
+src/truckLook.js
+  s_a167e49ae498e1::t_330c3ad5866293 6-11,28-29,32,35,40,46-47,115-116,118,126,130-131
+src/sim/traffic.js
+  s_a167e49ae498e1::t_a7f9ef6d0d442e 8-10,51-54,175-176,179-180,182-184,193,195-198,214-257,262-265,269-270,275-281,308-309
+src/werkstatt.js
+  s_a167e49ae498e1::t_9aa0025f73daef 52,54
+src/sim/map.js
+  s_a167e49ae498e1::t_bf5a51a8ce2110 63-67,69-71
+src/renderer.js
+  s_a167e49ae498e1::t_bf5a51a8ce2110 189,193,202
+  s_a167e49ae498e1::t_330c3ad5866293 301,303,340-341,343,347,430
+  s_a167e49ae498e1::t_225f21268e21a8 35-47,372,437,439,442-446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88bbdea441d499837019400b651a3dc0c3afad79",
+  "prompts": {},
+  "sessions": {
+    "s_a167e49ae498e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "50fc0e13-94f9-49bf-b3d3-3ab627a0fd4a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
