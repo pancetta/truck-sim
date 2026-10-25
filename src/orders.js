@@ -26,8 +26,15 @@ export function createOrders(root, sim, map, tables, strings) {
   money.textContent = eur(lastMoney);
   let lastPayment = sim.state.lastPayment;
   let lastFine = sim.state.lastFine;
-  let paidTimer;
-  let finedTimer;
+  const timers = new Map();
+
+  // Shows a notice for a few seconds; a new one restarts its time.
+  function notify(el, text) {
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(timers.get(el));
+    timers.set(el, setTimeout(() => (el.hidden = true), tables.orders.paidNoticeTime * 1000));
+  }
 
   root.querySelector('.orders-toggle').addEventListener('click', () => {
     panel.hidden = !panel.hidden;
@@ -60,18 +67,12 @@ export function createOrders(root, sim, map, tables, strings) {
     // Only payments show the payment notice and only fines the fine notice; purchases change the money too.
     if (payment !== lastPayment) {
       lastPayment = payment;
-      paid.textContent = `${strings.paid}: +${eur(payment.amount)}`;
-      paid.hidden = false;
-      clearTimeout(paidTimer);
-      paidTimer = setTimeout(() => (paid.hidden = true), tables.orders.paidNoticeTime * 1000);
+      notify(paid, `${strings.paid}: +${eur(payment.amount)}`);
     }
 
     if (fine !== lastFine) {
       lastFine = fine;
-      fined.textContent = `${strings.fine}: ${strings[fine.reason]} −${eur(fine.amount)}`;
-      fined.hidden = false;
-      clearTimeout(finedTimer);
-      finedTimer = setTimeout(() => (fined.hidden = true), tables.orders.paidNoticeTime * 1000);
+      notify(fined, `${strings.fine}: ${strings[fine.reason]} −${eur(fine.amount)}`);
     }
 
     progress.hidden = p === 0;

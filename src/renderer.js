@@ -136,17 +136,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
   // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road.
   // The lamps are one-sided planes, so a light seen from the side or behind shows no colour.
+  // shortcut: the posts aren't solid (no collider), so cutting a corner over the pavement drives through one;
+  // add colliders in parseMap if players notice.
   // Right of travel direction (dc, dr) is (-dr, dc).
   const LAMP_PHASES = ['red', 'amber', 'green'];
   const lampColours = [palette.lampRed, palette.lampAmber, palette.lampGreen];
   const signal = mergeGeometries([
     new THREE.BoxGeometry(0.2, 4.6, 0.2).translate(0, 2.3, 0),
-    new THREE.BoxGeometry(0.5, 1.4, 0.35).translate(0, 3.85, 0.25),
+    new THREE.BoxGeometry(0.5, 1.4, 0.35).translate(0, 3.85, 0),
   ]);
   const signals = new THREE.InstancedMesh(signal, new THREE.MeshLambertMaterial({ color: palette.signal }), map.lights.length);
   const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial(), map.lights.length * 3);
   const stopLines = [];
-  const inset = 0.7; // m from the tile edges to the post
+  const inset = 0.3; // m from the tile edges to the post; closer in, right turns from the kerb lane clip it
   const m = new THREE.Matrix4();
   map.lights.forEach((l, i) => {
     const [dc, dr] = DIRS[l.dir];
@@ -155,7 +157,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(px, 0, pz);
     signals.setMatrixAt(i, m);
     for (let k = 0; k < 3; k++) {
-      lamps.setMatrixAt(i * 3 + k, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 4.3 - k * 0.45, 0.44)));
+      lamps.setMatrixAt(i * 3 + k, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 4.3 - k * 0.45, 0.19)));
     }
     const lane = ts / 2 - 1.4; // the pavement is the outer 1.4 m
     const [ax, az] = [l.x - dr * 0.3, l.z + dc * 0.3];

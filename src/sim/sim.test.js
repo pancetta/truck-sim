@@ -786,7 +786,7 @@ describe('Sim: traffic lights', () => {
   const EAST = Math.PI / 2;
   const SOUTH = 0;
   const money = 500;
-  const profile = { version: 1, money, rankPoints: 0, upgrades: {}, owned: [], equipped: {} };
+  const profile = { ...freshProfile(), money };
 
   function crossingSim(grid = CROSSING) {
     return createSim(tables, parseMap(grid, tables), seeded(1), profile);
@@ -870,6 +870,19 @@ describe('Sim: traffic lights', () => {
 
     expect(fines).toBe(0);
     expect(sim.state.lastFine).toBe(null);
+    expect(sim.state.profile.money).toBe(money);
+  });
+
+  test('crossing on amber does not fine', () => {
+    const sim = crossingSim();
+    // Front bumper just short of the west stop line, waiting for the east–west light to turn amber.
+    Object.assign(sim.state.truck, { x: 3 * TILE - tables.vehicle.length / 2 - 0.5, z: 3.5 * TILE, heading: EAST });
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'amber', 60);
+    expect(lightFor(sim, 1).phase).toBe('amber');
+
+    const fines = driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
+
+    expect(fines).toBe(0);
     expect(sim.state.profile.money).toBe(money);
   });
 

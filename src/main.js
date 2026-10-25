@@ -87,7 +87,7 @@ function frame(now) {
   orders.update(sim.state);
   minimap.update(sim.state);
   werkstatt.update(sim.state);
-  // Autosave whenever the profile changes (a payment or a purchase now; fines later).
+  // Autosave whenever the profile changes (a payment, fine or purchase).
   const profile = JSON.stringify(sim.state.profile);
   if (profile !== savedProfile) {
     save.save(sim.state.profile);

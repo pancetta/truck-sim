@@ -502,10 +502,15 @@ body {
 .werkstatt-panel .werkstatt-actions button {
   background: rgb(255 255 255 / 0.15);
   color: #fff;
+}
 
 .fined {
-  top: calc(40% + 52px);
   color: #ff6b5e;
+}
+
+/* Below the payment notice only while both show, so short screens keep the speedometer clear. */
+.paid:not([hidden]) + .fined {
+  top: calc(40% + 52px);
 }
 
 /* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals.
