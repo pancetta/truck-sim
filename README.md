@@ -4,6 +4,8 @@ A browser truck-delivery game: drive a heavy truck around a small low-poly city,
 
 **Play it:** https://pancetta.github.io/truck-sim/
 
+On iPad (or Android), use *Zum Home-Bildschirm* to add the game to the home screen; opened from there it runs full screen in landscape. The home-screen app keeps its own save: iOS stores it separately from Safari's, so progress made in Safari doesn't carry over.
+
 ## Run, test, build
 
 ```bash

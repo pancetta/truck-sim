@@ -6,8 +6,67 @@
     <title>Truck Sim</title>
     <!-- Our own icon: a yellow box truck with a red cab, in the game's palette. -->
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='9' height='8' rx='1' fill='%23e8c547'/%3E%3Cpath d='M10 5.5h2.6l2.4 3V11h-5z' fill='%23d1495b'/%3E%3Ccircle cx='4' cy='12' r='1.8' fill='%232b2d33'/%3E%3Ccircle cx='12' cy='12' r='1.8' fill='%232b2d33'/%3E%3C/svg%3E" />
+    <!-- Home-screen app: full screen, landscape. No service worker. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Truck Sim" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- The loading screen shows before the game's JS and CSS arrive, so its style lives here
+         (palette colours copied from tables.js). main.js removes it once the city is loaded. -->
+    <style>
+      #loading {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        background: #2b2d33;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #loading svg {
+        width: 96px;
+      }
+      #loading h1,
+      #loading p {
+        margin: 0;
+      }
+      #loading .bar {
+        width: 200px;
+        height: 8px;
+        border-radius: 4px;
+        background: #3b4252;
+      }
+      #loading .bar::after {
+        content: '';
+        display: block;
+        height: 100%;
+        width: calc(var(--progress, 0) * 100%);
+        border-radius: inherit;
+        background: #e8c547;
+      }
+    </style>
   </head>
   <body>
+    <div id="loading">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="1" y="3" width="9" height="8" rx="1" fill="#e8c547" />
+        <path d="M10 5.5h2.6l2.4 3V11h-5z" fill="#d1495b" />
+        <circle cx="4" cy="12" r="1.8" fill="#fff" />
+        <circle cx="12" cy="12" r="1.8" fill="#fff" />
+      </svg>
+      <h1>Truck Sim</h1>
+      <p>Lädt…</p>
+      <div class="bar" aria-hidden="true"></div>
+    </div>
     <canvas id="scene"></canvas>
     <div id="controls"></div>
     <div id="dash"></div>

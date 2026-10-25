@@ -44,8 +44,9 @@ function readPixels(image) {
   return pixelCache.get(image);
 }
 
-// Draws Sim state; never writes to it.
-export function createRenderer(canvas, tables, map) {
+// Draws Sim state; never writes to it. `onProgress` gets the loaded share of the kit models (0..1);
+// the returned `ready` resolves once all of them are in the scene.
+export function createRenderer(canvas, tables, map, onProgress) {
   const { palette, camera: cam, city } = tables;
   const kitColours = Object.entries(tables.kitColours);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -72,6 +73,7 @@ export function createRenderer(canvas, tables, map) {
   const centre = (b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 });
   const placements = new Map(); // model file -> [{ x, z, angle, size: [x, y, z], tint }]
   const place = (file, p) => (placements.get(file) ?? placements.set(file, []).get(file)).push(p);
+  const loads = []; // every kit-model load, up to being added to the scene
 
   for (const { col, row } of map.roads) {
     const open = DIRS.map(([dc, dr]) => map.isRoad(col + dc, row + dr));
@@ -119,7 +121,7 @@ export function createRenderer(canvas, tables, map) {
 
   for (const [file, list] of placements) {
     // Building walls are white so their per-building tint shows as is.
-    loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette).then((geometry) => {
+    loads.push(loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette).then((geometry) => {
       // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
       if (file === POLE) {
         const { min, max } = geometry.boundingBox;
@@ -127,7 +129,7 @@ export function createRenderer(canvas, tables, map) {
         geometry.translate(0, -min.y, 0).scale(s, s, s);
       } else unitBox(geometry);
       addInstances(geometry, list);
-    });
+    }));
   }
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
@@ -211,12 +213,12 @@ export function createRenderer(canvas, tables, map) {
   // Truck from the kit, stretched to the collision footprint; the cab is at the front (+z).
   const truck = new THREE.Group();
   const exterior = new THREE.Mesh(new THREE.BufferGeometry(), kitMaterial);
-  loadModel(TRUCK, { ...palette, green: palette.truckBody, wall: palette.truckCab }).then((geometry) => {
+  loads.push(loadModel(TRUCK, { ...palette, green: palette.truckBody, wall: palette.truckCab }).then((geometry) => {
     const { min, max } = geometry.boundingBox;
     const s = tables.vehicle.width / (max.x - min.x);
     exterior.geometry = unitBox(geometry);
     exterior.scale.set(tables.vehicle.width, (max.y - min.y) * s, tables.vehicle.length);
-  });
+  }));
   truck.add(exterior);
 
   // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view.
@@ -303,5 +305,9 @@ export function createRenderer(canvas, tables, map) {
     setCabView(!cabView);
   }
 
-  return { render, toggleCamera };
+  // A model that fails to load is logged and left out, as before; it doesn't hold up the game.
+  let loaded = 0;
+  const ready = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
+
+  return { render, toggleCamera, ready };
 }

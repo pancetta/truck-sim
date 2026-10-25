@@ -35,7 +35,8 @@ const sim = createSim(tables, map, Math.random, save.load());
 let savedProfile = JSON.stringify(sim.state.profile);
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
-const view = createRenderer(document.getElementById('scene'), tables, map);
+const loading = document.getElementById('loading');
+const view = createRenderer(document.getElementById('scene'), tables, map, (share) => loading.style.setProperty('--progress', share));
 document.getElementById('rotate').textContent = strings.rotate;
 const portrait = matchMedia('(orientation: portrait)');
 
@@ -86,4 +87,10 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+
+// The loading screen covers the controls until the city is in; only then does the Sim start.
+view.ready.then(() => {
+  loading.remove();
+  last = performance.now();
+  requestAnimationFrame(frame);
+});
