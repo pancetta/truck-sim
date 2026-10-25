@@ -1,8 +1,6 @@
 // On-screen steering wheel and pedals. Mouse and touch both arrive as pointer
 // events; each widget captures its own pointer, so wheel and pedal work together.
 
-const RELEASE_EVENTS = ['pointerup', 'pointercancel', 'lostpointercapture'];
-
 export function createControls(root, tables, strings) {
   const { wheelLock, wheelCentreTime, hubRadius } = tables.controls;
   const input = { steer: 0, gas: 0, brake: 0 };
@@ -23,33 +21,31 @@ export function createControls(root, tables, strings) {
   // Every pointer on the wheel keeps its last position (relative to the centre); the
   // first one in the map steers, and when it lifts the next takes over where it is.
   let angle = 0; // degrees
-  const onWheel = new Map();
+  const wheelPointers = trackPointers(wheel, (e) => fromCentre(wheel, e));
 
-  wheel.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    wheel.setPointerCapture(e.pointerId);
-    onWheel.set(e.pointerId, fromCentre(wheel, e));
-  });
   wheel.addEventListener('pointermove', (e) => {
-    const prev = onWheel.get(e.pointerId);
+    const prev = wheelPointers.get(e.pointerId);
     if (!prev) return;
     const next = fromCentre(wheel, e);
-    onWheel.set(e.pointerId, next);
-    if (e.pointerId !== onWheel.keys().next().value) return;
+    wheelPointers.set(e.pointerId, next);
+    if (e.pointerId !== wheelPointers.keys().next().value) return;
     // A move that passes near the hub has no meaningful direction, so it doesn't turn the wheel.
     if (distanceToSegment(prev, next) < (wheel.offsetWidth / 2) * hubRadius) return;
     const delta = (Math.atan2(prev.x * next.y - prev.y * next.x, prev.x * next.x + prev.y * next.y) * 180) / Math.PI;
     angle = Math.max(-wheelLock, Math.min(wheelLock, angle + delta));
   });
-  for (const type of RELEASE_EVENTS) {
-    wheel.addEventListener(type, (e) => onWheel.delete(e.pointerId));
-  }
 
-  holdPedal(gas, (down) => (input.gas = down ? 1 : 0));
-  holdPedal(brake, (down) => (input.brake = down ? 1 : 0));
+  // A pedal is down while any pointer holds it.
+  const gasPointers = trackPointers(gas);
+  const brakePointers = trackPointers(brake);
 
   function update(dt) {
-    if (onWheel.size === 0) {
+    input.gas = gasPointers.size > 0 ? 1 : 0;
+    input.brake = brakePointers.size > 0 ? 1 : 0;
+    gas.classList.toggle('down', input.gas > 0);
+    brake.classList.toggle('down', input.brake > 0);
+
+    if (wheelPointers.size === 0) {
       const back = (wheelLock / wheelCentreTime) * dt;
       angle = Math.sign(angle) * Math.max(0, Math.abs(angle) - back);
     }
@@ -84,22 +80,18 @@ function distanceToSegment(a, b) {
   return Math.hypot(a.x + t * dx, a.y + t * dy);
 }
 
-// A pedal stays down while any pointer holds it.
-function holdPedal(node, set) {
-  const holding = new Set();
+// The pointers holding a control, in the order they pressed it, each with a value
+// from `onPress`. Primary button only; captured, so a finger sliding off still holds.
+// Reuse this for any new on-screen control.
+function trackPointers(node, onPress = () => true) {
+  const held = new Map();
   node.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     node.setPointerCapture(e.pointerId);
-    holding.add(e.pointerId);
-    node.classList.add('down');
-    set(true);
+    held.set(e.pointerId, onPress(e));
   });
-  for (const type of RELEASE_EVENTS) {
-    node.addEventListener(type, (e) => {
-      holding.delete(e.pointerId);
-      if (holding.size > 0) return;
-      node.classList.remove('down');
-      set(false);
-    });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    node.addEventListener(type, (e) => held.delete(e.pointerId));
   }
+  return held;
 }
