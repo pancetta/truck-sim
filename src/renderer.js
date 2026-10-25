@@ -32,6 +32,19 @@ function unitBox(geometry) {
     .scale(1 / (max.x - min.x), 1 / (max.y - min.y), 1 / (max.z - min.z));
 }
 
+// How far along the unit direction (dx, dz) from (x, z) a ray enters box `b` (0 if it starts inside);
+// Infinity if it misses.
+function rayToBox(x, z, dx, dz, b) {
+  let near = 0;
+  let far = Infinity;
+  for (const [p, d, lo, hi] of [[x, dx, b.minX, b.maxX], [z, dz, b.minZ, b.maxZ]]) {
+    const [t0, t1] = [(lo - p) / d, (hi - p) / d];
+    near = Math.max(near, Math.min(t0, t1));
+    far = Math.min(far, Math.max(t0, t1));
+  }
+  return near <= far ? near : Infinity;
+}
+
 // RGBA bytes of a colour-map image, read once per image.
 const pixelCache = new WeakMap();
 function readPixels(image) {
@@ -173,25 +186,20 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
   // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road.
   // The lamps are one-sided planes, so a light seen from the side or behind shows no colour.
-  // shortcut: the posts aren't solid (no collider), so cutting a corner over the pavement drives through one;
-  // add colliders in parseMap if players notice.
-  // Right of travel direction (dc, dr) is (-dr, dc).
+  // The posts stand where parseMap put their colliders. Right of travel direction (dc, dr) is (-dr, dc).
   const LAMP_PHASES = ['red', 'amber', 'green'];
   const lampColours = [palette.lampRed, palette.lampAmber, palette.lampGreen];
   const signal = mergeGeometries([
-    new THREE.BoxGeometry(0.2, 4.6, 0.2).translate(0, 2.3, 0),
+    new THREE.BoxGeometry(city.obstacles.signal.width, 4.6, city.obstacles.signal.width).translate(0, 2.3, 0),
     new THREE.BoxGeometry(0.5, 1.4, 0.35).translate(0, 3.85, 0),
   ]);
   const signals = new THREE.InstancedMesh(signal, new THREE.MeshLambertMaterial({ color: palette.signal }), map.lights.length);
   const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial(), map.lights.length * 3);
   const stopLines = [];
-  const inset = 0.3; // m from the tile edges to the post; closer in, right turns from the kerb lane clip it
   const m = new THREE.Matrix4();
   map.lights.forEach((l, i) => {
     const [dc, dr] = DIRS[l.dir];
-    const reach = ts / 2 - inset;
-    const [px, pz] = [l.x + dc * (ts - inset) - dr * reach, l.z + dr * (ts - inset) + dc * reach];
-    m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(px, 0, pz);
+    m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(l.post.x, 0, l.post.z);
     signals.setMatrixAt(i, m);
     for (let k = 0; k < 3; k++) {
       lamps.setMatrixAt(i * 3 + k, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 4.3 - k * 0.45, 0.19)));
@@ -290,9 +298,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const painted = { body: [], cab: [] }; // vertex indices
   loads.push(loadModel(TRUCK, { ...palette, green: MARKS.body, wall: MARKS.cab }).then((geometry) => {
     const { min, max } = geometry.boundingBox;
-    const s = tables.vehicle.width / (max.x - min.x);
+    const height = ((max.y - min.y) * tables.vehicle.width) / (max.x - min.x); // as tall as its width makes it; read before unitBox() rescales the box
     exterior.geometry = unitBox(geometry);
-    exterior.scale.set(tables.vehicle.width, (max.y - min.y) * s, tables.vehicle.length);
+    exterior.scale.set(tables.vehicle.width, height, tables.vehicle.length);
     const colour = geometry.getAttribute('color');
     const c = new THREE.Color();
     for (const [part, hex] of Object.entries(MARKS)) {
@@ -329,13 +337,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
     parts.show(ids);
   }
 
-  // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view.
+  // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view. The dashboard
+  // sits under the windscreen, the wheel in front of the driver's eye (camera.cabEye).
   const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshLambertMaterial({ color: palette.dashboard }));
-  dashboard.position.set(0, 1.85, 3.65);
+  dashboard.position.set(0, 1.45, 2.45);
   const wheelMaterial = new THREE.MeshLambertMaterial({ color: palette.steeringWheel });
   // The column tilts the wheel towards the driver; the wheel spins about the column's axis (local +z).
   const column = new THREE.Group();
-  column.position.set(cam.cabEye[0], 2.08, 3.32);
+  column.position.set(cam.cabEye[0], 1.68, 2.12);
   column.rotation.x = 0.9;
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5), wheelMaterial);
   shaft.rotation.x = Math.PI / 2;
@@ -360,6 +369,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let lastFrame = performance.now();
   let cabView = true;
   let orbit = 0; // rad, showroom camera angle round the truck
+  let arm = 0; // m, showroom camera distance from the truck
   let shifted = false; // whether the picture is moved aside for the Werkstatt panel
 
   function resize() {
@@ -417,19 +427,23 @@ export function createRenderer(canvas, tables, map, onProgress) {
       marker.material.color.setHex(order.phase === 'pickup' ? palette.pickup : palette.dropoff);
     }
 
-    // Each view shows one side of the cab: the kit's cab is lower than our interior. In reverse gear the reversing
+    // Each view shows one side of the cab: the interior from the seat, the kit's cab from outside. In reverse gear the reversing
     // camera takes over; the chosen view comes back when the gear leaves R.
     const rear = !showroom && state.truck.gear === 'R';
     const inCab = showroom ? showroom === 'cab' : cabView && !rear;
     exterior.visible = parts.exterior.visible = !inCab;
     interior.visible = inCab;
     shift(!!showroom);
-    if (!showroom) orbit = 0;
+    if (!showroom) [orbit, arm] = [0, tables.showroom.radius];
     if (showroom === 'orbit') {
-      const { radius, height, lookHeight, speed } = tables.showroom;
+      const { radius, height, lookHeight, speed, wallGap, armSpeed } = tables.showroom;
       orbit += speed * dt;
       const a = heading + Math.PI + 0.7 + orbit; // starts behind the truck, off to one side
-      camera.position.set(x + Math.sin(a) * radius, height, z + Math.cos(a) * radius);
+      const [dx, dz] = [Math.sin(a), Math.cos(a)];
+      // In front of the first building in the way, so no wall fills the picture; easing back out behind it.
+      const room = Math.min(radius, ...blocks.map((b) => rayToBox(x, z, dx, dz, b) - wallGap));
+      arm = Math.min(room, arm + armSpeed * dt);
+      camera.position.set(x + dx * arm, height, z + dz * arm);
       camera.lookAt(x, lookHeight, z);
     } else if (rear) {
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));

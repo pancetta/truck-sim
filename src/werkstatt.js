@@ -36,7 +36,6 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
   let tab = 'technik';
   let previews = {}; // slot → tried-on item not bought yet
   let focus = null; // slot of the last item tapped
-  const owned = (id) => tables.visuals[id].price === 0 || sim.state.profile.owned.includes(id);
   const shownIn = (slot) => previews[slot] ?? sim.state.profile.equipped[slot] ?? slots[slot].find((id) => tables.visuals[id].price === 0);
 
   function draw() {
@@ -50,9 +49,9 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
     return Object.entries(slots)
       .map(([slot, ids]) => {
         const shown = shownIn(slot);
-        const price = owned(shown) ? '' : ` · ${eur(tables.visuals[shown].price)}`;
+        const price = sim.owns(shown) ? '' : ` · ${eur(tables.visuals[shown].price)}`;
         const items = ids.map((id) => {
-          const tag = owned(id) ? '' : ` <small>${eur(tables.visuals[id].price)}</small>`;
+          const tag = sim.owns(id) ? '' : ` <small>${eur(tables.visuals[id].price)}</small>`;
           return `<button type="button" data-try="${id}" aria-pressed="${id === shown}">${strings.visuals[id]}${tag}</button>`;
         });
         return (

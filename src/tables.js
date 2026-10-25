@@ -156,9 +156,11 @@ export const traffic = {
   stopGap: 1.5, // m from the front bumper to the stop line
   sideGap: 0.3, // m each side of a car's path that must stay clear of the car or truck ahead
   lookAhead: 25, // m; also the room a new car needs from the others
-  // m from an unsignalled crossing within which a car or the truck counts as arriving there, for right of way;
-  // cars and the truck look two tiles ahead, so more than ~25 m has no effect
+  // m from an unsignalled crossing within which a car or the truck counts as arriving there, for right of way
+  // (and from a light junction, for a car turning left there); cars and the truck look two tiles ahead, so
+  // more than ~25 m has no effect
   giveWay: 20,
+  boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)
   despawnDistance: 180, // m from the truck past which a car out of view leaves
@@ -172,6 +174,9 @@ export const city = {
   obstacles: {
     car: { length: 4.5, width: 1.9, height: 1.5, kerbGap: 1.5 },
     pole: { length: 0.3, width: 0.3, height: 4, kerbGap: 0.3 },
+    // A traffic light's post, `inset` from both tile edges at a light junction's corner; closer in, right
+    // turns from the kerb lane clip it.
+    signal: { width: 0.2, inset: 0.3 },
   },
   buildingHeight: [6, 24], // m, lowest and highest; the renderer picks per tile
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
@@ -222,9 +227,9 @@ export const camera = {
   chaseDistance: 14, // m behind the truck
   chaseHeight: 6, // m above the ground
   lookHeight: 2, // m above the truck's position the camera aims at
-  cabEye: [0.55, 2.45, 2.75], // driver's eye in truck space (x left, y up, z forward), m
+  cabEye: [0.55, 2.05, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the cab roof (2.33 m)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
-  gimmickLook: [0.2, 2.3, 3.55], // where it aims in the Werkstatt to show the cab gimmick
+  gimmickLook: [0.2, 1.9, 2.35], // where it aims in the Werkstatt to show the cab gimmick
   // Reversing camera on the roof's back edge, inside the footprint so it never ends up in the wall it backs up to,
   // aimed steeply enough to show the bay right behind the rear doors.
   rearEye: [0, 3.6, -3.6],
@@ -233,11 +238,12 @@ export const camera = {
 
 // The Werkstatt's view: the camera circles the standing truck, aimed so the truck shows beside the panel.
 export const showroom = {
-  radius: 12, // m from the truck
+  radius: 12, // m from the truck, pulled in before a building in the way
+  wallGap: 0.5, // m the pulled-in camera keeps from the building
+  armSpeed: 3, // m/s the camera eases back out once past the building
   height: 4.5, // m above the ground
   lookHeight: 1.4, // m, the point on the truck the camera aims at
   speed: 0.25, // rad/s
-  // shortcut: the circle ignores buildings, so near one a wall fills part of the picture; pull it in if that bothers.
   shift: 0.18, // share of the screen width the picture moves left, clear of the panel
 };
 

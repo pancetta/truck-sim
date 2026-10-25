@@ -60,10 +60,15 @@ export function parseMap(text, tables) {
       } else if (t === '+') {
         const approaches = DIRS.filter(([dc, dr]) => isRoad(col - dc, row - dr));
         if (approaches.length < 3) throw new Error(`Map light junction ${where} is not a crossing`);
-        // One light per approach; `dir` is the DIRS index of travel into the junction, and (x, z) is the
-        // middle of its stop line, the tile edge the approach crosses.
+        // One light per approach; `dir` is the DIRS index of travel into the junction, (x, z) is the
+        // middle of its stop line, the tile edge the approach crosses, and `post` its signal post, a solid
+        // one on the junction's far right corner (right of travel (dc, dr) is (-dr, dc)).
+        const { width, inset } = obstacles.signal;
+        const reach = half - inset;
         for (const [dc, dr] of approaches) {
-          lights.push({ junction: junctions, col, row, dir: DIRS.findIndex((d) => d[0] === dc && d[1] === dr), x: x - dc * half, z: z - dr * half });
+          const post = { x: x + (dc - dr) * reach, z: z + (dr + dc) * reach };
+          lights.push({ junction: junctions, col, row, dir: DIRS.findIndex((d) => d[0] === dc && d[1] === dr), x: x - dc * half, z: z - dr * half, post });
+          colliders.push({ kind: 'signal', ...box(post.x, post.z, width / 2, width / 2) });
         }
         junctions++;
       } else if (t !== '.' && t !== ',') {

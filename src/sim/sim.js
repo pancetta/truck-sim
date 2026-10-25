@@ -202,19 +202,22 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return { col, row };
   }
 
-  // The front crossing a stop line into a light junction while that approach is red costs a fine.
+  // The front crossing a stop line into a light junction, driving forwards, while that approach is red costs a
+  // fine. Reversing over a line is manoeuvring (backing out of a box or into a bay), and its front bumper is
+  // the last part to cross anyway.
   function checkRedLight(from, to) {
-    if (!from || (from.col === to.col && from.row === to.row)) return;
+    if (!from || truck.speed <= 0 || (from.col === to.col && from.row === to.row)) return;
     const light = state.lights.find(
       (l) => l.col === to.col && l.row === to.row && DIRS[l.dir][0] === to.col - from.col && DIRS[l.dir][1] === to.row - from.row,
     );
     if (light?.phase === 'red') fine('redLight');
   }
 
-  // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped.
+  // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
+  // the amount actually taken.
   function fine(reason) {
-    const amount = tables.fines[reason];
-    state.profile.money = Math.max(0, state.profile.money - amount);
+    const amount = Math.min(state.profile.money, tables.fines[reason]);
+    state.profile.money -= amount;
     state.lastFine = { reason, amount };
   }
 
@@ -324,7 +327,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return OK;
   }
 
-  // A slot's free stock item is everyone's.
+  // Whether the profile owns a visual item; a slot's free stock item is everyone's.
   const owns = (id) => tables.visuals[id].price === 0 || state.profile.owned.includes(id);
 
   // Buys a visual item and wears it; no rank needed. Returns { ok, reason }; a refusal changes nothing.
@@ -391,13 +394,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // Puts the truck on the nearest free road tile, facing along the road, at a standstill in first gear.
+  // Puts the truck on the nearest free road tile, facing along the road, at a standstill in first gear. A
+  // crossing (three or more road sides), where AI cars would wait for it, only when no other tile is free.
   function resetToRoad() {
-    const poses = map.roads.map(roadPose);
-    const away = (p) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
-    poses.sort((a, b) => away(a) - away(b));
-    const free = (p) => fits(p) && !traffic.touching(corners(p)).length;
-    Object.assign(truck, poses.find(free) ?? poses[0], { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
+    const crossing = ({ col, row }) => DIRS.filter(([dc, dr]) => map.isRoad(col + dc, row + dr)).length >= 3;
+    const poses = map.roads.map((tile) => ({ pose: roadPose(tile), crossing: crossing(tile) }));
+    const away = ({ pose: p }) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
+    poses.sort((a, b) => a.crossing - b.crossing || away(a) - away(b));
+    const free = ({ pose: p }) => fits(p) && !traffic.touching(corners(p)).length;
+    Object.assign(truck, (poses.find(free) ?? poses[0]).pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
     brakeHold = 0;
     updateRoute();
@@ -453,5 +458,5 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateTraffic(0);
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };
 }

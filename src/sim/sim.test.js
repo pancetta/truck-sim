@@ -1182,8 +1182,9 @@ describe('Sim: route', () => {
 
   test('off the road the route joins the road where the trip is shortest, not at the nearest road tile', () => {
     // Open ground with roads round it and a row of buildings above it; the left road is a dead end at A.
-    // The truck starts on the bottom row facing east and turns left onto the open ground. The bottom row
-    // is nearest and A is nearest in a straight line, but the right road is the shortest way to A's zone.
+    // The truck starts on row 4 facing south (placed: row 4 is all crossings, which a reset avoids) and turns
+    // left onto the open ground. Row 4 is nearest and A is nearest in a straight line, but the right road is
+    // the shortest way to A's zone.
     const grid = `
       A......
       .#####.
@@ -1193,6 +1194,7 @@ describe('Sim: route', () => {
       B......`;
     const map = parseMap(grid, tables);
     const sim = createSim(tables, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 3.5 * TILE, z: 4.5 * TILE, heading: 0 });
     acceptFrom(sim, 'A');
     timeUntil(sim, { steer: -1, gas: 0.5, brake: 0 }, () => tileUnder(grid, sim) === ',', 10);
     sim.step(DT, IDLE);
@@ -1233,6 +1235,7 @@ describe('Sim: traffic lights', () => {
     ###.###`;
   const EAST = Math.PI / 2;
   const SOUTH = 0;
+  const WEST = -Math.PI / 2;
   const money = 500;
   const profile = { ...freshProfile(), money };
 
@@ -1345,14 +1348,53 @@ describe('Sim: traffic lights', () => {
     expect(sim.state.profile.money).toBe(money);
   });
 
-  test('a fine larger than the money leaves 0', () => {
+  test('a fine larger than the money leaves 0 and shows the amount taken', () => {
     const sim = createSim(tables, parseMap(CROSSING, tables), seeded(1), { ...profile, money: 30 });
     placeAt(sim, 1, 3, EAST);
 
     driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
 
-    expect(sim.state.lastFine.amount).toBe(tables.fines.redLight);
+    expect(sim.state.lastFine).toEqual({ reason: 'redLight', amount: 30 });
     expect(sim.state.profile.money).toBe(0);
+  });
+
+  test('reversing over a stop line on red does not fine; driving forwards back over it does', () => {
+    const sim = crossingSim();
+    // Facing west on the east arm, then backing west to east through the crossing, front last.
+    placeAt(sim, 1, 3, WEST);
+    expect(lightFor(sim, 1).phase).toBe('red');
+    let fines = 0;
+    let last = null;
+    const count = () => {
+      if (sim.state.lastFine !== last) [fines, last] = [fines + 1, sim.state.lastFine];
+    };
+    drive(sim, 1, BRAKE); // reverse engages
+    timeUntil(sim, BRAKE, () => (count(), sim.state.truck.x > 4.5 * TILE), 30);
+    expect(sim.state.truck.x).toBeGreaterThan(4.5 * TILE);
+    expect(lightFor(sim, 1).phase).toBe('red');
+    expect(fines).toBe(0);
+
+    // Now forwards, westbound into the crossing from the east arm while that approach is red.
+    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 5);
+    timeUntil(sim, IDLE, () => lightFor(sim, 3).phase === 'red', 60);
+    timeUntil(sim, GAS, () => (count(), sim.state.truck.x < 2.5 * TILE), 20);
+    expect(fines).toBe(1);
+    expect(sim.state.lastFine.reason).toBe('redLight');
+  });
+
+  test('a signal post is solid: driving onto the pavement corner stops the truck', () => {
+    const map = parseMap(CROSSING, tables);
+    // The post of the southbound approach stands on the crossing's south-west corner.
+    const post = map.lights.find((l) => l.dir === 2).post;
+    expect(map.colliders).toContainEqual(expect.objectContaining({ kind: 'signal', minX: post.x - 0.1, maxZ: post.z + 0.1 }));
+    const sim = createSim(tables, map, seeded(1), profile);
+    // Driving east along the pavement, its right side just over the post's line.
+    Object.assign(sim.state.truck, { x: 1.5 * TILE, z: post.z - tables.vehicle.width / 2 + 0.05, heading: EAST, speed: 0 });
+
+    timeUntil(sim, GAS, () => sim.state.collision, 10);
+
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.x + tables.vehicle.length / 2).toBeLessThanOrEqual(post.x - 0.1 + 0.5);
   });
 });
 
@@ -1636,18 +1678,98 @@ describe('Sim: right of way and collisions', () => {
     expect(pastBoth(west)).toBe(true);
   });
 
+  const tileOf = ({ x, z }) => [Math.floor(x / TILE), Math.floor(z / TILE)];
+
   test('back on the road never puts the truck on an AI car', () => {
     const sim = crossSim();
-    const car = addCar(sim, 1, [[3, 3], [4, 3], [5, 3]]);
-    car.s = TILE / 2; // in the middle of the crossing, across the truck's north–south pose there
-    sim.step(0, IDLE);
+    const car = addCar(sim, 1, [[3, 4], [3, 3], [3, 2]]);
+    // Standing across the middle of the south arm, where the truck's north–south pose would be.
+    Object.assign(car, { x: 3.5 * TILE, z: 4.5 * TILE, heading: EAST });
+    Object.assign(sim.state.truck, { x: 3.5 * TILE, z: 4.5 * TILE + 1 });
+
+    sim.resetToRoad();
+
+    expect(tileOf(sim.state.truck)).not.toEqual([3, 4]);
+  });
+
+  test('back on the road avoids crossings, where the cars would wait for the truck', () => {
+    const sim = crossSim();
     Object.assign(sim.state.truck, { x: 3.5 * TILE, z: 3.5 * TILE + 1 });
 
     sim.resetToRoad();
-    sim.step(DT, IDLE);
 
-    expect(Math.floor(sim.state.truck.z / TILE) * 10 + Math.floor(sim.state.truck.x / TILE)).not.toBe(33);
+    expect(tileOf(sim.state.truck)).toEqual([3, 4]); // the nearest tile that isn't the crossing
+  });
+
+  test('an AI car keeps out of a crossing whose exit is queued up, and lets the others go meanwhile', () => {
+    const sim = crossSim();
+    // The truck stands in the northbound lane 2 m past the crossing.
+    Object.assign(sim.state.truck, { x: 3.5 * TILE + laneOffset, z: 3 * TILE - 2 - tables.vehicle.length / 2, heading: NORTH });
+    const a = addCar(sim, 1, through[NORTH]);
+    const b = addCar(sim, 2, through[EAST]); // a is on its right, but waiting for room
+
+    const { entered } = watch(sim, [a, b], 15);
+
+    expect(entered.has(a)).toBe(false);
+    expect(a.speed).toBe(0);
+    expect(shortOfCrossing(a)).toBeCloseTo(stopGap, 1);
+    expect(entered.has(b)).toBe(true);
+
+    // Once the truck drives off, a goes.
+    const { entered: later } = watch(sim, [a], 10, GAS);
+    expect(later.has(a)).toBe(true);
     expect(sim.state.lastFine).toBe(null);
+  });
+
+  describe('left turns at a light junction', () => {
+    // The north–south axis is green for the first 14 s.
+    const LIGHT = CROSS.replace('.......', '...+...');
+    const lightSim = () => {
+      const sim = createSim(quiet, parseMap(LIGHT, quiet), seeded(1));
+      Object.assign(sim.state.truck, { x: 0.5 * TILE, z: 0.5 * TILE, heading: SOUTH });
+      return sim;
+    };
+    const northThenWest = [[3, 5], [3, 4], [3, 3], [2, 3], [1, 3]];
+
+    test('a car turning left waits for the oncoming car going straight on', () => {
+      const sim = lightSim();
+      const a = addCar(sim, 1, northThenWest);
+      const b = addCar(sim, 2, through[SOUTH]);
+
+      const { entered, most } = watch(sim, [a, b], 12);
+
+      expect(sim.state.lights.find((l) => l.dir === 0).phase).toBe('green');
+      expect(entered.get(b)).toBeLessThan(entered.get(a));
+      expect(most).toBe(1);
+    });
+
+    test('two cars turning left from opposite sides both go', () => {
+      const sim = lightSim();
+      const a = addCar(sim, 1, northThenWest);
+      const c = addCar(sim, 2, [[3, 1], [3, 2], [3, 3], [4, 3], [5, 3]]);
+
+      const { entered } = watch(sim, [a, c], 12);
+
+      expect(entered.has(a)).toBe(true);
+      expect(entered.has(c)).toBe(true);
+    });
+
+    test('a car turning left waits for the truck coming the other way', () => {
+      const sim = lightSim();
+      Object.assign(sim.state.truck, { x: 3.5 * TILE - laneOffset, z: 1.5 * TILE, heading: SOUTH });
+      const a = addCar(sim, 1, northThenWest.slice(1)); // one tile out, so it would be in first
+      let truckOut = Infinity; // when the truck's front leaves the junction
+      const entered = new Map();
+      for (let t = 0; t < 12; t += DT) {
+        sim.step(DT, GAS);
+        if (truckOut === Infinity && sim.state.truck.z + tables.vehicle.length / 2 > 4 * TILE) truckOut = t;
+        if (inCrossing(a) && !entered.has(a)) entered.set(a, t);
+      }
+
+      expect(truckOut).toBeLessThan(12);
+      expect(entered.get(a)).toBeGreaterThan(truckOut);
+      expect(sim.state.lastFine).toBe(null);
+    });
   });
 
   test('driving into an AI car fines once per contact, stops both, floors money at 0 and damages fragile cargo', () => {
@@ -1682,7 +1804,7 @@ describe('Sim: right of way and collisions', () => {
     expect(fines).toBe(1);
     expect(stopped).toBe(true);
     expect(car.speed).toBe(0);
-    expect(sim.state.lastFine).toEqual({ reason: 'collision', amount: tables.fines.collision });
+    expect(sim.state.lastFine).toEqual({ reason: 'collision', amount: 30 }); // all the money there was
     expect(sim.state.profile.money).toBe(0);
     expect(sim.state.order.damage).toBe(tables.orders.hitDamage);
 

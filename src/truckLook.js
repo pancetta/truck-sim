@@ -3,12 +3,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Our own geometry for the Werkstatt's visual items (tables.visuals), in truck space: metres, +z forward,
 // +x towards the driver's (left) side, y up from the ground. The places match the kit truck as the
-// renderer stretches it (1.67 m tall); paint is a recolouring and lives in the renderer.
-const BOX = { side: 1.095, back: -3.75, front: 1.05 }; // cargo box side walls, x and z; they span y 0.5–1.6
-const WHEEL = { x: 1.01, y: 0.3, z: [2.55, -1.44], stretch: 2.4 }; // outer hub face; the kit wheels are stretched along z
-const ROOF = { y: 1.41, z: 1.6 }; // cab roof
-const BUMPER = { front: [3.92, 0.3], back: [-3.94, 0.34] }; // z, y
-const PIVOT = { dice: [0.2, 2.8, 3.55], figure: [0.15, 2.1, 3.45] }; // gimmicks sway about these; see camera.gimmickLook
+// renderer stretches it (2.75 m tall); paint is a recolouring and lives in the renderer.
+const BOX = { side: 1.095, back: -3.75, front: 1.05 }; // cargo box side walls, x and z; they span y 0.83–2.64
+const WHEEL = { x: 1.01, y: 0.5, z: [2.55, -1.44], stretch: 1.48 }; // outer hub face; the kit wheels are stretched along z
+const ROOF = { y: 2.33, z: 1.6 }; // cab roof
+const BUMPER = { front: [3.92, 0.46], back: [-3.94, 0.56] }; // z, y
+const PIVOT = { dice: [0.2, 2.4, 2.35], figure: [0.15, 1.7, 2.25] }; // gimmicks sway about these; see camera.gimmickLook
 
 const materials = new Map();
 const lambert = (color) => materials.get(color) ?? materials.set(color, new THREE.MeshLambertMaterial({ color, flatShading: true })).get(color);
@@ -25,26 +25,26 @@ function bar(u0, v0, u1, v1, width) {
 // Livery designs: bars per colour index, on one side wall.
 const DESIGNS = {
   stripes: () => [
-    [bar(BOX.back, 1.08, BOX.front, 1.08, 0.24)],
-    [bar(BOX.back, 0.87, BOX.front, 0.87, 0.07), bar(BOX.back, 1.29, BOX.front, 1.29, 0.07)],
+    [bar(BOX.back, 1.78, BOX.front, 1.78, 0.4)],
+    [bar(BOX.back, 1.44, BOX.front, 1.44, 0.12), bar(BOX.back, 2.13, BOX.front, 2.13, 0.12)],
   ],
   chevrons: () => [
-    [-3.2, -2.4, -1.6, -0.8].flatMap((u) => [bar(u, 0.7, u + 0.45, 1.05, 0.15), bar(u + 0.45, 1.05, u, 1.4, 0.15)]),
+    [-3.2, -2.4, -1.6, -0.8].flatMap((u) => [bar(u, 1.16, u + 0.45, 1.73, 0.25), bar(u + 0.45, 1.73, u, 2.31, 0.25)]),
   ],
   checker: () => {
-    const size = 0.2;
+    const size = 0.33;
     const rows = [[], []];
     for (let i = 0; BOX.back + (i + 1) * size <= BOX.front; i++) {
       for (let j = 0; j < 2; j++) {
         const u = BOX.back + (i + 0.5) * size;
-        rows[(i + j) % 2].push(bar(u - size / 2, 0.98 + j * size, u + size / 2, 0.98 + j * size, size));
+        rows[(i + j) % 2].push(bar(u - size / 2, 1.62 + j * size, u + size / 2, 1.62 + j * size, size));
       }
     }
     return rows;
   },
   zigzag: () => {
-    const points = [[BOX.back, 1.35], [-2.4, 0.75], [-1.6, 1.4], [-0.4, 0.7], [0.3, 1.2], [BOX.front, 0.95]];
-    return [points.slice(1).map(([u, v], i) => bar(...points[i], u, v, 0.14))];
+    const points = [[BOX.back, 2.23], [-2.4, 1.24], [-1.6, 2.31], [-0.4, 1.16], [0.3, 1.98], [BOX.front, 1.57]];
+    return [points.slice(1).map(([u, v], i) => bar(...points[i], u, v, 0.23))];
   },
 };
 
@@ -112,10 +112,10 @@ const BUILDERS = {
       for (const z of WHEEL.z) {
         // Built round the x axis at the origin, then stretched along z like the kit wheel and moved onto it.
         const place = (g) => g.scale(1, 1, WHEEL.stretch).translate(side * WHEEL.x, WHEEL.y, z);
-        discs.push(place(new THREE.CylinderGeometry(0.19, 0.19, 0.03, 16).rotateZ(Math.PI / 2)));
-        hubs.push(place(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 8).rotateZ(Math.PI / 2)));
+        discs.push(place(new THREE.CylinderGeometry(0.31, 0.31, 0.03, 16).rotateZ(Math.PI / 2)));
+        hubs.push(place(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 8).rotateZ(Math.PI / 2)));
         for (let k = 0; k < (spokes ?? 0); k++) {
-          arms.push(place(new THREE.BoxGeometry(0.05, 0.035, 0.17).translate(0, 0, 0.085).rotateX((k * 2 * Math.PI) / spokes)));
+          arms.push(place(new THREE.BoxGeometry(0.05, 0.06, 0.28).translate(0, 0, 0.14).rotateX((k * 2 * Math.PI) / spokes)));
         }
       }
     }
@@ -123,12 +123,12 @@ const BUILDERS = {
     return meshes([[lambert(disc), discs], [lambert(palette.chrome), hubs], ...(spokes ? [[lambert(palette[colour]), arms]] : [])]);
   },
   chrome({ bullBar }, palette) {
-    const parts = Object.values(BUMPER).map(([z, y]) => new THREE.BoxGeometry(2.4, 0.2, 0.2).translate(0, y, z));
+    const parts = Object.values(BUMPER).map(([z, y]) => new THREE.BoxGeometry(2.4, 0.33, 0.2).translate(0, y, z));
     if (bullBar) {
       const z = BUMPER.front[0] + 0.12;
       parts.push(
-        ...[0.75, 0.25, -0.25, -0.75].map((x) => new THREE.CylinderGeometry(0.04, 0.04, 0.6, 8).translate(x, 0.7, z)),
-        ...[1.0, 0.7].map((y) => new THREE.CylinderGeometry(0.04, 0.04, 1.6, 8).rotateZ(Math.PI / 2).translate(0, y, z)),
+        ...[0.75, 0.25, -0.25, -0.75].map((x) => new THREE.CylinderGeometry(0.05, 0.05, 1.0, 8).translate(x, 1.15, z)),
+        ...[1.65, 1.15].map((y) => new THREE.CylinderGeometry(0.05, 0.05, 1.6, 8).rotateZ(Math.PI / 2).translate(0, y, z)),
       );
     }
     return meshes([[lambert(palette.chrome), parts]]);
