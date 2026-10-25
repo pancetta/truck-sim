@@ -187,7 +187,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Each new contact with an AI car (`met`: the cars the truck's move touched) costs a fine. A contact lasts
   // until the truck is `contactGap` clear of the car, so pushing on or nudging it again isn't a new one.
   function touchCars(met) {
-    const near = traffic.touching(corners(truck, tables.traffic.contactGap));
+    const near = contacts.size ? traffic.touching(corners(truck, tables.traffic.contactGap)) : [];
     const now = state.traffic.filter((c) => met.includes(c) || (contacts.has(c.id) && near.includes(c)));
     for (const c of now) if (!contacts.has(c.id)) fine('collision');
     contacts = new Set(now.map((c) => c.id));

@@ -31,6 +31,23 @@ export function createTraffic(tables, map, random) {
       .filter(({ col, row }) => DIRS.filter(([dc, dr]) => map.isRoad(col + dc, row + dr)).length >= 3 && !map.lights.some((l) => l.col === col && l.row === row))
       .map((tile) => [keyOf(tile), { ...tile, box: tileBox(tile) }]),
   );
+  // Crossing tiles that touch are one crossing (keyed by one of its tiles), so no car waits inside one of
+  // them for the next.
+  const groups = new Map();
+  for (const [k, c] of crossings) {
+    if (groups.has(k)) continue;
+    groups.set(k, k);
+    for (const queue = [c]; queue.length; ) {
+      const { col, row } = queue.pop();
+      for (const [dc, dr] of DIRS) {
+        const n = keyOf({ col: col + dc, row: row + dr });
+        if (!crossings.has(n) || groups.has(n)) continue;
+        groups.set(n, k);
+        queue.push(crossings.get(n));
+      }
+    }
+  }
+  const groupOf = (p) => p && groups.get(keyOf(p));
 
   // Turning right is to = from + 1 (DIRS run clockwise seen from above).
   const laneLength = (p) => (p.from === p.to ? ts : (Math.PI / 2) * (p.to === (p.from + 1) % 4 ? half - t.laneOffset : half + t.laneOffset));
@@ -132,49 +149,53 @@ export function createTraffic(tables, map, random) {
   // Who may drive into each unsignalled crossing that has traffic at it: crossing key → the DIRS index of
   // travel into it of the approach that may go, or -1 for none. Vehicles in a crossing, or too close to
   // stop before it at `maxBrake`, hold it for their approach (the truck for none). A free crossing goes
-  // to the nearest car of an approach with no car or truck waiting on its right (travelling dir + 3);
+  // to the nearest car of an approach with no car or truck arriving on its right (travelling dir + 3);
   // when all four approaches have a car, none would, so the one that came into the city first goes.
-  // Of several that may go the same, also the first.
+  // Of several that may go the same, also the first. The truck counts as arriving only while it drives
+  // towards the crossing: a player waiting there is letting the cars go.
   function rightOfWay(truck, truckBox) {
     const ways = new Map();
-    const at = (tile) => {
-      const k = keyOf(tile);
+    const at = (k) => {
       if (!ways.has(k)) ways.set(k, { inside: [], fronts: [] });
       return ways.get(k);
     };
-    const arrive = (tile, dir, car, short) => {
-      const { fronts } = at(tile);
+    const arrive = (k, dir, car, short) => {
+      const { fronts } = at(k);
       if (!(fronts[dir]?.short <= short)) fronts[dir] = { dir, car, short };
     };
 
     for (const car of cars) {
       const box = corners(car, size);
-      for (const p of [car.prev, car.lane]) if (p && crossings.has(keyOf(p)) && boxesOverlap(box, crossings.get(keyOf(p)).box)) at(p).inside.push(p.from);
+      for (const p of [car.prev, car.lane]) if (groupOf(p) && boxesOverlap(box, crossings.get(keyOf(p)).box)) at(groupOf(p)).inside.push(p.from);
       let dist = laneLength(car.lane) - car.s; // centre to the start of the next piece
+      let before = car.lane;
       for (const p of car.route.slice(1)) {
         const short = dist - size.length / 2; // front bumper to the crossing
-        dist += laneLength(p);
-        if (!crossings.has(keyOf(p)) || short > t.giveWay) continue;
-        if (stoppable(car, short)) arrive(p, p.from, car, short);
-        else at(p).inside.push(p.from);
+        const g = groupOf(p);
+        const entering = g && g !== groupOf(before);
+        [dist, before] = [dist + laneLength(p), p];
+        if (!entering || short > t.giveWay) continue;
+        if (stoppable(car, short)) arrive(g, p.from, car, short);
+        else at(g).inside.push(p.from);
       }
     }
 
-    // The truck, in a crossing or with its front facing one within `giveWay` along the road.
-    for (const c of crossings.values()) {
+    // The truck, in a crossing or driving towards one within `giveWay` along the road.
+    for (const [k, c] of crossings) {
       const near = Math.abs((c.col + 0.5) * ts - truck.x) < ts && Math.abs((c.row + 0.5) * ts - truck.z) < ts;
-      if (near && boxesOverlap(truckBox, c.box)) at(c).inside.push(-1);
+      if (near && boxesOverlap(truckBox, c.box)) at(groups.get(k)).inside.push(-1);
     }
     const [fx, fz] = [Math.sin(truck.heading), Math.cos(truck.heading)];
     const dir = DIRS.findIndex(([dc, dr]) => dc * fx + dr * fz > Math.SQRT1_2);
-    if (dir >= 0) {
+    if (dir >= 0 && truck.speed > tables.vehicle.stopSpeed) {
       const [dc, dr] = DIRS[dir];
       const [x, z] = [truck.x + (fx * truckSize.length) / 2, truck.z + (fz * truckSize.length) / 2];
       for (let k = 1; k <= 2; k++) {
         const tile = { col: Math.floor(x / ts) + dc * k, row: Math.floor(z / ts) + dr * k };
+        const back = { col: tile.col - dc, row: tile.row - dr };
         const short = ((tile.col + 0.5) * ts - x) * dc + ((tile.row + 0.5) * ts - z) * dr - half;
-        if (!crossings.has(keyOf(tile)) || !map.isRoad(tile.col - dc, tile.row - dr) || short <= 0 || short > t.giveWay) continue;
-        arrive(tile, dir, null, short);
+        if (!groupOf(tile) || groupOf(back) === groupOf(tile) || !map.isRoad(back.col, back.row) || short <= 0 || short > t.giveWay) continue;
+        arrive(groupOf(tile), dir, null, short);
         break;
       }
     }
@@ -202,13 +223,15 @@ export function createTraffic(tables, map, random) {
     let speed = car.lane.from === car.lane.to ? t.speed : t.turnSpeed;
     const limit = (gap, end = 0) => (speed = Math.min(speed, Math.sqrt(end ** 2 + 2 * t.brake * Math.max(0, gap))));
     let dist = laneLength(car.lane) - car.s; // centre to the start of the next piece
+    let before = car.lane;
     for (const p of car.route.slice(1)) {
       if (p.from !== p.to) limit(dist, t.turnSpeed);
       const light = lights.find((l) => l.col === p.col && l.row === p.row && l.dir === p.from);
       const short = dist - size.length / 2; // front bumper to the stop line
-      const way = ways.get(keyOf(p));
+      const g = groupOf(p);
+      const way = g && g !== groupOf(before) ? ways.get(g) : undefined;
       if (((light && light.phase !== 'green') || (way !== undefined && way !== p.from)) && stoppable(car, short)) limit(short - t.stopGap);
-      dist += laneLength(p);
+      [dist, before] = [dist + laneLength(p), p];
     }
     // Looking ahead along the heading; in a turn also from the turn's end, so a queue just round the
     // corner is seen before the car is half way round. `extra` is the lane from the car to that view.
@@ -261,7 +284,7 @@ export function createTraffic(tables, map, random) {
 
 // Separating-axis test of two boxes, each given by its four corners in order, at any headings; touching
 // isn't overlapping (within a µm, so vehicles exactly side by side in their lanes don't count).
-export function boxesOverlap(a, b) {
+function boxesOverlap(a, b) {
   for (const box of [a, b]) {
     for (let i = 0; i < 2; i++) {
       const [nx, nz] = [box[i + 1].z - box[i].z, box[i].x - box[i + 1].x]; // normal of one side

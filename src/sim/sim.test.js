@@ -1565,21 +1565,43 @@ describe('Sim: right of way and collisions', () => {
     expect(most).toBe(1);
   });
 
-  test('an AI car gives way to the truck coming from its right, and goes once the truck is through', () => {
+  test('an AI car gives way to the truck driving in from its right, and goes once the truck is through', () => {
     const sim = crossSim();
-    // The truck stands on the east arm in its lane, facing the crossing 13 m ahead.
-    Object.assign(sim.state.truck, { x: 4 * TILE + 13 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    // The truck stands on the east arm in its lane, 22 m short of the crossing, and drives in.
+    Object.assign(sim.state.truck, { x: 4 * TILE + 22 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
     const a = addCar(sim, 1, through[NORTH]);
 
-    drive(sim, 10, IDLE);
-    expect(a.speed).toBe(0);
-    expect(shortOfCrossing(a)).toBeCloseTo(stopGap, 1);
-
-    timeUntil(sim, GAS, () => sim.state.truck.x < 2 * TILE, 20);
-    const { entered } = watch(sim, [a], 10, BRAKE);
+    let waited = false;
+    timeUntil(sim, GAS, () => {
+      waited ||= a.speed === 0 && Math.abs(shortOfCrossing(a) - stopGap) < 0.1;
+      return sim.state.truck.x + tables.vehicle.length / 2 < 3 * TILE; // its rear is through
+    }, 20);
+    expect(waited).toBe(true);
+    expect(inCrossing(a)).toBe(false);
+    const { entered } = watch(sim, [a], 10);
 
     expect(entered.has(a)).toBe(true);
     expect(sim.state.lastFine).toBe(null);
+  });
+
+  test('a truck waiting at the crossing lets the car on its left go', () => {
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 4 * TILE + 5 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    const a = addCar(sim, 1, through[NORTH]);
+
+    const { entered } = watch(sim, [a], 10);
+
+    expect(entered.has(a)).toBe(true);
+  });
+
+  test('with the truck waiting on one approach, three cars arriving at once all get through', () => {
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 3.5 * TILE + laneOffset, z: 4 * TILE + 5 + tables.vehicle.length / 2, heading: NORTH });
+    const cars = [WEST, SOUTH, EAST].map((h, i) => addCar(sim, i + 1, through[h]));
+
+    const { entered } = watch(sim, cars, 40);
+
+    expect(entered.size).toBe(3);
   });
 
   test('four cars arriving at once all get through, one at a time', () => {
@@ -1591,6 +1613,41 @@ describe('Sim: right of way and collisions', () => {
     expect(entered.size).toBe(4);
     expect(most).toBe(1);
     for (const c of cars) expect(sim.state.traffic.includes(c) && inCrossing(c)).toBe(false);
+  });
+
+  test('oncoming cars through two touching crossings take turns instead of waiting for each other inside', () => {
+    const grid = `
+      .#######
+      ###.####
+      ###.####
+      ........
+      ####.###
+      ####.###`;
+    const sim = createSim(quiet, parseMap(grid, quiet), seeded(1));
+    Object.assign(sim.state.truck, { x: 0.5 * TILE, z: 0.5 * TILE, heading: SOUTH });
+    // The westbound car starts at the edge of (4, 3), as a car can appear in the middle of any road tile.
+    const east = addCar(sim, 1, [[2, 3], [3, 3], [4, 3], [5, 3], [6, 3]]);
+    const west = addCar(sim, 2, [[4, 3], [3, 3], [2, 3], [1, 3]]);
+    const pastBoth = (car) => !sim.state.traffic.includes(car) || (car.heading > 0 ? car.x > 5 * TILE : car.x < 3 * TILE);
+
+    timeUntil(sim, IDLE, () => pastBoth(east) && pastBoth(west), 30);
+
+    expect(pastBoth(east)).toBe(true);
+    expect(pastBoth(west)).toBe(true);
+  });
+
+  test('back on the road never puts the truck on an AI car', () => {
+    const sim = crossSim();
+    const car = addCar(sim, 1, [[3, 3], [4, 3], [5, 3]]);
+    car.s = TILE / 2; // in the middle of the crossing, across the truck's north–south pose there
+    sim.step(0, IDLE);
+    Object.assign(sim.state.truck, { x: 3.5 * TILE, z: 3.5 * TILE + 1 });
+
+    sim.resetToRoad();
+    sim.step(DT, IDLE);
+
+    expect(Math.floor(sim.state.truck.z / TILE) * 10 + Math.floor(sim.state.truck.x / TILE)).not.toBe(33);
+    expect(sim.state.lastFine).toBe(null);
   });
 
   test('driving into an AI car fines once per contact, stops both, floors money at 0 and damages fragile cargo', () => {

@@ -156,7 +156,9 @@ export const traffic = {
   stopGap: 1.5, // m from the front bumper to the stop line
   sideGap: 0.3, // m each side of a car's path that must stay clear of the car or truck ahead
   lookAhead: 25, // m; also the room a new car needs from the others
-  giveWay: 20, // m from an unsignalled crossing within which a car or the truck waits there for right of way
+  // m from an unsignalled crossing within which a car or the truck counts as arriving there, for right of way;
+  // cars and the truck look two tiles ahead, so more than ~25 m has no effect
+  giveWay: 20,
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)
   despawnDistance: 180, // m from the truck past which a car out of view leaves
