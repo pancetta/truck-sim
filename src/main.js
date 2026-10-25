@@ -7,6 +7,7 @@ import cityMap from './city.txt?raw';
 import { createControls } from './controls.js';
 import { createRenderer } from './renderer.js';
 import { createHud } from './hud.js';
+import { createOrders } from './orders.js';
 
 const { step, maxFrame } = tables.loop;
 
@@ -22,6 +23,7 @@ document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventD
 
 const map = parseMap(cityMap, tables);
 const sim = createSim(tables, map);
+if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
 const view = createRenderer(document.getElementById('scene'), tables, map);
 document.getElementById('rotate').textContent = strings.rotate;
@@ -34,6 +36,7 @@ cameraButton.textContent = strings.camera;
 cameraButton.addEventListener('click', view.toggleCamera);
 document.getElementById('controls').append(cameraButton);
 const hud = createHud(document.getElementById('dash'), tables, strings);
+const orders = createOrders(document.getElementById('orders'), sim, tables, strings);
 
 const resetButton = document.createElement('button');
 resetButton.type = 'button';
@@ -62,6 +65,7 @@ function frame(now) {
   }
   view.render(sim.state, input);
   hud.update(sim.state);
+  orders.update(sim.state);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

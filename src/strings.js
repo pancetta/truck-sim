@@ -9,4 +9,13 @@ export const strings = {
   gear: 'Gang',
   rpm: 'U/min',
   resetToRoad: 'Zurück auf die Straße',
+  money: 'Kontostand',
+  orders: 'Aufträge',
+  accept: 'Annehmen',
+  activeOrder: 'Aktiver Auftrag',
+  toPickup: 'Fahrt zur Beladestelle',
+  toDropoff: 'Fahrt zur Entladestelle',
+  loading: 'Wird beladen…',
+  unloading: 'Wird entladen…',
+  paid: 'Bezahlt',
 };

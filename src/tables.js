@@ -32,6 +32,20 @@ export const vehicle = {
   width: 2.5, // m
 };
 
+export const orders = {
+  offerCount: 3, // offers per request
+  loadTime: 2, // s standing still in a zone to load or unload
+  basePay: 200, // € per delivery
+  payPerKm: 150, // € per km of road route from pickup to drop-off
+  paidNoticeTime: 3, // s the payment confirmation stays on screen
+  cargo: [
+    { name: 'Paletten', weight: 6 }, // t
+    { name: 'Getränke', weight: 10 },
+    { name: 'Möbel', weight: 4 },
+    { name: 'Stahl', weight: 14 },
+  ],
+};
+
 export const city = {
   tileSize: 14, // m per ASCII map tile; road width
   kerbGap: 0.3, // m between a parked car or pole and the kerb
@@ -74,6 +88,8 @@ export const palette = {
   building: 0xd9cbb4,
   spot: 0x4f86c6,
   zone: 0x8fc1f0,
+  pickup: 0x6cc551, // active order's zone marker
+  dropoff: 0xf08a4b,
   car: 0x3d6b8c,
   pole: 0x2e2e2e,
   truckBody: 0xe8c547,

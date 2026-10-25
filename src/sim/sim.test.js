@@ -356,3 +356,162 @@ describe('Sim: city', () => {
     expect(sim.state.truck.gear).toBe(1);
   });
 });
+
+// shortcut: tiny seeded PRNG (mulberry32) for repeatable offers; fine for tests, not for anything statistical.
+function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), a | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// A north–south dead-end lane: A's zone is the tile below A, B's the tile above B.
+// The truck starts between them, facing south towards B.
+const LANE = `
+  #A#
+  #.#
+  #.#
+  #.#
+  #B#`;
+
+function laneSim(seed = 1) {
+  return createSim(tables, parseMap(LANE, tables), seeded(seed));
+}
+
+function acceptFrom(sim, pickup) {
+  const offer = sim.requestOffers().find((o) => o.pickup === pickup);
+  sim.acceptOrder(offer.id);
+  return offer;
+}
+
+// Drives into B's dead end, or reverses into A's; either way the truck stops in that spot's zone.
+function parkAt(sim, id) {
+  timeUntil(sim, id === 'B' ? GAS : BRAKE, () => sim.state.collision, 30);
+}
+
+describe('Sim: orders', () => {
+  const { loadTime, basePay, payPerKm } = tables.orders;
+  const { emptyMass } = tables.vehicle;
+  const cityMap = parseMap(city, tables);
+
+  test('requestOffers() gives about three offers between distinct spots, the same for the same seed', () => {
+    const offers = createSim(tables, cityMap, seeded(7)).requestOffers();
+
+    expect(offers.length).toBeGreaterThanOrEqual(2);
+    expect(offers.length).toBeLessThanOrEqual(4);
+    expect(createSim(tables, cityMap, seeded(7)).requestOffers()).toEqual(offers);
+    for (let seed = 0; seed < 50; seed++) {
+      for (const o of createSim(tables, cityMap, seeded(seed)).requestOffers()) {
+        expect(o.pickup).not.toBe(o.dropoff);
+        expect(o.distance).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('an offer pays base + per-km × the shortest road route between the zones', () => {
+    // A's zone is the tile below A, B's the tile right of B. Along the bottom row is 6 tiles; over the top, 12.
+    const grid = `
+      .......
+      .#####.
+      .A###B.
+      .......`;
+    const sim = createSim(tables, parseMap(grid, tables), seeded(1));
+
+    const offers = sim.requestOffers();
+
+    expect(offers.length).toBeGreaterThan(0);
+    for (const o of offers) {
+      expect(o.distance).toBe(6 * TILE);
+      expect(o.pay).toBe(Math.round(basePay + (payPerKm * 6 * TILE) / 1000));
+    }
+  });
+
+  test('accepting an offer makes it the active order; no new offers while it runs', () => {
+    const sim = laneSim();
+    const [first, second] = sim.requestOffers();
+
+    sim.acceptOrder(first.id);
+
+    expect(sim.state.order).toMatchObject({ ...first, phase: 'pickup' });
+    expect(sim.requestOffers()).toEqual([]);
+    sim.acceptOrder(second.id);
+    expect(sim.state.order.id).toBe(first.id);
+  });
+
+  test('standing in the pickup zone for the load time loads the cargo and heads for the drop-off', () => {
+    const sim = laneSim();
+    const offer = acceptFrom(sim, 'B');
+    parkAt(sim, 'B');
+
+    drive(sim, loadTime - 0.1, IDLE);
+    expect(sim.state.order.phase).toBe('pickup');
+    expect(sim.state.progress).toBeGreaterThan(0.9);
+    expect(sim.state.truck.mass).toBe(emptyMass);
+
+    drive(sim, 0.2, IDLE);
+    expect(sim.state.order.phase).toBe('dropoff');
+    expect(sim.state.progress).toBe(0);
+    expect(sim.state.truck.mass).toBe(emptyMass + offer.cargo.weight * 1000);
+  });
+
+  test('moving before loading is done resets the progress', () => {
+    const sim = laneSim();
+    acceptFrom(sim, 'B');
+    parkAt(sim, 'B');
+    drive(sim, loadTime / 2, IDLE);
+    expect(sim.state.progress).toBeGreaterThan(0.4);
+
+    // Held past the reverse delay, the brake rolls the truck back.
+    drive(sim, tables.vehicle.reverseDelay + 0.5, BRAKE);
+
+    expect(sim.state.truck.speed).toBeLessThan(0);
+    expect(sim.state.progress).toBe(0);
+    expect(sim.state.order.phase).toBe('pickup');
+  });
+
+  test('short brake taps (under the reverse delay) in the zone still complete loading', () => {
+    const sim = laneSim();
+    acceptFrom(sim, 'B');
+    parkAt(sim, 'B');
+
+    for (let t = 0; t < loadTime + 0.5; t += 0.5) {
+      drive(sim, tables.vehicle.reverseDelay * 0.8, BRAKE);
+      drive(sim, 0.1, IDLE);
+    }
+
+    expect(sim.state.order.phase).toBe('dropoff');
+  });
+
+  test('unloading pays exactly the offer, restores empty mass and clears the order', () => {
+    const sim = laneSim();
+    const offer = acceptFrom(sim, 'A');
+    parkAt(sim, 'A');
+    drive(sim, loadTime + 0.1, IDLE);
+    expect(sim.state.order.phase).toBe('dropoff');
+
+    parkAt(sim, 'B');
+    drive(sim, loadTime + 0.1, IDLE);
+
+    expect(sim.state.money).toBe(offer.pay);
+    expect(sim.state.truck.mass).toBe(emptyMass);
+    expect(sim.state.order).toBe(null);
+    expect(sim.state.progress).toBe(0);
+    expect(sim.requestOffers().length).toBeGreaterThan(0);
+  });
+
+  test('a loaded truck accelerates more slowly than the same truck empty', () => {
+    function speedAfterLoadStop(order) {
+      const sim = laneSim();
+      if (order) acceptFrom(sim, 'A');
+      parkAt(sim, 'A');
+      drive(sim, loadTime + 0.1, IDLE);
+      drive(sim, 1.5, GAS);
+      return sim.state.truck.speed;
+    }
+
+    expect(speedAfterLoadStop(true)).toBeLessThan(speedAfterLoadStop(false) * 0.8);
+  });
+});

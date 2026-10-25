@@ -6,12 +6,17 @@ import { DIRS } from './map.js';
 const G = 9.81; // m/s²
 
 // `map` comes from parseMap(); without one the truck drives on an open plane with nothing to hit
-// (and resetToRoad() has nowhere to go).
-export function createSim(tables, map) {
+// (and resetToRoad() and requestOffers() have nowhere to go). `random` returns floats in [0, 1);
+// pass a seeded one for repeatable offers.
+export function createSim(tables, map, random = Math.random) {
   const v = tables.vehicle;
+  const o = tables.orders;
   // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: v.emptyMass, gear: 'N', rpm: v.idleRpm, roll: 0 };
-  const state = { truck, collision: false }; // read-only for callers: only step() and Sim commands change it
+  // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
+  // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
+  const state = { truck, collision: false, money: 0, offers: [], order: null, progress: 0 };
+  let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
 
@@ -88,6 +93,54 @@ export function createSim(tables, map) {
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
     truck.roll = Math.max(-v.maxRoll, Math.min(v.maxRoll, lean));
+
+    if (state.order) loadOrUnload(dt);
+  }
+
+  // Standing still in the active phase's zone fills `progress`; anything else resets it.
+  function loadOrUnload(dt) {
+    const order = state.order;
+    const { zone } = spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
+    const inZone = truck.x > zone.minX && truck.x < zone.maxX && truck.z > zone.minZ && truck.z < zone.maxZ;
+    state.progress = inZone && Math.abs(truck.speed) < v.stopSpeed ? state.progress + dt / o.loadTime : 0;
+    if (state.progress < 1) return;
+    state.progress = 0;
+    if (order.phase === 'pickup') {
+      truck.mass += order.cargo.weight * 1000;
+      order.phase = 'dropoff';
+    } else {
+      truck.mass = v.emptyMass;
+      state.money += order.pay;
+      state.order = null;
+    }
+  }
+
+  const spot = (id) => map.spots.find((s) => s.id === id);
+  const pick = (list) => list[Math.floor(random() * list.length)];
+
+  // New offers between distinct spots, paid by the road route length; none while an order is active.
+  function requestOffers() {
+    state.offers = [];
+    if (state.order) return state.offers;
+    for (let i = 0; i < o.offerCount; i++) {
+      const cargo = pick(o.cargo);
+      const from = pick(map.spots);
+      const to = pick(map.spots.filter((s) => s !== from));
+      const path = map.route(from.zoneTile, to.zoneTile);
+      if (!path) continue; // a spot cut off from the road network gets no orders
+      const distance = (path.length - 1) * map.tileSize;
+      const pay = Math.round(o.basePay + (o.payPerKm * distance) / 1000);
+      state.offers.push({ id: nextOfferId++, cargo, pickup: from.id, dropoff: to.id, distance, pay });
+    }
+    return state.offers;
+  }
+
+  // Makes one of the current offers the active order; ignored while one is active or for an unknown id.
+  function acceptOrder(id) {
+    const offer = state.offers.find((x) => x.id === id);
+    if (state.order || !offer) return;
+    state.order = { ...offer, phase: 'pickup' };
+    state.offers = [];
   }
 
   // Puts the truck on the nearest free road tile, facing along the road, at a standstill in first gear.
@@ -148,5 +201,5 @@ export function createSim(tables, map) {
     resetToRoad();
   }
 
-  return { state, step, resetToRoad };
+  return { state, step, resetToRoad, requestOffers, acceptOrder };
 }

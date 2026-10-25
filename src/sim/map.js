@@ -40,7 +40,8 @@ export function parseMap(text, tables) {
         if (!d) throw new Error(`Map spot ${t} ${where} has no free road beside it`);
         if (spots.some((s) => s.id === t)) throw new Error(`Map spot ${t} appears twice`);
         colliders.push({ kind: 'spot', ...box(x, z, half, half) });
-        spots.push({ id: t, zone: box(x + d[0] * tileSize, z + d[1] * tileSize, half, half) });
+        const zoneTile = { col: col + d[0], row: row + d[1] };
+        spots.push({ id: t, zoneTile, zone: box(x + d[0] * tileSize, z + d[1] * tileSize, half, half) });
       } else if (OBSTACLES[t]) {
         const d = DIRS.find(([dc, dr]) => !isRoad(col + dc, row + dr));
         if (!d) throw new Error(`Map obstacle ${t} ${where} needs a kerb (a non-road neighbour)`);
@@ -57,7 +58,31 @@ export function parseMap(text, tables) {
   });
   if (roads.length === 0) throw new Error('Map has no road');
 
-  return { cols, rows, tileSize, isRoad, roads, spots, colliders };
+  // Shortest road path between two road tiles, both ends included; null if they aren't connected.
+  // Breadth-first search, since every edge is one tile long.
+  function route(from, to) {
+    const key = ({ col, row }) => row * cols + col;
+    const prev = new Map([[key(from), null]]);
+    const queue = [from];
+    for (let i = 0; i < queue.length; i++) {
+      const tile = queue[i];
+      if (key(tile) === key(to)) {
+        const path = [];
+        for (let t = tile; t; t = prev.get(key(t))) path.unshift(t);
+        return path;
+      }
+      for (const [dc, dr] of DIRS) {
+        const next = { col: tile.col + dc, row: tile.row + dr };
+        if (isRoad(next.col, next.row) && !prev.has(key(next))) {
+          prev.set(key(next), tile);
+          queue.push(next);
+        }
+      }
+    }
+    return null;
+  }
+
+  return { cols, rows, tileSize, isRoad, roads, spots, colliders, route };
 }
 
 function box(x, z, hx, hz) {

@@ -46,6 +46,14 @@ export function createRenderer(canvas, tables, map) {
     scene.add(mesh);
   }
 
+  // Active order's zone: a see-through column, one colour for the pickup and one for the drop-off.
+  const marker = new THREE.Mesh(
+    new THREE.BoxGeometry(ts, 4, ts),
+    new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.35, depthWrite: false }),
+  );
+  marker.position.y = 2;
+  scene.add(marker);
+
   // Placeholder truck: cargo box with the cab at the front (+z).
   const truck = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3, 6), new THREE.MeshLambertMaterial({ color: palette.truckBody }));
@@ -99,6 +107,15 @@ export function createRenderer(canvas, tables, map) {
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
     // Same angle as the on-screen wheel; positive is clockwise from the driver's seat.
     wheel.rotation.z = THREE.MathUtils.degToRad(input.steer * tables.controls.wheelLock);
+
+    const { order } = state;
+    marker.visible = !!order;
+    if (order) {
+      const { zone } = map.spots.find((s) => s.id === (order.phase === 'pickup' ? order.pickup : order.dropoff));
+      marker.position.x = (zone.minX + zone.maxX) / 2;
+      marker.position.z = (zone.minZ + zone.maxZ) / 2;
+      marker.material.color.setHex(order.phase === 'pickup' ? palette.pickup : palette.dropoff);
+    }
 
     if (cabView) {
       // Truck-space points, so the camera follows anything that moves the truck.
