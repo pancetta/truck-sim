@@ -2,6 +2,7 @@
 // Heading 0 faces +z; forward is (sin heading, cos heading) in the x/z plane.
 
 import { DIRS } from './map.js';
+import { createTraffic } from './traffic.js';
 
 const G = 9.81; // m/s²
 
@@ -29,6 +30,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // new object on every payment, so the UI can tell each one apart;
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red').
+  // `traffic` are the AI cars: { id, x, z, heading, speed, lane } and more (see traffic.js).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
@@ -42,6 +44,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lastPayment: null,
     lastFine: null,
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
+    traffic: [],
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
     },
@@ -55,6 +58,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let routeKey = ''; // start tile and target the current route was found for
   let offersTile = ''; // tile the current offers were made on; their expected times count from there
   const tileKey = () => `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)}`;
+  const traffic = map && createTraffic(tables, map, random);
+  if (traffic) state.traffic = traffic.cars;
 
   const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
 
@@ -135,6 +140,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     checkRedLight(frontBefore, frontTile());
+    updateTraffic(dt);
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -164,6 +170,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const t = (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
       l.phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : 'red';
     }
+  }
+
+  // AI cars as many as the rank tier brings, reacting to the truck where it now stands.
+  function updateTraffic(dt) {
+    traffic?.step(dt, truck, state.lights, tables.rank.tiers[state.rank.tier].traffic);
   }
 
   // Tile under the middle of the truck's front bumper.
@@ -408,6 +419,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     // Start parked on the road nearest the middle of the city.
     Object.assign(truck, { x: (map.cols * map.tileSize) / 2, z: (map.rows * map.tileSize) / 2 });
     resetToRoad();
+    updateTraffic(0);
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual };

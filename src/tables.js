@@ -67,12 +67,19 @@ export const orders = {
   ],
 };
 
-// Rank points per delivery; a tier is reached at its points. Titles are in strings.rankTitles, same order.
+// Rank points per delivery; a tier is reached at its points and brings `traffic` AI cars into the city.
+// Titles are in strings.rankTitles, same order.
 export const rank = {
   pointsPerDelivery: 10,
   timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned
   fragilePoints: 10, // extra points for an undamaged fragile delivery, less in proportion to the damage
-  tiers: [0, 30, 80, 160, 300].map((points, i) => ({ points, title: strings.rankTitles[i] })),
+  tiers: [
+    { points: 0, traffic: 8 },
+    { points: 30, traffic: 9 },
+    { points: 80, traffic: 10 },
+    { points: 160, traffic: 11 },
+    { points: 300, traffic: 12 },
+  ].map((tier, i) => ({ ...tier, title: strings.rankTitles[i] })),
 };
 
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
@@ -127,6 +134,23 @@ export const lights = {
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
   redLight: 100,
+};
+
+// AI cars (sizes from city.obstacles.car). The lane runs `laneOffset` right of the road's centre line, so a
+// car keeps clear of the parked ones (3.6 m out) and of oncoming traffic.
+export const traffic = {
+  laneOffset: 2.2, // m
+  speed: 10, // m/s (36 km/h) cruising
+  turnSpeed: 4.5, // m/s round corners
+  accel: 2, // m/s²
+  brake: 4, // m/s², planned braking for stop lines, corners and the car or truck ahead
+  maxBrake: 8, // m/s²; a light that would need harder braking (it turned amber too late) is driven through
+  followGap: 2.5, // m between bumpers when stopped behind a car or the truck
+  stopGap: 1.5, // m from the front bumper to the stop line
+  sideGap: 0.3, // m each side of a car's path that must stay clear of the car or truck ahead
+  lookAhead: 25, // m; also the room a new car needs from the others
+  spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)
+  despawnDistance: 180, // m from the truck past which a car out of view leaves
 };
 
 export const city = {

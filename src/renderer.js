@@ -134,6 +134,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
+  // AI cars: one instanced mesh per kit car with room for the busiest rank tier; a car's id picks its model.
+  const maxTraffic = Math.max(...tables.rank.tiers.map((t) => t.traffic));
+  const trafficMeshes = CARS.map((file) => {
+    const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), kitMaterial, maxTraffic);
+    mesh.frustumCulled = false; // the cars move, so bounds computed once would go stale
+    loads.push(loadModel(file).then((geometry) => (mesh.geometry = unitBox(geometry))));
+    scene.add(mesh);
+    return mesh;
+  });
+  const carSize = new THREE.Vector3(city.obstacles.car.width, city.obstacles.car.height, city.obstacles.car.length);
+
   // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
   // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road.
   // The lamps are one-sided planes, so a light seen from the side or behind shows no colour.
@@ -370,6 +381,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       lamps.instanceColor.needsUpdate = true;
     }
 
+    drawTraffic(state.traffic);
+
     const { order } = state;
     marker.visible = !!order;
     if (order) {
@@ -405,6 +418,20 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.lookAt(x, cam.lookHeight, z);
     }
     renderer.render(scene, camera);
+  }
+
+  const carMatrix = new THREE.Matrix4();
+  const carPosition = new THREE.Vector3();
+  const carTurn = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  function drawTraffic(cars) {
+    for (const mesh of trafficMeshes) mesh.count = 0;
+    for (const car of cars) {
+      const mesh = trafficMeshes[car.id % trafficMeshes.length];
+      carMatrix.compose(carPosition.set(car.x, 0, car.z), carTurn.setFromAxisAngle(up, car.heading), carSize);
+      mesh.setMatrixAt(mesh.count++, carMatrix);
+    }
+    for (const mesh of trafficMeshes) mesh.instanceMatrix.needsUpdate = true;
   }
 
   function toggleCamera() {

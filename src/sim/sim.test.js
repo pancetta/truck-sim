@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createSim, freshProfile } from './sim.js';
 import * as tables from '../tables.js';
-import { parseMap } from './map.js';
+import { DIRS, parseMap } from './map.js';
 import city from '../city.txt?raw';
 
 const DT = 1 / 60;
@@ -381,8 +381,10 @@ function laneSim(seed = 1, profile) {
   return createSim(tables, parseMap(LANE, tables), seeded(seed), profile);
 }
 
+// Asks for offers until one picks up at `pickup` (AI cars draw from the same seeded random), and accepts it.
 function acceptFrom(sim, pickup) {
-  const offer = sim.requestOffers().find((o) => o.pickup === pickup);
+  let offer;
+  for (let i = 0; i < 20 && !offer; i++) offer = sim.requestOffers().find((o) => o.pickup === pickup);
   sim.acceptOrder(offer.id);
   return offer;
 }
@@ -1216,5 +1218,116 @@ describe('Sim: traffic lights', () => {
 
     expect(sim.state.lastFine.amount).toBe(tables.fines.redLight);
     expect(sim.state.profile.money).toBe(0);
+  });
+});
+
+describe('Sim: traffic', () => {
+  const { followGap, stopGap } = tables.traffic;
+  const CAR = tables.city.obstacles.car;
+  const { tiers } = tables.rank;
+
+  // A ring road. The truck starts on the top row's middle, in the middle of the road, facing east.
+  const RING = `
+    ################
+    ################
+    #..............#
+    #.############.#
+    #.############.#
+    #.############.#
+    #.############.#
+    #.############.#
+    #..............#
+    ################`;
+
+  // A ring with a bar across, which meets the sides at light junctions. The truck starts on a lone road
+  // tile in the middle, out of the cars' way.
+  const THETA = `
+    ################
+    #..............#
+    #.############.#
+    #+............+#
+    #.############.#
+    #.#####.######.#
+    #.############.#
+    #.############.#
+    #.############.#
+    #..............#
+    ################`;
+
+  // Blocks one tile square between roads; big enough for the top tier's cars to fit around the truck.
+  const GRID = Array.from({ length: 21 }, (_, row) =>
+    Array.from({ length: 21 }, (_, col) => (row % 20 === 0 || col % 20 === 0 || (row % 2 === 0 && col % 2 === 0) ? '#' : '.')).join(''),
+  ).join('\n');
+
+  const trafficSim = (grid, seed = 1, profile) => createSim(tables, parseMap(grid, tables), seeded(seed), profile);
+
+  test('the number of AI cars comes from the rank tier, higher tiers bringing more', () => {
+    const count = (rankPoints) => {
+      const sim = trafficSim(GRID, 1, { ...freshProfile(), rankPoints });
+      drive(sim, 1, IDLE);
+      return sim.state.traffic.length;
+    };
+
+    expect(count(0)).toBe(tiers[0].traffic);
+    expect(count(tiers.at(-1).points)).toBe(tiers.at(-1).traffic);
+    expect(tiers.at(-1).traffic).toBeGreaterThan(tiers[0].traffic);
+  });
+
+  test('AI cars stop behind the standing truck at the following distance and never drive into it', () => {
+    const sim = trafficSim(RING, 3);
+    const truck = { ...sim.state.truck };
+    expect(truck.heading).toBeCloseTo(Math.PI / 2); // east, along the top row
+    const overlapsTruck = (c) =>
+      Math.abs(c.x - truck.x) < (tables.vehicle.length + CAR.length) / 2 && Math.abs(c.z - truck.z) < (tables.vehicle.width + CAR.width) / 2;
+
+    let hits = 0;
+    for (let t = 0; t < 120; t += DT) {
+      sim.step(DT, IDLE);
+      hits += sim.state.traffic.filter(overlapsTruck).length;
+    }
+
+    // Eastbound cars on the truck's row, nearest the truck's rear first.
+    const behind = sim.state.traffic
+      .filter((c) => Math.abs(c.z - truck.z) < TILE / 2 && Math.abs(c.heading - Math.PI / 2) < 0.01 && c.x < truck.x)
+      .sort((a, b) => b.x - a.x);
+    expect(hits).toBe(0);
+    expect(behind.length).toBeGreaterThan(0);
+    expect(behind[0].speed).toBe(0);
+    expect(truck.x - tables.vehicle.length / 2 - (behind[0].x + CAR.length / 2)).toBeCloseTo(followGap, 1);
+    // The next car keeps its distance to the first.
+    if (behind[1]) expect(behind[0].x - behind[1].x - CAR.length).toBeGreaterThanOrEqual(followGap - 0.05);
+  });
+
+  test('an AI car stops at the stop line of a red light and drives on at green', () => {
+    const sim = trafficSim(THETA, 2);
+    // How far the car's front bumper is short of the light's stop line, along the light's direction.
+    const short = (car, l) => (l.x - car.x) * DIRS[l.dir][0] + (l.z - car.z) * DIRS[l.dir][1] - CAR.length / 2;
+    const approaching = (car, l) =>
+      car.lane.col === l.col - DIRS[l.dir][0] && car.lane.row === l.row - DIRS[l.dir][1] && car.lane.to === l.dir;
+    let car;
+    let light;
+    timeUntil(sim, IDLE, () => {
+      light = sim.state.lights.find((l) => l.phase === 'red' && (car = sim.state.traffic.find((c) => approaching(c, l) && c.speed === 0 && short(c, l) < 3)));
+      return light;
+    }, 300);
+    expect(light).toBeTruthy();
+    expect(short(car, light)).toBeCloseTo(stopGap, 1);
+
+    timeUntil(sim, IDLE, () => light.phase === 'green', 60);
+    drive(sim, 5, IDLE);
+
+    expect(sim.state.traffic).toContain(car);
+    expect(short(car, light)).toBeLessThan(0);
+  });
+
+  test('traffic is the same for the same seed', () => {
+    const run = (seed) => {
+      const sim = trafficSim(GRID, seed);
+      drive(sim, 20, IDLE);
+      return sim.state.traffic.map(({ x, z, heading, speed }) => ({ x, z, heading, speed }));
+    };
+
+    expect(run(7)).toEqual(run(7));
+    expect(run(7)).not.toEqual(run(8));
   });
 });
