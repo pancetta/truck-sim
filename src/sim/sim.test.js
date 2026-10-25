@@ -1048,7 +1048,7 @@ describe('Sim: docking', () => {
 
     const sim = dockSim(['A'], tierOf('fragileDock'));
     for (let i = 0; i < 20; i++) {
-      for (const o of sim.requestOffers()) expect(o.type.endsWith('ock')).toBe(o.dropoff === 'A');
+      for (const o of sim.requestOffers()) expect(['dock', 'fragileDock'].includes(o.type)).toBe(o.dropoff === 'A');
     }
   });
 
@@ -1081,6 +1081,25 @@ describe('Sim: docking', () => {
 
     expect(Math.abs(sim.state.truck.heading)).toBeGreaterThan(dockHeading);
     expect(lineOf(sim, 'base').amount).toBe(100);
+    expect(lineOf(sim, 'dock')).toBeUndefined();
+  });
+
+  test('reversing in straight but off the centre line delivers at normal pay, with no dock line', () => {
+    const sim = dockSim();
+    acceptFrom(sim, 'B');
+    parkAt(sim, 'B');
+    drive(sim, loadTime + 0.1, IDLE);
+    // An S-bend in reverse shifts the truck sideways and leaves it straight again.
+    timeUntil(sim, { ...BRAKE, steer: 1 }, () => sim.state.truck.heading > 0.6, 10);
+    timeUntil(sim, { ...BRAKE, steer: -1 }, () => sim.state.truck.heading <= 0, 10);
+    timeUntil(sim, BRAKE, () => sim.state.truck.z < 1.7 * TILE, 30);
+    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10);
+    expect(Math.abs(sim.state.truck.heading)).toBeLessThan(dockHeading);
+    expect(Math.abs(sim.state.truck.x - 1.5 * TILE)).toBeGreaterThan(tables.orders.dockCentre);
+
+    drive(sim, loadTime + 0.1, IDLE);
+
+    expect(sim.state.order).toBe(null);
     expect(lineOf(sim, 'dock')).toBeUndefined();
   });
 
