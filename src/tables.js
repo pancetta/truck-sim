@@ -24,6 +24,8 @@ export const camera = {
   chaseDistance: 14, // m behind the truck
   chaseHeight: 6, // m above the ground
   lookHeight: 2, // m above the truck's position the camera aims at
+  cabEye: [0.55, 2.45, 2.75], // driver's eye in truck space (x left, y up, z forward), m
+  cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
 };
 
 export const lighting = {
@@ -38,4 +40,6 @@ export const palette = {
   grid: 0x5e8c4a,
   truckBody: 0xe8c547,
   truckCab: 0xd1495b,
+  dashboard: 0x3b4252,
+  steeringWheel: 0x1f232b,
 };

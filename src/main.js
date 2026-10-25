@@ -13,6 +13,13 @@ const view = createRenderer(document.getElementById('scene'), tables);
 document.getElementById('rotate').textContent = strings.rotate;
 const portrait = matchMedia('(orientation: portrait)');
 
+const cameraButton = document.createElement('button');
+cameraButton.type = 'button';
+cameraButton.className = 'camera-toggle';
+cameraButton.textContent = strings.camera;
+cameraButton.addEventListener('click', view.toggleCamera);
+document.getElementById('controls').append(cameraButton);
+
 let last = performance.now();
 let pending = 0;
 
@@ -31,7 +38,7 @@ function frame(now) {
     sim.step(step, input);
     pending -= step;
   }
-  view.render(sim.state);
+  view.render(sim.state, input);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

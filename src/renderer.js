@@ -30,9 +30,35 @@ export function createRenderer(canvas, tables) {
   const cab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.6, 2), new THREE.MeshLambertMaterial({ color: palette.truckCab }));
   cab.position.set(0, 1.7, 3);
   truck.add(body, cab);
+
+  // Cab interior, our own design: a dashboard and a steering wheel inside the cab box.
+  // The cab box's faces only render from outside, so from the driver's seat the walls are see-through.
+  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshLambertMaterial({ color: palette.dashboard }));
+  dashboard.position.set(0, 1.85, 3.65);
+  const wheelMaterial = new THREE.MeshLambertMaterial({ color: palette.steeringWheel });
+  // The column tilts the wheel towards the driver; the wheel spins about the column's axis (local +z).
+  const column = new THREE.Group();
+  column.position.set(cam.cabEye[0], 2.08, 3.32);
+  column.rotation.x = 0.9;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5), wheelMaterial);
+  shaft.rotation.x = Math.PI / 2;
+  shaft.position.z = 0.25;
+  const wheel = new THREE.Group();
+  const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.03), wheelMaterial);
+  spoke.position.y = -0.11;
+  wheel.add(
+    new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 8, 24), wheelMaterial),
+    new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.05, 0.03), wheelMaterial),
+    spoke,
+  );
+  column.add(shaft, wheel);
+  truck.add(dashboard, column);
   scene.add(truck);
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+  const eye = new THREE.Vector3();
+  const lookAt = new THREE.Vector3();
+  let cabView = true;
 
   function resize() {
     const w = window.innerWidth;
@@ -44,20 +70,32 @@ export function createRenderer(canvas, tables) {
   window.addEventListener('resize', resize);
   resize();
 
-  function render(state) {
+  function render(state, input) {
     const { x, z, heading } = state.truck;
     truck.position.set(x, 0, z);
     truck.rotation.y = heading;
+    // Same angle as the on-screen wheel; positive is clockwise from the driver's seat.
+    wheel.rotation.z = THREE.MathUtils.degToRad(input.steer * tables.controls.wheelLock);
 
-    // Basic chase camera: fixed offset behind and above the truck.
-    camera.position.set(
-      x - Math.sin(heading) * cam.chaseDistance,
-      cam.chaseHeight,
-      z - Math.cos(heading) * cam.chaseDistance,
-    );
-    camera.lookAt(x, cam.lookHeight, z);
+    if (cabView) {
+      // Truck-space points, so the camera follows anything that moves the truck.
+      camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye)));
+      camera.lookAt(truck.localToWorld(lookAt.fromArray(cam.cabLook)));
+    } else {
+      // Basic chase camera: fixed offset behind and above the truck.
+      camera.position.set(
+        x - Math.sin(heading) * cam.chaseDistance,
+        cam.chaseHeight,
+        z - Math.cos(heading) * cam.chaseDistance,
+      );
+      camera.lookAt(x, cam.lookHeight, z);
+    }
     renderer.render(scene, camera);
   }
 
-  return { render };
+  function toggleCamera() {
+    cabView = !cabView;
+  }
+
+  return { render, toggleCamera };
 }

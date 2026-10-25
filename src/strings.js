@@ -4,4 +4,5 @@ export const strings = {
   gas: 'Gas',
   brake: 'Bremse',
   rotate: 'Bitte Gerät drehen',
+  camera: 'Kamera',
 };
