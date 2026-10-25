@@ -15,7 +15,6 @@ export function createHud(root, tables, strings) {
   const rankTitle = root.querySelector('.dash-rank span');
   const rankBar = root.querySelector('.dash-rank i');
   const distance = root.querySelector('.dash-rank small');
-  const km = new Intl.NumberFormat('de-DE'); // 1234 → "1.234"
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
@@ -32,7 +31,7 @@ export function createHud(root, tables, strings) {
     bar.classList.toggle('high', truck.rpm > upshiftRpm);
     set(rpm, `${Math.round(truck.rpm / 50) * 50} ${strings.rpm}`);
     set(rankTitle, rank.title);
-    set(distance, `${km.format(Math.floor(profile.distance / 1000))} ${strings.km}`);
+    set(distance, `${Math.floor(profile.distance / 1000).toLocaleString('de-DE')} ${strings.km}`);
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
   }
 

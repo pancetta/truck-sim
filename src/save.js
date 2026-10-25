@@ -40,16 +40,24 @@ export function createSave(storage, tables) {
     };
   }
 
+  let written = null; // the last written profile, with its distance in whole 100 m
+
+  // Call it as often as you like: it writes only when the profile changed, but counts the distance in
+  // whole 100 m, so driving writes every 100 m instead of every step (a reload loses less than that).
   // Never throws: a full storage or a private mode just means the game goes on unsaved.
   function save(profile) {
+    const key = JSON.stringify({ ...profile, distance: Math.floor(profile.distance / 100) });
+    if (key === written) return;
+    written = key;
     try {
       storage.setItem(KEY, JSON.stringify(profile));
     } catch {
-      // nothing to do; the next save tries again
+      // nothing to do; the next change tries again
     }
   }
 
   function reset() {
+    written = null;
     try {
       storage.removeItem(KEY);
     } catch {

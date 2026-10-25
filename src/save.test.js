@@ -84,6 +84,27 @@ describe('save module', () => {
     expect(profile).toEqual({ ...valid, equipped: {} });
   });
 
+  test('save writes only when the profile changed, counting the distance in whole 100 m', () => {
+    const storage = fakeStorage();
+    const writes = [];
+    const save = createSave({ ...storage, setItem: (k, v) => writes.push(JSON.parse(v)) }, tables);
+    const profile = structuredClone(valid); // distance 5678.9
+
+    save.save(profile);
+    save.save(profile);
+    profile.distance = 5699.9;
+    save.save(profile); // same 100 m: skipped
+    profile.money += 10;
+    save.save(profile); // a payment: written with the exact distance
+    profile.distance = 5700.1;
+    save.save(profile); // the next 100 m
+    expect(writes.map((p) => [p.money, p.distance])).toEqual([[1234, 5678.9], [1244, 5699.9], [1244, 5700.1]]);
+
+    save.reset();
+    save.save(profile); // after a reset the same profile is written again
+    expect(writes).toHaveLength(4);
+  });
+
   test('save never throws, even when setItem does (full storage, private mode)', () => {
     const storage = { ...fakeStorage(), setItem: () => { throw new Error('QuotaExceededError'); } };
     expect(() => createSave(storage, tables).save(valid)).not.toThrow();

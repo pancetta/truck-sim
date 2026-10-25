@@ -33,9 +33,6 @@ try {
 }
 const save = createSave(storage, tables);
 const sim = createSim(tables, map, Math.random, save.load());
-// What autosave compares: the profile with the distance in whole 100 m, so driving saves every 100 m, not every frame.
-const saveKey = (p) => JSON.stringify({ ...p, distance: Math.floor(p.distance / 100) });
-let savedProfile = saveKey(sim.state.profile);
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
 const loading = document.getElementById('loading');
@@ -89,12 +86,7 @@ function frame(now) {
   orders.update(sim.state);
   minimap.update(sim.state);
   werkstatt.update(sim.state);
-  // Autosave whenever the profile changes (a payment, fine, purchase or another 100 m driven).
-  const profile = saveKey(sim.state.profile);
-  if (profile !== savedProfile) {
-    save.save(sim.state.profile);
-    savedProfile = profile;
-  }
+  save.save(sim.state.profile); // writes only when the profile changed (see save.js)
   requestAnimationFrame(frame);
 }
 
