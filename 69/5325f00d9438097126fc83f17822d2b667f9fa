@@ -1,0 +1,21 @@
+CLAUDE.md
+  s_ac9787cdd4ba14::t_f8599e8994ce84 1-4
+HANDOFF.md
+  s_ac9787cdd4ba14::t_ab1a9e58b051cb 9-10,14-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "695325f00d9438097126fc83f17822d2b667f9fa",
+  "prompts": {},
+  "sessions": {
+    "s_ac9787cdd4ba14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a950bfab-6432-406b-9d50-1a00ec539eb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
