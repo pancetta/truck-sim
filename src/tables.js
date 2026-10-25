@@ -48,10 +48,11 @@ export const orders = {
 
 export const city = {
   tileSize: 14, // m per ASCII map tile; road width
-  kerbGap: 0.3, // m between a parked car or pole and the kerb
+  // m; kerbGap is the space between the obstacle and the tile edge. The road models' pavement
+  // is the outer 1.4 m of a road tile: poles stand on it, cars park just past it.
   obstacles: {
-    car: { length: 4.5, width: 1.9, height: 1.5 }, // m
-    pole: { length: 0.3, width: 0.3, height: 4 }, // m
+    car: { length: 4.5, width: 1.9, height: 1.5, kerbGap: 1.5 },
+    pole: { length: 0.3, width: 0.3, height: 4, kerbGap: 0.3 },
   },
   buildingHeight: [6, 24], // m, lowest and highest; the renderer picks per tile
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs

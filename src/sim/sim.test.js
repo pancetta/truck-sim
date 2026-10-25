@@ -311,7 +311,7 @@ describe('Sim: city', () => {
 
     expect(sim.state.collision).toBe(true);
     expect(sim.state.truck.speed).toBe(0);
-    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(4 * TILE + tables.city.kerbGap);
+    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(4 * TILE + tables.city.obstacles.car.kerbGap);
   });
 
   test('driving at an angle past a building corner without touching it does not stop the truck', () => {

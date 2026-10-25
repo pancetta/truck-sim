@@ -47,6 +47,7 @@ function readPixels(image) {
 // Draws Sim state; never writes to it.
 export function createRenderer(canvas, tables, map) {
   const { palette, camera: cam, city } = tables;
+  const kitColours = Object.entries(tables.kitColours);
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -200,7 +201,7 @@ export function createRenderer(canvas, tables, map) {
   function nearestKitColour(r, g, b) {
     let best;
     let bestDistance = Infinity;
-    for (const [name, hex] of Object.entries(tables.kitColours)) {
+    for (const [name, hex] of kitColours) {
       const d = (r - (hex >> 16)) ** 2 + (g - ((hex >> 8) & 255)) ** 2 + (b - (hex & 255)) ** 2;
       if (d < bestDistance) [best, bestDistance] = [name, d];
     }

@@ -15,7 +15,7 @@ export const DIRS = [
 ];
 
 export function parseMap(text, tables) {
-  const { tileSize, kerbGap, obstacles } = tables.city;
+  const { tileSize, obstacles } = tables.city;
   const tiles = text.trim().split('\n').map((line) => line.trim());
   const cols = tiles[0].length;
   const rows = tiles.length;
@@ -46,7 +46,7 @@ export function parseMap(text, tables) {
         const d = DIRS.find(([dc, dr]) => !isRoad(col + dc, row + dr));
         if (!d) throw new Error(`Map obstacle ${t} ${where} needs a kerb (a non-road neighbour)`);
         const kind = OBSTACLES[t];
-        const { length, width } = obstacles[kind];
+        const { length, width, kerbGap } = obstacles[kind];
         const offset = half - kerbGap - width / 2;
         // Long side along the kerb.
         const [hx, hz] = d[0] ? [width / 2, length / 2] : [length / 2, width / 2];
