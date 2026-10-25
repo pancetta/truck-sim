@@ -16,9 +16,24 @@
 
 ## Goal
 
-Browser-based truck simulator, eventually with more
-interactions, longer tasks and routes, more action, and an income/upgrade system. First-person
-driving. Must be fully playable with mouse or finger only (tablets). **This phase: an MVP.**
+Browser-based truck simulator, eventually with more interactions, longer tasks and routes, more
+action, and an income/upgrade system. First-person driving. Must be fully playable with mouse or
+finger only (tablets). **This phase: an MVP.**
+
+## Originality: an independent game, not a clone
+
+Truck driving and delivery are a common genre. This game must stand on its own and must not copy
+any existing game. Carry these rules into the spec:
+- **No borrowed expression:** don't take code, models, textures, sounds, text, UI layout, HUD
+  design or level design from any other truck game, and don't use another game or its
+  screenshots as a visual or design reference.
+- **Assets:** only CC0 (or self-made) assets. Record each asset's source and licence in a
+  `CREDITS.md` file.
+- **Own visual identity:** stylised, flat-shaded low-poly look with our own fixed colour palette
+  (one palette table) and our own dashboard/HUD design. No realistic textures.
+- **Name:** keep the generic working title "Truck Sim". Don't use a name built from another
+  game's title. Choose the final name before the first public release.
+- **Docs and code** don't name other games as inspiration or comparison.
 
 ## Guiding principle: this MVP will be reworked and extended
 
@@ -61,14 +76,15 @@ Expect major rework and extension over time (see "Explicitly deferred"). Impleme
   ~6–8 pickup/drop-off spots. **Empty streets** — no AI traffic; static obstacles only
   (parked cars, poles).
 - **Art:** free CC0 low-poly kit (e.g. Kenney) for roads, buildings, truck; a simple self-built
-  cab interior (dashboard + wheel), since kits lack interiors.
+  cab interior (dashboard + wheel), since kits lack interiors. Recoloured to our own palette
+  (see "Originality").
 - **Sound:** none in the MVP.
 - **UI language:** German only.
 
 ### Platform
 - Landscape tablets (iPad/Android, ~2019+) and desktop Chrome/Firefox/Safari with mouse.
   Phones best-effort only.
-- Hosted as a plain static site (e.g. GitHub Pages). No game-portal SDK.
+- Hosted on GitHub Pages only. No game portals or other publishing is planned, and no portal SDK.
 
 ### Settled in second grill session
 - **Tooling:** Vite + plain JavaScript (ES modules); GitHub Actions workflow deploys `dist/` to Pages.
