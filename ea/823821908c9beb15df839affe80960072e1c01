@@ -1,0 +1,34 @@
+public/models/cars/License.txt
+  s_2370e4050260cc::t_ba462a83c38f62 1-28
+public/models/commercial/License.txt
+  s_2370e4050260cc::t_ba462a83c38f62 1-28
+src/tables.js
+  s_2370e4050260cc::t_47e0d1a15e4177 88
+  s_2370e4050260cc::t_2357d386cf70e1 89,93-105,111-118,121-125
+  s_2370e4050260cc::t_e26c9b914d8c91 119-120
+  s_2370e4050260cc::t_1fc00722ace3ec 126
+public/models/roads/License.txt
+  s_2370e4050260cc::t_ba462a83c38f62 1-28
+src/renderer.js
+  s_2370e4050260cc::t_bf98510ba63e11 2-45,67,69-72,74-86,88-130,132-145,168-192,195-210,212-220
+  s_2370e4050260cc::t_47e0d1a15e4177 55,221,241-243,249-250,294-300,302
+  s_2370e4050260cc::t_2a52e1059bf46d 73,193-194
+CREDITS.md
+  s_2370e4050260cc::t_aecf42d36086d1 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea823821908c9beb15df839affe80960072e1c01",
+  "prompts": {},
+  "sessions": {
+    "s_2370e4050260cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1cc788c-683d-474e-8e29-2bd2b1c534fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
