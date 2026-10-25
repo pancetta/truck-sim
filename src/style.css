@@ -375,8 +375,15 @@ body {
   font-size: 12px;
 }
 
-.dash-rank i {
+.dash-rank div {
   height: 4px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.15);
+}
+
+.dash-rank i {
+  display: block;
+  height: 100%;
   border-radius: 2px;
   background: #6cc551;
   transform-origin: left;
@@ -406,8 +413,9 @@ body {
   position: fixed;
   inset: 0;
   z-index: 3;
-  display: grid;
-  place-items: center;
+  display: flex; /* not grid: the panel's max-height % needs this definite height */
+  align-items: center;
+  justify-content: center;
   background: rgb(0 0 0 / 0.35);
   color: #fff;
   font-variant-numeric: tabular-nums;
@@ -417,11 +425,15 @@ body {
   display: none;
 }
 
+/* Only the list scrolls, so Schließen stays in view on short screens. shortcut: main.js cancels touchstart
+   off buttons, so the list only touch-scrolls from a drag that starts on a Kaufen button; fine while it
+   fits on tablets, revisit if phones matter. */
 .werkstatt-panel {
   box-sizing: border-box;
   width: min(440px, calc(100% - 48px));
   max-height: calc(100% - 48px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   padding: 14px 18px;
   border-radius: 14px;
   background: rgb(40 40 48 / 0.95);
@@ -439,6 +451,8 @@ body {
 }
 
 .werkstatt-panel ul {
+  min-height: 0;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -506,5 +520,11 @@ body {
 @media (max-height: 435px) {
   #minimap {
     display: none;
+  }
+
+  /* Beside the orders button, so it stays clear of the wheel. */
+  .werkstatt-toggle {
+    top: calc(max(24px, env(safe-area-inset-top)) + 60px);
+    left: calc(max(24px, env(safe-area-inset-left)) + 130px);
   }
 }

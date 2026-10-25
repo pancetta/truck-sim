@@ -31,7 +31,8 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
         const level = profile.upgrades[id] ?? 0;
         const next = levels[level];
         const needs = next?.rank > 0 ? ` · ${strings.from} ${tables.rank.tiers[next.rank].title}` : '';
-        const detail = next ? `${effect(id, next)} · ${eur(next.price)}${needs}` : strings.maxLevel;
+        // The effect is the next level's total over the base truck, so it's labelled with that level.
+        const detail = next ? `→ ${strings.level} ${level + 1}: ${effect(id, next)} · ${eur(next.price)}${needs}` : strings.maxLevel;
         return (
           `<li><p><b>${strings.upgrades[id]}</b> ${strings.level} ${level}/${levels.length}<br><small>${detail}</small></p>` +
           (next ? `<button type="button" data-buy="${id}">${strings.buy}</button>` : '') +

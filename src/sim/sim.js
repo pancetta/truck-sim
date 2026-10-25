@@ -197,6 +197,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.profile.money -= next.price;
     state.profile.upgrades[id] = level + 1;
     v = upgradedVehicle();
+    state.offers = []; // the orders panel then asks again, with what the new Ladefläche carries
     return { ok: true, reason: null };
   }
 

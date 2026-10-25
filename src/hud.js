@@ -7,12 +7,13 @@ export function createHud(root, tables, strings) {
     <div class="dash-speed"><b></b><small>${strings.kmh}</small></div>
     <div class="dash-gear" aria-label="${strings.gear}"></div>
     <div class="dash-rpm" aria-label="${strings.rpm}"><i></i><small></small></div>
-    <div class="dash-rank" aria-label="${strings.rank}"><span></span><i></i></div>`;
+    <div class="dash-rank" aria-label="${strings.rank}"><span></span><div><i></i></div></div>`;
   const speed = root.querySelector('.dash-speed b');
   const gear = root.querySelector('.dash-gear');
   const bar = root.querySelector('.dash-rpm i');
   const rpm = root.querySelector('.dash-rpm small');
-  const [rankTitle, rankBar] = root.querySelector('.dash-rank').children;
+  const rankTitle = root.querySelector('.dash-rank span');
+  const rankBar = root.querySelector('.dash-rank i');
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
