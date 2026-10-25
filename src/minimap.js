@@ -45,6 +45,7 @@ export function createMinimap(canvas, map, tables) {
       lctx.strokeText(s.id, x, y + 0.1 * scale);
       lctx.fillText(s.id, x, y + 0.1 * scale);
     }
+    ctx.lineJoin = 'round'; // resizing resets the context; the truck marker's outline needs it without a route too
     drawn = -Infinity; // resizing clears the canvas, so the next update redraws
   }
   resize();
