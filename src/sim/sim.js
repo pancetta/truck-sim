@@ -60,6 +60,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let offersTile = ''; // tile the current offers were made on; their expected times count from there
   const tileKey = () => `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)}`;
   const traffic = map && createTraffic(tables, map, random);
+  let contacts = new Set(); // ids of the AI cars the truck is in contact with
   if (traffic) state.traffic = traffic.cars;
 
   const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
@@ -132,12 +133,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     truck.x += Math.sin(truck.heading) * truck.speed * dt;
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
 
-    // Solid stop, no damage to the truck: undo the move that hit something. Reverse backs a stuck truck off.
+    // Solid stop, no damage to the truck: undo the move that hit something, a wall or a car it wasn't
+    // already touching. Reverse backs a stuck truck off.
     const shed = speedBefore - Math.abs(truck.speed);
-    const blocked = !fits(truck);
+    const met = traffic ? traffic.touching(corners(truck)) : [];
+    const before = met.length ? traffic.touching(corners({ x, z, heading })) : [];
+    const blocked = !fits(truck) || met.some((c) => !before.includes(c));
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
+    if (traffic) touchCars(met);
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     checkRedLight(frontBefore, frontTile());
@@ -173,9 +178,19 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // AI cars as many as the rank tier brings, reacting to the truck where it now stands.
+  // AI cars as many as the rank tier brings, reacting to the truck where it now stands; the ones it is in
+  // contact with stand still.
   function updateTraffic(dt) {
-    traffic?.step(dt, truck, state.lights, tables.rank.tiers[state.rank.tier].traffic);
+    traffic?.step(dt, truck, state.lights, tables.rank.tiers[state.rank.tier].traffic, contacts);
+  }
+
+  // Each new contact with an AI car (`met`: the cars the truck's move touched) costs a fine. A contact lasts
+  // until the truck is `contactGap` clear of the car, so pushing on or nudging it again isn't a new one.
+  function touchCars(met) {
+    const near = traffic.touching(corners(truck, tables.traffic.contactGap));
+    const now = state.traffic.filter((c) => met.includes(c) || (contacts.has(c.id) && near.includes(c)));
+    for (const c of now) if (!contacts.has(c.id)) fine('collision');
+    contacts = new Set(now.map((c) => c.id));
   }
 
   // Tile under the middle of the truck's front bumper.
@@ -381,7 +396,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const poses = map.roads.map(roadPose);
     const away = (p) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
     poses.sort((a, b) => away(a) - away(b));
-    Object.assign(truck, poses.find(fits) ?? poses[0], { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
+    const free = (p) => fits(p) && !traffic.touching(corners(p)).length;
+    Object.assign(truck, poses.find(free) ?? poses[0], { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
     brakeHold = 0;
     updateRoute();
@@ -409,10 +425,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return !map.colliders.some((b) => overlaps(pose, cs, b));
   }
 
-  // Footprint corners; right is (-cos heading, sin heading).
-  function corners({ x, z, heading }) {
+  // Footprint corners, `grow` m larger all round; right is (-cos heading, sin heading).
+  function corners({ x, z, heading }, grow = 0) {
     const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
-    const [l, w] = [v.length / 2, v.width / 2];
+    const [l, w] = [v.length / 2 + grow, v.width / 2 + grow];
     return [[l, w], [l, -w], [-l, -w], [-l, w]].map(([a, b]) => ({ x: x + fx * a - fz * b, z: z + fz * a + fx * b }));
   }
 

@@ -80,4 +80,5 @@ export const strings = {
   resetConfirm: 'Spielstand wirklich zurücksetzen? Geld, Rang und Upgrades gehen verloren.',
   fine: 'Bußgeld',
   redLight: 'Rote Ampel', // a fine reason (state.lastFine.reason)
+  collision: 'Unfall', // a fine reason
 };

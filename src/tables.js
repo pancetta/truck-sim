@@ -140,6 +140,7 @@ export const lights = {
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
   redLight: 100,
+  collision: 150, // the truck touching an AI car, once per contact
 };
 
 // AI cars (sizes from city.obstacles.car). The lane runs `laneOffset` right of the road's centre line, so a
@@ -155,6 +156,8 @@ export const traffic = {
   stopGap: 1.5, // m from the front bumper to the stop line
   sideGap: 0.3, // m each side of a car's path that must stay clear of the car or truck ahead
   lookAhead: 25, // m; also the room a new car needs from the others
+  giveWay: 20, // m from an unsignalled crossing within which a car or the truck waits there for right of way
+  contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)
   despawnDistance: 180, // m from the truck past which a car out of view leaves
 };

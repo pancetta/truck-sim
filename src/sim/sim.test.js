@@ -1486,3 +1486,170 @@ describe('Sim: traffic', () => {
     expect(run(7)).not.toEqual(run(8));
   });
 });
+
+describe('Sim: right of way and collisions', () => {
+  const { stopGap, laneOffset } = tables.traffic;
+  const CAR = tables.city.obstacles.car;
+  // No cars of their own: each test adds the ones it needs.
+  const quiet = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
+  // An unsignalled crossing at (3, 3); the truck is parked out of the way on the lone tile top left.
+  const CROSS = `
+    .######
+    ###.###
+    ###.###
+    .......
+    ###.###
+    ###.###
+    ###.###`;
+  const [NORTH, EAST, SOUTH, WEST] = [0, 1, 2, 3].map((d) => Math.atan2(DIRS[d][0], DIRS[d][1]));
+
+  function crossSim(profile) {
+    const sim = createSim(quiet, parseMap(CROSS, quiet), seeded(1), profile);
+    Object.assign(sim.state.truck, { x: 0.5 * TILE, z: 0.5 * TILE, heading: SOUTH });
+    return sim;
+  }
+
+  // Adds a standing AI car that drives through `tiles` ([col, row] neighbours in order) and on from the
+  // start of the first, entering it towards the second. Then places it with a step that takes no time.
+  function addCar(sim, id, tiles) {
+    const dir = (a, b) => DIRS.findIndex(([dc, dr]) => b[0] - a[0] === dc && b[1] - a[1] === dr);
+    const dirs = tiles.slice(1).map((t, i) => dir(tiles[i], t));
+    const route = tiles.map(([col, row], i) => ({ col, row, from: dirs[Math.max(0, i - 1)], to: dirs[Math.min(i, dirs.length - 1)] }));
+    const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: 0 };
+    sim.state.traffic.push(car);
+    sim.step(0, IDLE);
+    return car;
+  }
+
+  // Straight through the crossing from two tiles out, by the direction of travel.
+  const through = {
+    [NORTH]: [[3, 5], [3, 4], [3, 3], [3, 2], [3, 1]],
+    [WEST]: [[5, 3], [4, 3], [3, 3], [2, 3], [1, 3]],
+    [SOUTH]: [[3, 1], [3, 2], [3, 3], [3, 4], [3, 5]],
+    [EAST]: [[1, 3], [2, 3], [3, 3], [4, 3], [5, 3]],
+  };
+  const inCrossing = (car) => car.lane.col === 3 && car.lane.row === 3;
+  // How far the front bumper of a northbound car is short of the crossing.
+  const shortOfCrossing = (car) => car.z - CAR.length / 2 - 4 * TILE;
+
+  // Steps `seconds`, noting when each car first is in the crossing and the most there at once.
+  function watch(sim, cars, seconds, input = IDLE) {
+    const entered = new Map();
+    let most = 0;
+    for (let t = 0; t < seconds; t += DT) {
+      sim.step(DT, input);
+      const inside = cars.filter((c) => sim.state.traffic.includes(c) && inCrossing(c));
+      for (const c of inside) if (!entered.has(c)) entered.set(c, t);
+      most = Math.max(most, inside.length);
+    }
+    return { entered, most };
+  }
+
+  test('an AI car gives way to a car coming from its right', () => {
+    const sim = crossSim();
+    const a = addCar(sim, 1, through[NORTH]);
+    const b = addCar(sim, 2, through[WEST]); // on a's right, arriving at the same time
+
+    let waited = false;
+    for (let t = 0; t < 8 && !waited; t += DT) {
+      sim.step(DT, IDLE);
+      waited = a.speed === 0 && shortOfCrossing(a) > 0;
+    }
+    expect(waited).toBe(true);
+    expect(shortOfCrossing(a)).toBeCloseTo(stopGap, 1);
+    const { entered, most } = watch(sim, [a, b], 15);
+
+    expect(entered.has(b)).toBe(true);
+    expect(entered.has(a)).toBe(true);
+    expect(entered.get(b)).toBeLessThan(entered.get(a));
+    expect(most).toBe(1);
+  });
+
+  test('an AI car gives way to the truck coming from its right, and goes once the truck is through', () => {
+    const sim = crossSim();
+    // The truck stands on the east arm in its lane, facing the crossing 13 m ahead.
+    Object.assign(sim.state.truck, { x: 4 * TILE + 13 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    const a = addCar(sim, 1, through[NORTH]);
+
+    drive(sim, 10, IDLE);
+    expect(a.speed).toBe(0);
+    expect(shortOfCrossing(a)).toBeCloseTo(stopGap, 1);
+
+    timeUntil(sim, GAS, () => sim.state.truck.x < 2 * TILE, 20);
+    const { entered } = watch(sim, [a], 10, BRAKE);
+
+    expect(entered.has(a)).toBe(true);
+    expect(sim.state.lastFine).toBe(null);
+  });
+
+  test('four cars arriving at once all get through, one at a time', () => {
+    const sim = crossSim();
+    const cars = [NORTH, WEST, SOUTH, EAST].map((h, i) => addCar(sim, i + 1, through[h]));
+
+    const { entered, most } = watch(sim, cars, 40);
+
+    expect(entered.size).toBe(4);
+    expect(most).toBe(1);
+    for (const c of cars) expect(sim.state.traffic.includes(c) && inCrossing(c)).toBe(false);
+  });
+
+  test('driving into an AI car fines once per contact, stops both, floors money at 0 and damages fragile cargo', () => {
+    const glass = { name: 'Glas', weight: 4, fragile: true };
+    const onlyGlass = { ...quiet, orders: { ...quiet.orders, cargo: [glass] } };
+    const profile = { ...freshProfile(), money: 30, rankPoints: tables.rank.tiers[tables.orders.types.fragile].points };
+    // A long north–south lane: A's zone is the tile below A.
+    const sim = createSim(onlyGlass, parseMap(`#A#\n${'#.#\n'.repeat(14)}#B#`, onlyGlass), seeded(1), profile);
+    acceptFrom(sim, 'A');
+    parkAt(sim, 'A');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    expect(sim.state.order).toMatchObject({ type: 'fragile', phase: 'dropoff', damage: 0 });
+
+    // The truck faces south in the northbound lane; a northbound car comes up and stops in front of it.
+    Object.assign(sim.state.truck, { x: 1.5 * TILE + laneOffset, z: 6.5 * TILE, heading: SOUTH });
+    const car = addCar(sim, 1, [[1, 10], [1, 9], [1, 8]]);
+    drive(sim, 15, IDLE);
+    expect(car.speed).toBe(0);
+    expect(sim.state.lastFine).toBe(null);
+
+    let fines = 0;
+    let last = null;
+    let stopped = false;
+    for (let t = 0; t < 4; t += DT) {
+      sim.step(DT, GAS); // into the car, then pushing on against it
+      if (sim.state.lastFine !== last) {
+        [fines, last] = [fines + 1, sim.state.lastFine];
+        stopped = sim.state.truck.speed === 0 && car.speed === 0;
+      }
+    }
+
+    expect(fines).toBe(1);
+    expect(stopped).toBe(true);
+    expect(car.speed).toBe(0);
+    expect(sim.state.lastFine).toEqual({ reason: 'collision', amount: tables.fines.collision });
+    expect(sim.state.profile.money).toBe(0);
+    expect(sim.state.order.damage).toBe(tables.orders.hitDamage);
+
+    // Backing well off and driving into it again is a new contact.
+    drive(sim, 2, BRAKE);
+    drive(sim, 0.5, IDLE);
+    timeUntil(sim, GAS, () => sim.state.lastFine !== last, 10);
+    expect(sim.state.lastFine).not.toBe(last);
+  });
+
+  test('a car turned across the truck’s corner touches it although its box, unturned, would not', () => {
+    // A car whose long side points at the truck's front right corner, its centre 1.4 m out each way: turned
+    // 45° its front reaches 2.25 m along the diagonal, into the truck; unturned its box stays 0.45 m clear.
+    const contact = (heading) => {
+      const sim = crossSim({ ...freshProfile(), money: 500 });
+      const car = addCar(sim, 1, through[NORTH]);
+      const { x, z } = sim.state.truck;
+      Object.assign(car, { x: x - tables.vehicle.width / 2 - 1.4, z: z + tables.vehicle.length / 2 + 1.4, heading });
+      sim.step(DT, IDLE);
+      return sim.state.lastFine;
+    };
+
+    expect(contact(-Math.PI / 4)).toEqual({ reason: 'collision', amount: tables.fines.collision });
+    expect(contact(0)).toBe(null);
+    expect(contact(Math.PI / 2)).toBe(null);
+  });
+});
