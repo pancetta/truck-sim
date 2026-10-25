@@ -6,8 +6,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -32,6 +30,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Deploy rights only here, never while third-party install scripts run in build.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
