@@ -2,7 +2,8 @@
 
 export const vehicle = {
   emptyMass: 8000, // kg
-  // Engine torque (Nm) by RPM, linear in between; zero past the last point (rev limiter).
+  // Engine torque (Nm) by RPM, linear in between; zero past the last point (rev limiter,
+  // also the top of the dashboard RPM gauge).
   torqueCurve: [
     [600, 350],
     [1100, 600],
@@ -11,7 +12,6 @@ export const vehicle = {
     [2500, 0],
   ],
   idleRpm: 600,
-  maxRpm: 2500, // also the top of the dashboard RPM gauge
   gearRatios: [22, 15, 10.5, 7.5, 5.5, 4.2], // overall ratio (gearbox × axle) for gears 1..n
   reverseRatio: 22,
   upshiftRpm: 2000,
@@ -25,7 +25,7 @@ export const vehicle = {
   reverseSpeed: 4, // m/s (~14 km/h) reverse cap
   wheelbase: 5.0, // m
   maxSteerAngle: 0.6, // rad, front wheels at full lock when standing
-  steerFadeSpeed: 10, // m/s at which the steering lock is halved
+  steerFadeSpeed: 8, // m/s at which the steering lock is halved
   rollPerAccel: 0.0025, // rad of body roll per m/s² of lateral acceleration, per tonne of mass
   maxRoll: 0.12, // rad
 };

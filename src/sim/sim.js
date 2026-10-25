@@ -11,15 +11,16 @@ export function createSim(tables) {
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
 
+  const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
+
   // Engine RPM in a gear at the current speed, never below idle.
   function rpmIn(gear) {
-    const ratio = gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1];
+    const ratio = ratioOf(gear);
     return Math.max(v.idleRpm, (Math.abs(truck.speed) * ratio * 60) / (2 * Math.PI * v.wheelRadius));
   }
 
   // Force at the wheels with the throttle fully open, from the torque curve (zero past its end).
   function wheelForce(gear, rpm) {
-    const ratio = gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1];
     const curve = v.torqueCurve;
     let torque = rpm <= curve[0][0] ? curve[0][1] : 0;
     for (let i = 1; i < curve.length; i++) {
@@ -27,7 +28,7 @@ export function createSim(tables) {
       const [r1, t1] = curve[i];
       if (rpm > r0 && rpm <= r1) torque = t0 + ((t1 - t0) * (rpm - r0)) / (r1 - r0);
     }
-    return (torque * ratio) / v.wheelRadius;
+    return (torque * ratioOf(gear)) / v.wheelRadius;
   }
 
   function step(dt, input) {
@@ -68,8 +69,8 @@ export function createSim(tables) {
     truck.speed = Math.abs(truck.speed) <= slow ? 0 : truck.speed - Math.sign(truck.speed) * slow;
     truck.speed = Math.max(-v.reverseSpeed, truck.speed);
 
-    // Bicycle model; positive steer turns right, which lowers the heading. Lock fades with speed.
-    const angle = (input.steer * v.maxSteerAngle) / (1 + Math.abs(truck.speed) / v.steerFadeSpeed);
+    // Bicycle model; positive steer turns right, which lowers the heading. Lock fades with speed².
+    const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / v.steerFadeSpeed) ** 2);
     const yawRate = -(truck.speed / v.wheelbase) * Math.tan(angle);
     truck.heading += yawRate * dt;
     truck.x += Math.sin(truck.heading) * truck.speed * dt;

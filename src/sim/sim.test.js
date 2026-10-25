@@ -123,7 +123,7 @@ describe('Sim: gearbox', () => {
       sim.step(DT, GAS);
       gears.push(sim.state.truck.gear);
       expect(sim.state.truck.rpm).toBeGreaterThanOrEqual(tables.vehicle.idleRpm);
-      expect(sim.state.truck.rpm).toBeLessThanOrEqual(tables.vehicle.maxRpm);
+      expect(sim.state.truck.rpm).toBeLessThanOrEqual(tables.vehicle.torqueCurve.at(-1)[0]);
     }
 
     expect(gears[0]).toBe(1);
@@ -185,11 +185,16 @@ describe('Sim: reverse', () => {
 
   test('a brake tap shorter than the reverse delay never reverses', () => {
     const sim = createSim(tables);
+    const gears = new Set();
     for (let i = 0; i < 5; i++) {
-      drive(sim, reverseDelay / 2, BRAKE);
+      for (let t = 0; t < reverseDelay / 2; t += DT) {
+        sim.step(DT, BRAKE);
+        gears.add(sim.state.truck.gear);
+      }
       drive(sim, 0.2, IDLE);
     }
 
+    expect(gears.has('R')).toBe(false);
     expect(sim.state.truck.speed).toBe(0);
   });
 

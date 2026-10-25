@@ -1,6 +1,7 @@
 // Dashboard overlay: speed, gear and RPM. Reads Sim state; never writes to it.
 export function createHud(root, tables, strings) {
-  const { idleRpm, maxRpm, upshiftRpm } = tables.vehicle;
+  const { idleRpm, upshiftRpm, torqueCurve } = tables.vehicle;
+  const maxRpm = torqueCurve.at(-1)[0];
   root.className = 'dash';
   root.innerHTML = `
     <div class="dash-speed"><b></b><small>${strings.kmh}</small></div>
