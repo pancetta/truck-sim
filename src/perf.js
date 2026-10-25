@@ -20,6 +20,7 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       const t = performance.now();
       const result = call(...args);
       parts[part] += performance.now() - t;
+      if (part === 'sim') steps++;
       return result;
     };
   };
@@ -29,8 +30,6 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
   time(orders, 'update', 'dom');
   time(werkstatt, 'update', 'dom');
   time(minimap, 'update', 'minimap');
-  const step = sim.step;
-  sim.step = (...args) => (steps++, step(...args));
 
   if (auto) {
     const autopilot = createAutopilot(sim, map, tables);
@@ -59,15 +58,16 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
     requestAnimationFrame(tick);
   });
 
-  const box = document.createElement('pre');
+  const box = document.createElement('pre'); // below the goal banner, so manual ?perf driving still shows the goal
   box.style.cssText =
-    'position:fixed;left:30%;top:4px;z-index:99;margin:0;padding:4px 8px;background:#000c;color:#0f0;font:600 12px/1.3 ui-monospace,monospace;pointer-events:none';
+    'position:fixed;left:30%;top:28%;z-index:99;margin:0;padding:4px 8px;background:#000c;color:#0f0;font:600 12px/1.3 ui-monospace,monospace;pointer-events:none';
   document.body.append(box);
   const backend = renderer.isWebGPURenderer
     ? renderer.backend.isWebGPUBackend
       ? 'WebGPU'
       : 'WebGPURenderer on WebGL 2'
     : 'WebGL';
+  const gpu = gpuName(renderer);
   const ms = (x) => x.toFixed(2).padStart(6);
   // The mean stays accurate where the browser coarsens performance.now (Safari: 1 ms); the median doesn't.
   const stats = (row) => {
@@ -86,7 +86,7 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       // WebGPURenderer counts draw calls in drawCalls (its calls is a running total) and programs in memory.
       `calls ${r.drawCalls ?? r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  programs ${renderer.info.programs?.length ?? m.programs}  geometries ${m.geometries}  textures ${m.textures}`,
       `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}`,
-      gpuName(renderer),
+      gpu,
     ].join('\n');
   }, refresh * 1000);
 }
