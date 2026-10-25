@@ -1,0 +1,53 @@
+src/truckLook.js
+  s_2eaf2920ce751e::t_e239fb8a0a25a7 51-65,90,96
+  s_2eaf2920ce751e::t_295ee8de954ba4 89,91
+  s_2eaf2920ce751e::t_b591ac29cd5527 1-5,12-27,30-31,33-34,36-39,41-45,48-50,66-80,82-83,86-88,92-94,97-113,116,118-124,126,128,131-175
+  s_2eaf2920ce751e::t_a0c080f845d674 6-10,28-29,32,35,40,46-47,81,84-85,114-115,117,125,127,129-130
+  s_2eaf2920ce751e::t_bffbe0b722c9ab 11,95
+src/sim/sim.js
+  s_2eaf2920ce751e::t_5a1d5a291b65b8 233-235,249-276,372
+src/tables.js
+  s_2eaf2920ce751e::t_c6edd628441385 152,154-167
+  s_2eaf2920ce751e::t_5a1d5a291b65b8 70-97,207
+  s_2eaf2920ce751e::t_bffbe0b722c9ab 151
+  s_2eaf2920ce751e::t_cb035205fcffcb 153
+src/main.js
+  s_2eaf2920ce751e::t_510cb76e1debe6 84
+src/sim/sim.test.js
+  s_2eaf2920ce751e::t_620c85417e7fce 573-626
+CREDITS.md
+  s_2eaf2920ce751e::t_295ee8de954ba4 16
+src/renderer.js
+  s_2eaf2920ce751e::t_9e7235f49fa469 400
+  s_2eaf2920ce751e::t_86ed9196cb55b2 390
+  s_2eaf2920ce751e::t_c6edd628441385 5,249-250,253-255,260-268,271-297,320,328-330,337-347,352-354,363-364,385-389,391-397,414
+  s_2eaf2920ce751e::t_07174b9ddfa7a9 327,355-357
+src/strings.js
+  s_2eaf2920ce751e::t_5a1d5a291b65b8 35,42-71
+src/style.css
+  s_2eaf2920ce751e::t_510cb76e1debe6 425-426,496-528
+  s_2eaf2920ce751e::t_737f42596c3146 529
+src/werkstatt.js
+  s_2eaf2920ce751e::t_510cb76e1debe6 110-112,114,117-120
+  s_2eaf2920ce751e::t_12f36a738083f5 1-4,11-14,31-40,45-69,85-90,98-109,113,115-116,121-126,140-148
+README.md
+  s_2eaf2920ce751e::t_295ee8de954ba4 24,29,32
+src/save.test.js
+  s_2eaf2920ce751e::t_fa8ae345dfbacc 108-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c3d6bedd856971e2b5f3cd900a859e656069c6f",
+  "prompts": {},
+  "sessions": {
+    "s_2eaf2920ce751e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84c1822c-90ec-4292-aafb-1bcd51672533",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
