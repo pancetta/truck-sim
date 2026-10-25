@@ -1,0 +1,29 @@
+src/style.css
+  s_0f97c9128d80aa::t_a6e54283d46fa5 511-513
+  s_0f97c9128d80aa::t_cbb322516eba77 514-515
+  s_0f97c9128d80aa::t_2ee83543b7c6c4 505
+src/main.js
+  s_0f97c9128d80aa::t_49fd4b6eafe8b3 90
+src/orders.js
+  s_0f97c9128d80aa::t_53b9a0ab6630a6 29-37,70,75
+src/renderer.js
+  s_0f97c9128d80aa::t_1f46aca52bbab9 139-140,146,151,160
+src/sim/sim.test.js
+  s_0f97c9128d80aa::t_e70fda6d72e6e2 789,876-888
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "169e285bc731292fd9f64a55522d917a0692cf88",
+  "prompts": {},
+  "sessions": {
+    "s_0f97c9128d80aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de37ddde-a5c2-4cf9-a581-207faf6f0415",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
