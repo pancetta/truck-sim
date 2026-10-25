@@ -109,7 +109,7 @@ export function createSim(tables, map, random = Math.random) {
       return;
     }
     const from = map.nearestRoad(truck.x, truck.z);
-    const target = spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
+    const target = targetOf(order);
     const key = `${from.col},${from.row},${target.id}`;
     if (key === routeKey) return;
     routeKey = key;
@@ -119,7 +119,7 @@ export function createSim(tables, map, random = Math.random) {
   // Standing still in the active phase's zone fills `progress`; anything else resets it.
   function loadOrUnload(dt) {
     const order = state.order;
-    const { zone } = spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
+    const { zone } = targetOf(order);
     const inZone = truck.x > zone.minX && truck.x < zone.maxX && truck.z > zone.minZ && truck.z < zone.maxZ;
     state.progress = inZone && Math.abs(truck.speed) < v.stopSpeed ? state.progress + dt / o.loadTime : 0;
     if (state.progress < 1) return;
@@ -135,6 +135,7 @@ export function createSim(tables, map, random = Math.random) {
   }
 
   const spot = (id) => map.spots.find((s) => s.id === id);
+  const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
 
   // New offers between distinct spots, paid by the road route length; none while an order is active.
@@ -171,6 +172,7 @@ export function createSim(tables, map, random = Math.random) {
     Object.assign(truck, poses.find(fits) ?? poses[0], { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
     brakeHold = 0;
+    updateRoute();
   }
 
   // Tile centre, heading towards the road neighbour that needs the smallest turn.

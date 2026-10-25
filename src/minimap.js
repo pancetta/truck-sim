@@ -2,7 +2,7 @@
 // the Sim's current route. Reads Sim state each frame; never writes to it.
 export function createMinimap(canvas, map, tables) {
   const { palette } = tables;
-  const { tile, truckSize } = tables.minimap;
+  const { tile, truckSize, outline, routeWidth, spotRadius, labelSize } = tables.minimap;
   const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
   const scale = tile * devicePixelRatio; // canvas px per map tile
   canvas.width = map.cols * scale;
@@ -17,14 +17,14 @@ export function createMinimap(canvas, map, tables) {
   const bctx = base.getContext('2d');
   bctx.fillStyle = hex(palette.pavement);
   for (const { col, row } of map.roads) bctx.fillRect(col * scale, row * scale, scale, scale);
-  bctx.font = `700 ${3 * scale}px system-ui, sans-serif`;
+  bctx.font = `700 ${labelSize * scale}px system-ui, sans-serif`;
   bctx.textAlign = 'center';
   bctx.textBaseline = 'middle';
   for (const s of map.spots) {
     const [x, y] = centre(s.zoneTile);
     bctx.fillStyle = hex(palette.spot);
     bctx.beginPath();
-    bctx.arc(x, y, 1.5 * scale, 0, 2 * Math.PI);
+    bctx.arc(x, y, spotRadius * scale, 0, 2 * Math.PI);
     bctx.fill();
     bctx.fillStyle = hex(palette.light);
     bctx.fillText(s.id, x, y + 0.1 * scale);
@@ -37,11 +37,13 @@ export function createMinimap(canvas, map, tables) {
 
     if (route.length) {
       ctx.strokeStyle = hex(palette[order.phase === 'pickup' ? 'pickup' : 'dropoff']);
-      ctx.lineWidth = scale;
+      ctx.lineWidth = routeWidth * scale;
       ctx.lineJoin = ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(tx, ty);
-      for (const t of route.slice(1)) ctx.lineTo(...centre(t));
+      // Off the road the truck isn't on the route's first tile, so the line goes through it.
+      const onStart = Math.floor(truck.x / map.tileSize) === route[0].col && Math.floor(truck.z / map.tileSize) === route[0].row;
+      for (const t of route.slice(onStart ? 1 : 0)) ctx.lineTo(...centre(t));
       ctx.stroke();
     }
 
@@ -58,7 +60,7 @@ export function createMinimap(canvas, map, tables) {
     ctx.closePath();
     ctx.fillStyle = hex(palette.truckBody);
     ctx.strokeStyle = hex(palette.trim);
-    ctx.lineWidth = 0.4;
+    ctx.lineWidth = outline;
     ctx.fill();
     ctx.stroke();
     ctx.restore();

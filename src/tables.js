@@ -61,6 +61,10 @@ export const city = {
 export const minimap = {
   tile: 3, // CSS px per map tile at full size; the minimap shrinks on short screens
   truckSize: 2, // map tiles from the truck marker's centre to its tip
+  outline: 0.4, // map tiles, truck marker outline
+  routeWidth: 1, // map tiles
+  spotRadius: 2, // map tiles
+  labelSize: 4, // map tiles, spot letter height
 };
 
 export const controls = {

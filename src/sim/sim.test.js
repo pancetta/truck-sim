@@ -568,6 +568,28 @@ describe('Sim: route', () => {
     });
   });
 
+  test('off the road the route starts from the road tile nearest the truck', () => {
+    // Two roads joined on the right, open ground between; the truck starts on the top row facing east.
+    const grid = `
+      A....
+      ,,,,.
+      ,,,,.
+      B....`;
+    const map = parseMap(grid, tables);
+    const sim = createSim(tables, map, seeded(1));
+    const [offer] = sim.requestOffers();
+    sim.acceptOrder(offer.id);
+    timeUntil(sim, { steer: 1, gas: 0.5, brake: 0 }, () => tileUnder(grid, sim) === ',', 10); // right, onto the open ground
+    sim.step(DT, IDLE);
+
+    const { x, z } = sim.state.truck;
+    const away = (t) => ((t.col + 0.5) * TILE - x) ** 2 + ((t.row + 0.5) * TILE - z) ** 2;
+    const nearest = map.roads.reduce((a, b) => (away(b) < away(a) ? b : a));
+    expect(tileUnder(grid, sim)).toBe(',');
+    expect(sim.state.route[0]).toEqual(nearest);
+    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, offer.pickup));
+  });
+
   test('after the truck moves to another tile, the route starts from the new tile', () => {
     const map = parseMap(RING, tables);
     const sim = createSim(tables, map, seeded(1));

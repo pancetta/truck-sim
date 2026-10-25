@@ -35,12 +35,14 @@ export function createOrders(root, sim, map, tables, strings) {
     panel.hidden = true;
   });
 
-  // Offset from the truck to the centre of the route tile where the route first turns, or of its last tile.
-  function nextCorner(route, { x, z }) {
+  // Offset from the truck to the centre of the route tile just past the route's first turn (or its last
+  // tile), so the arrow leans into a turn while the truck is still approaching the junction.
+  function pastNextTurn(route, { x, z }) {
     const step = (i) => `${route[i + 1].col - route[i].col},${route[i + 1].row - route[i].row}`;
     let i = 1;
     while (i < route.length - 1 && step(i) === step(0)) i++;
-    return [(route[i].col + 0.5) * map.tileSize - x, (route[i].row + 0.5) * map.tileSize - z];
+    const t = route[Math.min(i + 1, route.length - 1)];
+    return [(t.col + 0.5) * map.tileSize - x, (t.row + 0.5) * map.tileSize - z];
   }
 
   function update({ money: m, order, offers, progress: p, truck, route }) {
@@ -70,7 +72,7 @@ export function createOrders(root, sim, map, tables, strings) {
       const { zone } = map.spots.find((s) => s.id === target);
       const dx = (zone.minX + zone.maxX) / 2 - truck.x;
       const dz = (zone.minZ + zone.maxZ) / 2 - truck.z;
-      const [ax, az] = route.length > 1 ? nextCorner(route, truck) : [dx, dz];
+      const [ax, az] = route.length > 1 ? pastNextTurn(route, truck) : [dx, dz];
       const ahead = ax * Math.sin(truck.heading) + az * Math.cos(truck.heading);
       const right = -ax * Math.cos(truck.heading) + az * Math.sin(truck.heading);
       arrow.style.transform = `rotate(${Math.atan2(right, ahead)}rad)`;
