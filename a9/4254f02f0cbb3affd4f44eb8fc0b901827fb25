@@ -1,0 +1,38 @@
+src/renderer.js
+  s_0f97c9128d80aa::t_d6b7dadc993c3e 134-135,137-144,146-155,157-166,303-311
+  s_0f97c9128d80aa::t_dd7f2abcdcb95f 136,145,156
+  s_0f97c9128d80aa::t_c3fa19d4ad75eb 312
+src/sim/sim.js
+  s_0f97c9128d80aa::t_c8276cd24adb11 20-21,27-29,39-40,42,69-70,112,120,130-163,281
+src/style.css
+  s_0f97c9128d80aa::t_d6b7dadc993c3e 369-373
+src/sim/sim.test.js
+  s_0f97c9128d80aa::t_3af557fd59d4f5 641-762
+src/orders.js
+  s_0f97c9128d80aa::t_d6b7dadc993c3e 1,10-11,16,28,30,55,60,69-74
+  s_0f97c9128d80aa::t_42e64b3fee8157 75-76
+src/strings.js
+  s_0f97c9128d80aa::t_8053a4b53ef069 23-24
+src/tables.js
+  s_0f97c9128d80aa::t_8053a4b53ef069 53-66,138-143
+src/sim/map.js
+  s_0f97c9128d80aa::t_8b0447786bd8cd 6,9,28-29,59-67,132
+src/city.txt
+  s_0f97c9128d80aa::t_ae9625864d2721 16,30,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a94254f02f0cbb3affd4f44eb8fc0b901827fb25",
+  "prompts": {},
+  "sessions": {
+    "s_0f97c9128d80aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de37ddde-a5c2-4cf9-a581-207faf6f0415",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
