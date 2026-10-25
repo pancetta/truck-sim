@@ -52,9 +52,14 @@ export const orders = {
   hitDamage: 0.2, // per new collision at hitSpeed or faster
   hitSpeed: 1.5, // m/s; slower touches, e.g. while manoeuvring, do no damage
   maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade; heavier is a 'heavy' offer
+  // Dock bonus: a share of the pay when unloading at a dock (city.docks) ends with the truck reversed into the
+  // bay, facing out of it within dockHeading and centred on it within dockCentre.
+  dockBonus: 0.25,
+  dockHeading: 0.2, // rad (~11°)
+  dockCentre: 1, // m either side of the bay's centre line; the painted bay lines show it
   // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
-  // the cargo: fragile if marked so, else heavy above maxCargo, else normal.
-  types: { normal: 0, heavy: 0, fragile: 1 },
+  // the drop-off and the cargo: dock or fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
+  types: { normal: 0, heavy: 0, fragile: 1, dock: 2, fragileDock: 3 },
   cargo: [
     { name: 'Paletten', weight: 6 }, // t
     { name: 'Getränke', weight: 10 },
@@ -73,6 +78,7 @@ export const rank = {
   pointsPerDelivery: 10,
   timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned
   fragilePoints: 10, // extra points for an undamaged fragile delivery, less in proportion to the damage
+  dockPoints: 10, // extra points for a delivery reversed into a dock bay
   tiers: [
     { points: 0, traffic: 8 },
     { points: 30, traffic: 9 },
@@ -155,6 +161,7 @@ export const traffic = {
 
 export const city = {
   tileSize: 14, // m per ASCII map tile; road width
+  docks: ['C', 'F', 'H'], // spots with a loading dock; its bay opens onto the spot's zone
   // m; kerbGap is the space between the obstacle and the tile edge. The road models' pavement
   // is the outer 1.4 m of a road tile: poles stand on it, cars park just past it.
   obstacles: {
@@ -192,6 +199,8 @@ export const camera = {
   cabEye: [0.55, 2.45, 2.75], // driver's eye in truck space (x left, y up, z forward), m
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
   gimmickLook: [0.2, 2.3, 3.55], // where it aims in the Werkstatt to show the cab gimmick
+  rearEye: [0, 3.4, -4.2], // reversing camera above the rear doors, truck space
+  rearLook: [0, 0, -16], // and the point behind the truck it aims at
 };
 
 // The Werkstatt's view: the camera circles the standing truck, aimed so the truck shows beside the panel.

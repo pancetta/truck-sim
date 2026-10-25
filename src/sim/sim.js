@@ -22,9 +22,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
   const base = tables.vehicle;
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
-  // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy' or
-  // 'fragile'. `order` is the active offer plus its phase ('pickup' or 'dropoff'), `elapsed` (s since it was accepted)
-  // and `damage` (0..1, grows only on fragile cargo once loaded); `progress` runs 0..1 while the truck stands in that phase's zone.
+  // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
+  // 'fragile', 'dock' or 'fragileDock'. `order` is the active offer plus its phase ('pickup' or 'dropoff'),
+  // `elapsed` (s since it was accepted) and `damage` (0..1, grows only on fragile cargo once loaded);
+  // `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
   // `lastPayment` ({ amount, lines: [{ label, amount }] }, label a key of strings.payLines) is replaced by a
   // new object on every payment, so the UI can tell each one apart;
@@ -158,7 +159,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // the Fahrwerk slows both.
   function damageCargo(braked, hit) {
     const order = state.order;
-    if (order?.type !== 'fragile' || order.phase !== 'dropoff') return;
+    if (!order?.cargo.fragile || order.phase !== 'dropoff') return;
     const harm = o.brakeDamage * braked + (hit ? o.hitDamage : 0);
     order.damage = Math.min(1, order.damage + harm * (levelOf('suspension')?.factor ?? 1));
   }
@@ -238,18 +239,30 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       ];
       // Damage takes its share of the fragile premium and never more, so the pay never drops below the base.
       let care = 0;
-      if (order.type === 'fragile') {
+      if (order.cargo.fragile) {
         care = 1 - order.damage;
         lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * care * order.pay) });
       }
+      const to = targetOf(order);
+      const docked = to.dock && reversedInto(to);
+      if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
-      const { pointsPerDelivery, timeBonusPoints, fragilePoints } = tables.rank;
-      state.profile.rankPoints += pointsPerDelivery + Math.round(timeBonusPoints * timeShare) + Math.round(fragilePoints * care);
+      const { pointsPerDelivery, timeBonusPoints, fragilePoints, dockPoints } = tables.rank;
+      state.profile.rankPoints +=
+        pointsPerDelivery + Math.round(timeBonusPoints * timeShare) + Math.round(fragilePoints * care) + (docked ? dockPoints : 0);
       state.lastPayment = { amount, lines };
       state.order = null;
       updateRank();
     }
+  }
+
+  // Whether the truck stands reversed into a dock's bay: facing out of it, along the zone side, and on its centre line.
+  function reversedInto({ dir, zone }) {
+    const [dc, dr] = DIRS[dir];
+    const turn = truck.heading - Math.atan2(dc, dr);
+    const [dx, dz] = [truck.x - (zone.minX + zone.maxX) / 2, truck.z - (zone.minZ + zone.maxZ) / 2];
+    return Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) <= o.dockHeading && Math.abs(dx * dr - dz * dc) <= o.dockCentre;
   }
 
   function updateRank() {
@@ -326,11 +339,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const spot = (id) => map.spots.find((s) => s.id === id);
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
-  const typeOf = (cargo) => (cargo.fragile ? 'fragile' : cargo.weight > o.maxCargo ? 'heavy' : 'normal');
+  const typeOf = (cargo, to) =>
+    to?.dock ? (cargo.fragile ? 'fragileDock' : 'dock') : cargo.fragile ? 'fragile' : cargo.weight > o.maxCargo ? 'heavy' : 'normal';
 
   // New offers between distinct spots, paid by the road route length; none while an order is active.
-  // Cargo is only what the Ladefläche carries, of the offer types the rank tier allows. The expected time is
-  // the truck's route to the pickup plus the paid route, at reference speed, plus loading, unloading and slack.
+  // Cargo is only what the Ladefläche carries, and cargo and drop-off make an offer type the rank tier allows.
+  // The expected time is the truck's route to the pickup plus the paid route, at reference speed, plus loading,
+  // unloading and slack.
   function requestOffers() {
     state.offers = [];
     if (state.order) return state.offers;
@@ -340,14 +355,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     for (let i = 0; i < o.offerCount; i++) {
       const cargo = pick(cargoes);
       const from = pick(map.spots);
-      const to = pick(map.spots.filter((s) => s !== from));
-      const path = map.route(from.zoneTile, to.zoneTile);
-      if (!path) continue; // a spot cut off from the road network gets no orders
+      const to = pick(map.spots.filter((s) => s !== from && o.types[typeOf(cargo, s)] <= state.rank.tier));
+      const path = to && map.route(from.zoneTile, to.zoneTile);
+      if (!path) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
       const distance = (path.length - 1) * map.tileSize;
       const pay = Math.round(o.basePay + (o.payPerKm * distance) / 1000);
       const toPickup = ((map.routeFrom(truck.x, truck.z, from.zoneTile)?.length ?? 1) - 1) * map.tileSize;
       const expectedTime = (toPickup + distance) / o.referenceSpeed + 2 * o.loadTime + o.slack;
-      state.offers.push({ id: nextOfferId++, type: typeOf(cargo), cargo, pickup: from.id, dropoff: to.id, distance, pay, expectedTime });
+      state.offers.push({ id: nextOfferId++, type: typeOf(cargo, to), cargo, pickup: from.id, dropoff: to.id, distance, pay, expectedTime });
     }
     return state.offers;
   }

@@ -137,6 +137,28 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
+  // Dock bays, our own boxes: a dock edge (a low dark platform) along the building face, and painted lines on
+  // either side of the bay, as far apart as the docking check allows. They stand a little above the kerb so
+  // they show over the pavement too. The edge isn't solid; the building behind it is.
+  const bayHalf = tables.vehicle.width / 2 + tables.orders.dockCentre;
+  const bayLines = [];
+  const dockEdges = [];
+  for (const { dir, zone } of map.spots.filter((s) => s.dock)) {
+    const [dc, dr] = DIRS[dir];
+    const { x, z } = centre(zone);
+    const [fx, fz] = [x - (dc * ts) / 2, z - (dr * ts) / 2]; // middle of the building face
+    // The box from `out0` to `out1` m out from the face and `side0` to `side1` m across the bay's centre line.
+    const bay = (out0, out1, side0, side1) => {
+      const [x0, x1] = [fx + dc * out0 - dr * side0, fx + dc * out1 - dr * side1];
+      const [z0, z1] = [fz + dr * out0 + dc * side0, fz + dr * out1 + dc * side1];
+      return { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
+    };
+    dockEdges.push({ ...bay(-0.5, 0, -bayHalf - 0.5, bayHalf + 0.5), height: 1.1 });
+    for (const side of [-bayHalf, bayHalf]) bayLines.push(bay(0, 10, side - 0.12, side + 0.12));
+  }
+  addBoxes(palette.dark, dockEdges);
+  addBoxes(palette.stopLine, bayLines, 0.07);
+
   // AI cars: one instanced mesh per kit car with room for the busiest rank tier; a car's id picks its model.
   const maxTraffic = Math.max(...tables.rank.tiers.map((t) => t.traffic));
   const trafficMeshes = carModels.map((model) => {
@@ -395,8 +417,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
       marker.material.color.setHex(order.phase === 'pickup' ? palette.pickup : palette.dropoff);
     }
 
-    // Each view shows one side of the cab: the kit's cab is lower than our interior.
-    const inCab = showroom ? showroom === 'cab' : cabView;
+    // Each view shows one side of the cab: the kit's cab is lower than our interior. In reverse gear the reversing
+    // camera takes over; the chosen view comes back when the gear leaves R.
+    const rear = !showroom && state.truck.gear === 'R';
+    const inCab = showroom ? showroom === 'cab' : cabView && !rear;
     exterior.visible = parts.exterior.visible = !inCab;
     interior.visible = inCab;
     shift(!!showroom);
@@ -407,6 +431,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const a = heading + Math.PI + 0.7 + orbit; // starts behind the truck, off to one side
       camera.position.set(x + Math.sin(a) * radius, height, z + Math.cos(a) * radius);
       camera.lookAt(x, lookHeight, z);
+    } else if (rear) {
+      camera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
+      camera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     } else if (inCab) {
       // Truck-space points, so the camera follows anything that moves the truck.
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye)));

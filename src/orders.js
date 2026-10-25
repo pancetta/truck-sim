@@ -90,7 +90,7 @@ export function createOrders(root, sim, map, tables, strings) {
     if (order) {
       const pickup = order.phase === 'pickup';
       const target = pickup ? order.pickup : order.dropoff;
-      const { zone } = map.spots.find((s) => s.id === target);
+      const { zone, dock } = map.spots.find((s) => s.id === target);
       const dx = (zone.minX + zone.maxX) / 2 - truck.x;
       const dz = (zone.minZ + zone.maxZ) / 2 - truck.z;
       const [ax, az] = route.length > 1 ? pastNextTurn(route, truck) : [dx, dz];
@@ -101,9 +101,9 @@ export function createOrders(root, sim, map, tables, strings) {
       goalText.textContent =
         `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
         `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`;
-      hint.textContent = pickup ? strings.stopToLoad : strings.stopToUnload;
+      hint.textContent = pickup ? strings.stopToLoad : dock ? strings.stopToDock : strings.stopToUnload;
       // The damage meter, while fragile cargo is loaded.
-      damage.hidden = pickup || order.type !== 'fragile';
+      damage.hidden = pickup || !order.cargo.fragile;
       if (!damage.hidden) {
         damageText.textContent = `${strings.offerTypes.fragile} · ${strings.damage} ${Math.round(order.damage * 100)} %`;
         meter.value = order.damage;

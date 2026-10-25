@@ -994,6 +994,121 @@ describe('Sim: fragile cargo', () => {
   });
 });
 
+describe('Sim: docking', () => {
+  const { loadTime, types, dockHeading } = tables.orders;
+  const tierOf = (type) => ({ ...freshProfile(), rankPoints: tables.rank.tiers[types[type]].points });
+  // Spec #12's worked example: base + distance 100 (no pay per km), so the dock line is 25.
+  const example = (docks, cargo = tables.orders.cargo) => ({
+    ...tables,
+    orders: { ...tables.orders, basePay: 100, payPerKm: 0, cargo },
+    city: { ...tables.city, docks },
+  });
+  // The lane (see LANE) with `docks` as loading docks; A's bay faces south, out of A into the lane.
+  const dockSim = (docks = ['A'], profile = tierOf('dock'), cargo) => {
+    const t = example(docks, cargo);
+    return createSim(t, parseMap(LANE, t), seeded(1), profile);
+  };
+  const lineOf = (sim, label) => sim.state.lastPayment.lines.find((l) => l.label === label);
+
+  // Picks up at B, driving into its dead end, then reverses north into A's zone, stops short of the wall (a
+  // hit would harm fragile cargo) and unloads. With `steer`, it swings the rear round on the way, so the truck
+  // ends up crooked. Returns the offer.
+  function reverseIntoA(sim, steer = 0) {
+    const offer = acceptFrom(sim, 'B');
+    parkAt(sim, 'B');
+    drive(sim, loadTime + 0.1, IDLE);
+    if (steer) {
+      timeUntil(sim, BRAKE, () => sim.state.truck.z < 2.3 * TILE, 30);
+      timeUntil(sim, { ...BRAKE, steer }, () => Math.abs(sim.state.truck.heading) > 1.5 * dockHeading, 10);
+    }
+    timeUntil(sim, BRAKE, () => sim.state.truck.z < 1.7 * TILE, 30);
+    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10); // releasing the pedal in reverse brakes
+    expect(sim.state.collision).toBe(false);
+    expect(sim.state.order).toMatchObject({ phase: 'dropoff' });
+    drive(sim, loadTime + 0.1, IDLE);
+    expect(sim.state.order, 'delivered').toBe(null);
+    return offer;
+  }
+
+  function typesOffered(sim) {
+    const seen = new Set();
+    for (let i = 0; i < 100; i++) for (const o of sim.requestOffers()) seen.add(o.type);
+    return seen;
+  }
+
+  test('dock offers go to dock spots, from their rank tier on; fragile + dock from its own', () => {
+    const below = { ...freshProfile(), rankPoints: tables.rank.tiers[types.dock - 1].points };
+    expect(typesOffered(dockSim(['A'], below))).not.toContain('dock');
+    expect(typesOffered(dockSim(['A'], tierOf('dock')))).toContain('dock');
+    expect(typesOffered(dockSim(['A'], tierOf('fragileDock')))).toContain('fragileDock');
+    expect(types.fragileDock).toBeGreaterThan(types.dock);
+    expect(typesOffered(dockSim(['A'], { ...freshProfile(), rankPoints: tables.rank.tiers[types.fragileDock - 1].points }))).not.toContain(
+      'fragileDock',
+    );
+
+    const sim = dockSim(['A'], tierOf('fragileDock'));
+    for (let i = 0; i < 20; i++) {
+      for (const o of sim.requestOffers()) expect(o.type.endsWith('ock')).toBe(o.dropoff === 'A');
+    }
+  });
+
+  test('reversing straight into the bay pays the dock line: +25% of base + distance', () => {
+    const sim = dockSim();
+
+    const offer = reverseIntoA(sim);
+
+    expect(offer.type).toBe('dock');
+    expect(lineOf(sim, 'base').amount).toBe(100);
+    expect(lineOf(sim, 'dock').amount).toBe(25);
+    expect(sim.state.lastPayment.amount).toBe(125 + lineOf(sim, 'time').amount);
+  });
+
+  test('driving into the bay forwards delivers at normal pay, with no dock line', () => {
+    const sim = dockSim(['B']);
+
+    const offer = deliver(sim); // A to B, driving into B's dead end
+
+    expect(offer.type).toBe('dock');
+    expect(sim.state.order).toBe(null);
+    expect(lineOf(sim, 'base').amount).toBe(100);
+    expect(lineOf(sim, 'dock')).toBeUndefined();
+  });
+
+  test('reversing in crooked delivers at normal pay, with no dock line', () => {
+    const sim = dockSim();
+
+    reverseIntoA(sim, 1);
+
+    expect(Math.abs(sim.state.truck.heading)).toBeGreaterThan(dockHeading);
+    expect(lineOf(sim, 'base').amount).toBe(100);
+    expect(lineOf(sim, 'dock')).toBeUndefined();
+  });
+
+  test('a fragile + dock order pays both bonus lines', () => {
+    const glass = { name: 'Glas', weight: 4, fragile: true };
+    const sim = dockSim(['A'], tierOf('fragileDock'), [glass]);
+
+    const offer = reverseIntoA(sim);
+
+    expect(offer.type).toBe('fragileDock');
+    expect(lineOf(sim, 'fragile').amount).toBeGreaterThan(30); // a little damage from braking out of reverse
+    expect(lineOf(sim, 'dock').amount).toBe(25);
+  });
+
+  test('a successful dock adds rank points', () => {
+    const { dockPoints } = tables.rank;
+    // The same drive with A as a plain spot gives the points without the dock.
+    const pallets = [{ name: 'Paletten', weight: 6 }];
+    const plain = dockSim([], tierOf('dock'), pallets);
+    reverseIntoA(plain);
+    const docked = dockSim(['A'], tierOf('dock'), pallets);
+    reverseIntoA(docked);
+
+    expect(dockPoints).toBeGreaterThan(0);
+    expect(docked.state.profile.rankPoints).toBe(plain.state.profile.rankPoints + dockPoints);
+  });
+});
+
 describe('Sim: route', () => {
   // A ring road: A's zone is the tile below A, B's the tile right of B. The truck starts on the top row
   // at column 3, facing east. A's zone is 7 tiles away round the left, 11 round the right; B's 5 and 13.

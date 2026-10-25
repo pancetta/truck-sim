@@ -17,11 +17,12 @@ export const strings = {
   toDropoff: 'Fahrt zur Entladestelle',
   stopToLoad: 'Zum Beladen in der markierten Zone anhalten',
   stopToUnload: 'Zum Entladen in der markierten Zone anhalten',
+  stopToDock: 'Zum Entladen rückwärts und gerade an die Rampe setzen',
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
-  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie' }, // state.lastPayment line labels
-  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich' },
+  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', dock: 'Rampenbonus' }, // state.lastPayment line labels
+  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe' },
   damage: 'Schaden',
   expectedTime: 'Soll-Zeit',
   bonusTime: 'Bonuszeit',
