@@ -15,10 +15,12 @@ export function createSim(tables, map, random = Math.random) {
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: v.emptyMass, gear: 'N', rpm: v.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
   // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
-  const state = { truck, collision: false, money: 0, offers: [], order: null, progress: 0 };
+  // `route` is the shortest road path ({col, row} tiles) from the truck's nearest road tile to that zone.
+  const state = { truck, collision: false, money: 0, offers: [], order: null, progress: 0, route: [] };
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
+  let routeKey = ''; // start tile and target the current route was found for
 
   const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
 
@@ -95,6 +97,23 @@ export function createSim(tables, map, random = Math.random) {
     truck.roll = Math.max(-v.maxRoll, Math.min(v.maxRoll, lean));
 
     if (state.order) loadOrUnload(dt);
+    updateRoute();
+  }
+
+  // Finds the route again only when the truck's road tile or the target changes.
+  function updateRoute() {
+    const order = state.order;
+    if (!order) {
+      state.route = [];
+      routeKey = '';
+      return;
+    }
+    const from = map.nearestRoad(truck.x, truck.z);
+    const target = spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
+    const key = `${from.col},${from.row},${target.id}`;
+    if (key === routeKey) return;
+    routeKey = key;
+    state.route = map.route(from, target.zoneTile) ?? [];
   }
 
   // Standing still in the active phase's zone fills `progress`; anything else resets it.
@@ -141,6 +160,7 @@ export function createSim(tables, map, random = Math.random) {
     if (state.order || !offer) return;
     state.order = { ...offer, phase: 'pickup' };
     state.offers = [];
+    updateRoute();
   }
 
   // Puts the truck on the nearest free road tile, facing along the road, at a standstill in first gear.

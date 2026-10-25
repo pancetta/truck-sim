@@ -82,7 +82,15 @@ export function parseMap(text, tables) {
     return null;
   }
 
-  return { cols, rows, tileSize, isRoad, roads, spots, colliders, route };
+  // The road tile under world position (x, z), or else the road tile whose centre is nearest.
+  function nearestRoad(x, z) {
+    const [col, row] = [Math.floor(x / tileSize), Math.floor(z / tileSize)];
+    if (isRoad(col, row)) return { col, row };
+    const away = (t) => ((t.col + 0.5) * tileSize - x) ** 2 + ((t.row + 0.5) * tileSize - z) ** 2;
+    return roads.reduce((a, b) => (away(b) < away(a) ? b : a));
+  }
+
+  return { cols, rows, tileSize, isRoad, roads, spots, colliders, route, nearestRoad };
 }
 
 function box(x, z, hx, hz) {

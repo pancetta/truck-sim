@@ -58,6 +58,11 @@ export const city = {
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
 };
 
+export const minimap = {
+  tile: 3, // CSS px per map tile at full size; the minimap shrinks on short screens
+  truckSize: 2, // map tiles from the truck marker's centre to its tip
+};
+
 export const controls = {
   wheelLock: 180, // degrees of on-screen wheel turn for full steering
   wheelCentreTime: 0.5, // s for the released wheel to return from full lock to centre

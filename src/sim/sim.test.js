@@ -515,3 +515,69 @@ describe('Sim: orders', () => {
     expect(speedAfterLoadStop(true)).toBeLessThan(speedAfterLoadStop(false) * 0.8);
   });
 });
+
+describe('Sim: route', () => {
+  // A ring road: A's zone is the tile below A, B's the tile right of B. The truck starts on the top row
+  // at column 3, facing east. A's zone is 7 tiles away round the left, 11 round the right; B's 5 and 13.
+  const RING = `
+    .......
+    .#####.
+    .A###B.
+    .......`;
+  const tileOf = (sim) => ({ col: Math.floor(sim.state.truck.x / TILE), row: Math.floor(sim.state.truck.z / TILE) });
+  const zoneOf = (map, id) => map.spots.find((s) => s.id === id).zoneTile;
+
+  test('the route is empty with no active order', () => {
+    const sim = laneSim();
+    sim.requestOffers();
+    drive(sim, 0.5, GAS);
+
+    expect(sim.state.route).toEqual([]);
+  });
+
+  test('before loading the route ends at the pickup, after loading at the drop-off, and empties on delivery', () => {
+    const sim = laneSim();
+    const map = parseMap(LANE, tables);
+    acceptFrom(sim, 'B');
+
+    expect(sim.state.route[0]).toEqual(tileOf(sim));
+    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, 'B'));
+
+    parkAt(sim, 'B');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, 'A'));
+
+    parkAt(sim, 'A');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    expect(sim.state.route).toEqual([]);
+  });
+
+  test('on a known grid the route is a shortest road path from the truck tile', () => {
+    const map = parseMap(RING, tables);
+    const sim = createSim(tables, map, seeded(1));
+    const [offer] = sim.requestOffers();
+    sim.acceptOrder(offer.id);
+    const { route } = sim.state;
+
+    expect(route[0]).toEqual({ col: 3, row: 0 });
+    expect(route.at(-1)).toEqual(zoneOf(map, offer.pickup));
+    expect(route.length).toBe(offer.pickup === 'A' ? 8 : 6);
+    route.slice(1).forEach((t, i) => {
+      expect(map.isRoad(t.col, t.row)).toBe(true);
+      expect(Math.abs(t.col - route[i].col) + Math.abs(t.row - route[i].row)).toBe(1);
+    });
+  });
+
+  test('after the truck moves to another tile, the route starts from the new tile', () => {
+    const map = parseMap(RING, tables);
+    const sim = createSim(tables, map, seeded(1));
+    const [offer] = sim.requestOffers();
+    sim.acceptOrder(offer.id);
+
+    timeUntil(sim, GAS, () => tileOf(sim).col === 4, 10);
+
+    expect(sim.state.route[0]).toEqual({ col: 4, row: 0 });
+    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, offer.pickup));
+    expect(sim.state.route.length).toBe(offer.pickup === 'A' ? 9 : 5); // A: now 8 round the left, 10 round the right
+  });
+});

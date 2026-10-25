@@ -8,6 +8,7 @@ import { createControls } from './controls.js';
 import { createRenderer } from './renderer.js';
 import { createHud } from './hud.js';
 import { createOrders } from './orders.js';
+import { createMinimap } from './minimap.js';
 
 const { step, maxFrame } = tables.loop;
 
@@ -37,6 +38,7 @@ cameraButton.addEventListener('click', view.toggleCamera);
 document.getElementById('controls').append(cameraButton);
 const hud = createHud(document.getElementById('dash'), tables, strings);
 const orders = createOrders(document.getElementById('orders'), sim, map, tables, strings);
+const minimap = createMinimap(document.getElementById('minimap'), map, tables);
 
 const resetButton = document.createElement('button');
 resetButton.type = 'button';
@@ -66,6 +68,7 @@ function frame(now) {
   view.render(sim.state, input);
   hud.update(sim.state);
   orders.update(sim.state);
+  minimap.update(sim.state);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

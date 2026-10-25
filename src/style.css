@@ -362,3 +362,15 @@ body {
   color: #e8c547;
   font-weight: 700;
 }
+
+/* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals. */
+#minimap {
+  position: fixed;
+  top: calc(max(24px, env(safe-area-inset-top)) + 120px);
+  right: max(24px, env(safe-area-inset-right));
+  height: clamp(96px, calc(100% - max(24px, env(safe-area-inset-top)) - 120px - 196px), var(--size));
+  padding: 6px;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.85);
+  pointer-events: none;
+}

@@ -35,7 +35,15 @@ export function createOrders(root, sim, map, tables, strings) {
     panel.hidden = true;
   });
 
-  function update({ money: m, order, offers, progress: p, truck }) {
+  // Offset from the truck to the centre of the route tile where the route first turns, or of its last tile.
+  function nextCorner(route, { x, z }) {
+    const step = (i) => `${route[i + 1].col - route[i].col},${route[i + 1].row - route[i].row}`;
+    let i = 1;
+    while (i < route.length - 1 && step(i) === step(0)) i++;
+    return [(route[i].col + 0.5) * map.tileSize - x, (route[i].row + 0.5) * map.tileSize - z];
+  }
+
+  function update({ money: m, order, offers, progress: p, truck, route }) {
     if (m !== lastMoney) {
       money.textContent = eur(m);
       if (m > lastMoney) {
@@ -53,7 +61,8 @@ export function createOrders(root, sim, map, tables, strings) {
       progress.lastChild.style.transform = `scaleX(${p})`;
     }
 
-    // Where to go: an arrow towards the active zone, turned by the truck's heading, and the straight-line distance.
+    // Where to go: an arrow along the route to its next corner (or the active zone), turned by the truck's
+    // heading, and the straight-line distance to the zone.
     goal.hidden = !order;
     if (order) {
       const pickup = order.phase === 'pickup';
@@ -61,8 +70,9 @@ export function createOrders(root, sim, map, tables, strings) {
       const { zone } = map.spots.find((s) => s.id === target);
       const dx = (zone.minX + zone.maxX) / 2 - truck.x;
       const dz = (zone.minZ + zone.maxZ) / 2 - truck.z;
-      const ahead = dx * Math.sin(truck.heading) + dz * Math.cos(truck.heading);
-      const right = -dx * Math.cos(truck.heading) + dz * Math.sin(truck.heading);
+      const [ax, az] = route.length > 1 ? nextCorner(route, truck) : [dx, dz];
+      const ahead = ax * Math.sin(truck.heading) + az * Math.cos(truck.heading);
+      const right = -ax * Math.cos(truck.heading) + az * Math.sin(truck.heading);
       arrow.style.transform = `rotate(${Math.atan2(right, ahead)}rad)`;
       arrow.style.color = `#${tables.palette[pickup ? 'pickup' : 'dropoff'].toString(16).padStart(6, '0')}`; // the zone marker's colour
       goalText.textContent = `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m`;
