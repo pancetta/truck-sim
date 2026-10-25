@@ -7,6 +7,7 @@ src/sim/sim.test.js
   s_9f127bcc947bff::t_6fb8822b6443f0 4-5,242-296,338-355,357
   s_9f127bcc947bff::t_bd53c10ad9429a 358
   s_9f127bcc947bff::t_19425f2897d4cd 297-336
+  s_9f127bcc947bff::t_822fda7e9886e9 337,356
 src/sim/map.js
   s_9f127bcc947bff::t_8ad707037d93c2 1-9,11-22,24-34,36,38,41,44-51,53-57,59,61-62,65
   s_9f127bcc947bff::t_648ff2756df4bc 37,42-43,52,63-64
@@ -14,12 +15,17 @@ src/sim/map.js
 src/sim/sim.js
   s_9f127bcc947bff::t_19425f2897d4cd 4,8-9,95,104
   s_9f127bcc947bff::t_d1bd695970814d 5,10,14,79,83,85-86,91-92,94,96-97,101-103,105-148,151
+  s_9f127bcc947bff::t_ca3258cf578d8f 84,87,93,98-100
+  s_9f127bcc947bff::t_f59e86084d71cd 149-150
 src/style.css
   s_9f127bcc947bff::t_458b309fc8b72e 88,111,118-122,198
+  s_9f127bcc947bff::t_433a65203136dc 31-32,110,125-127
 src/tables.js
   s_9f127bcc947bff::t_0375caddd64856 31-42,73-78
 src/main.js
   s_9f127bcc947bff::t_458b309fc8b72e 5-6,13-14,16,19
+  s_9f127bcc947bff::t_bb4a01850bb189 28-29,31-33
+  s_9f127bcc947bff::t_433a65203136dc 30
 src/city.txt
   s_9f127bcc947bff::t_b252625b500420 1-59
 ---
