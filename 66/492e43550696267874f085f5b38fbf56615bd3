@@ -1,0 +1,25 @@
+src/hud.js
+  s_542c7b1df26712::t_919c9c7e48a41f 3-4
+src/tables.js
+  s_542c7b1df26712::t_919c9c7e48a41f 5-6,28
+src/sim/sim.js
+  s_542c7b1df26712::t_919c9c7e48a41f 14-15,18,31,72-73
+src/sim/sim.test.js
+  s_542c7b1df26712::t_919c9c7e48a41f 126,188,190-193,197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "66492e43550696267874f085f5b38fbf56615bd3",
+  "prompts": {},
+  "sessions": {
+    "s_542c7b1df26712": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "838aac38-8ee3-49bd-bd52-b852e58d80c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
