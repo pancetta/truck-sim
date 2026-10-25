@@ -1,0 +1,21 @@
+src/sim/sim.test.js
+  s_ac9787cdd4ba14::t_c67f2d30b2ea46 45
+  s_ac9787cdd4ba14::t_0c56fd171f90ef 16-26
+  s_ac9787cdd4ba14::t_2c84929361cec1 34,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e0a405cec1de3dbf7c611535633d55be867f016",
+  "prompts": {},
+  "sessions": {
+    "s_ac9787cdd4ba14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a950bfab-6432-406b-9d50-1a00ec539eb2",
+        "model": "unknown"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
