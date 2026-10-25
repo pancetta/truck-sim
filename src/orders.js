@@ -16,15 +16,14 @@ export function createOrders(root, sim, tables, strings) {
   const offerHtml = (o) =>
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)}</small>` +
     `<strong>${eur(o.pay)}</strong>`;
-  let shown = ''; // what the open panel shows, so it only redraws on a change
+  let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.money;
   money.textContent = eur(lastMoney);
   let paidTimer;
 
   root.querySelector('.orders-toggle').addEventListener('click', () => {
     panel.hidden = !panel.hidden;
-    shown = '';
-    if (!panel.hidden && !sim.state.order && sim.state.offers.length === 0) sim.requestOffers();
+    shown = null;
   });
   panel.addEventListener('click', (e) => {
     const id = e.target.closest('[data-offer]')?.dataset.offer;
@@ -51,8 +50,11 @@ export function createOrders(root, sim, tables, strings) {
       progress.lastChild.style.transform = `scaleX(${p})`;
     }
 
+    if (panel.hidden) return;
+    // Fresh offers whenever the open panel has neither an order nor offers, e.g. right after a delivery.
+    if (!order && offers.length === 0) offers = sim.requestOffers();
     const now = order ? `${order.id} ${order.phase}` : offers.map((o) => o.id).join();
-    if (panel.hidden || now === shown) return;
+    if (now === shown) return;
     shown = now;
     panel.innerHTML = order
       ? `<h2>${strings.activeOrder}</h2><p>${offerHtml(order)}</p>` +
