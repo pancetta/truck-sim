@@ -82,7 +82,7 @@ export const visuals = {
   paintRed: { slot: 'paint', price: 600, body: 'red', cab: 'dark' },
   paintNight: { slot: 'paint', price: 800, body: 'dark', cab: 'orange' },
   liveryNone: { slot: 'livery', price: 0 },
-  liveryStripes: { slot: 'livery', price: 700, design: 'stripes', colours: ['red', 'dark'] },
+  liveryStripes: { slot: 'livery', price: 700, design: 'stripes', colours: ['wall', 'dark'] },
   liveryChevrons: { slot: 'livery', price: 900, design: 'chevrons', colours: ['blue'] },
   liveryChecker: { slot: 'livery', price: 1100, design: 'checker', colours: ['dark', 'wall'] },
   liveryZigzag: { slot: 'livery', price: 1000, design: 'zigzag', colours: ['orange'] },
@@ -162,6 +162,7 @@ export const showroom = {
   height: 4.5, // m above the ground
   lookHeight: 1.4, // m, the point on the truck the camera aims at
   speed: 0.25, // rad/s
+  // shortcut: the circle ignores buildings, so near one a wall fills part of the picture; pull it in if that bothers.
   shift: 0.18, // share of the screen width the picture moves left, clear of the panel
 };
 

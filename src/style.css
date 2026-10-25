@@ -454,7 +454,7 @@ body {
   flex-direction: column;
   padding: 14px 18px;
   border-radius: 14px;
-  background: rgb(40 40 48 / 0.95);
+  background: rgb(40 40 48); /* opaque: the controls under the right edge would show through */
 }
 
 .werkstatt-panel h2 {

@@ -92,7 +92,8 @@ const BUILDERS = {
     const pivot =
       kind === 'dice'
         ? meshes([
-            [lambert(palette.wall), [new THREE.BoxGeometry(0.01, 0.46, 0.01).translate(0, -0.23, 0), ...[0, 1].flatMap((i) => place(pips(size), i))]],
+            [lambert(palette.trim), [new THREE.BoxGeometry(0.008, 0.46, 0.008).translate(0, -0.23, 0)]], // dark, so it doesn't read as a pole outside
+            [lambert(palette.wall), [0, 1].flatMap((i) => place(pips(size), i))],
             [lambert(palette[colour]), [0, 1].flatMap((i) => place([new THREE.BoxGeometry(size, size, size)], i))],
           ])
         : meshes([
