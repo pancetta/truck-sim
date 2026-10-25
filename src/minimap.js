@@ -1,23 +1,27 @@
 // Minimap: the whole city from above, north up (map row 0 at the top), with the spots, the truck and
-// the Sim's current route. Reads Sim state each frame; never writes to it.
+// the Sim's current route. Reads Sim state each frame but redraws only at tables.minimap.rate; never writes to it.
 export function createMinimap(canvas, map, tables) {
   const { palette } = tables;
-  const { tile, truckSize, outline, routeWidth, spotRadius, labelSize } = tables.minimap;
+  const { tile, truckSize, outline, routeWidth, spotRadius, labelSize, rate } = tables.minimap;
   const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
   canvas.style.setProperty('--size', `${map.rows * tile}px`);
   const ctx = canvas.getContext('2d');
   const base = document.createElement('canvas');
   const bctx = base.getContext('2d');
+  const labels = document.createElement('canvas');
+  const lctx = labels.getContext('2d');
   let scale; // canvas px per map tile
   let ratio; // devicePixelRatio the canvases are sized for
+  let drawn = -Infinity; // performance.now() of the last redraw
   const centre = (t) => [(t.col + 0.5) * scale, (t.row + 0.5) * scale];
 
-  // Sizes both canvases for the screen's pixel ratio, which changes with browser zoom or a move to
-  // another screen. Roads, open ground and spot discs never change, so they're drawn once onto `base`.
+  // Sizes the canvases for the screen's pixel ratio, which changes with browser zoom or a move to another
+  // screen. Roads, open ground and spot discs never change, so they're drawn once onto `base`, and the spot
+  // letters, which go over the truck marker, onto `labels`.
   function resize() {
     ratio = devicePixelRatio;
     scale = tile * ratio;
-    [canvas.width, canvas.height] = [base.width, base.height] = [map.cols * scale, map.rows * scale];
+    [canvas.width, canvas.height] = [base.width, base.height] = [labels.width, labels.height] = [map.cols * scale, map.rows * scale];
     bctx.fillStyle = hex(palette.ground);
     for (const { col, row } of map.open) bctx.fillRect(col * scale, row * scale, scale, scale);
     bctx.fillStyle = hex(palette.pavement);
@@ -28,16 +32,28 @@ export function createMinimap(canvas, map, tables) {
       bctx.arc(...centre(s.zoneTile), spotRadius * scale, 0, 2 * Math.PI);
       bctx.fill();
     }
-    // Resizing resets the context, so the label style is set again.
-    ctx.font = `700 ${labelSize * scale}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
+    // Outlined so the letters stay readable on the truck marker.
+    lctx.font = `700 ${labelSize * scale}px system-ui, sans-serif`;
+    lctx.textAlign = 'center';
+    lctx.textBaseline = 'middle';
+    lctx.lineJoin = 'round';
+    lctx.lineWidth = outline * scale;
+    lctx.strokeStyle = hex(palette.trim);
+    lctx.fillStyle = hex(palette.light);
+    for (const s of map.spots) {
+      const [x, y] = centre(s.zoneTile);
+      lctx.strokeText(s.id, x, y + 0.1 * scale);
+      lctx.fillText(s.id, x, y + 0.1 * scale);
+    }
+    drawn = -Infinity; // resizing clears the canvas, so the next update redraws
   }
   resize();
 
   function update({ truck, order, route }) {
     if (devicePixelRatio !== ratio) resize();
+    const now = performance.now();
+    if (now - drawn < 1000 / rate) return;
+    drawn = now;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(base, 0, 0);
     const [tx, ty] = [(truck.x / map.tileSize) * scale, (truck.z / map.tileSize) * scale];
@@ -71,16 +87,7 @@ export function createMinimap(canvas, map, tables) {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-
-    // Spot letters go over the truck marker, outlined so they stay readable on it.
-    ctx.lineWidth = outline * scale;
-    ctx.strokeStyle = hex(palette.trim);
-    ctx.fillStyle = hex(palette.light);
-    for (const s of map.spots) {
-      const [x, y] = centre(s.zoneTile);
-      ctx.strokeText(s.id, x, y + 0.1 * scale);
-      ctx.fillText(s.id, x, y + 0.1 * scale);
-    }
+    ctx.drawImage(labels, 0, 0);
   }
 
   return { update };

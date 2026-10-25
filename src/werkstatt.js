@@ -129,7 +129,7 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
   });
 
   function update({ garageAvailable }) {
-    toggle.disabled = !garageAvailable;
+    if (toggle.disabled === garageAvailable) toggle.disabled = !garageAvailable; // writes only on a change
   }
 
   return {

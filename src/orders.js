@@ -29,6 +29,13 @@ export function createOrders(root, sim, map, tables, strings) {
   let lastPayment = sim.state.lastPayment;
   let lastFine = sim.state.lastFine;
   const timers = new Map();
+  // Writes to the DOM only when a shown value changes, not every frame. It compares with what it last wrote,
+  // since style properties read back normalised (a colour as rgb()).
+  const written = new Map();
+  const set = (target, key, value) => {
+    const last = written.get(target) ?? written.set(target, {}).get(target);
+    if (last[key] !== value) target[key] = last[key] = value;
+  };
 
   // Shows a notice for a few seconds; a new one restarts its time.
   function notify(el, text) {
@@ -78,15 +85,15 @@ export function createOrders(root, sim, map, tables, strings) {
       notify(fined, `${strings.fine}: ${strings[fine.reason]} −${eur(fine.amount)}`);
     }
 
-    progress.hidden = p === 0;
+    set(progress, 'hidden', p === 0);
     if (p > 0) {
-      progress.firstChild.textContent = order.phase === 'pickup' ? strings.loading : strings.unloading;
-      progress.lastChild.style.transform = `scaleX(${p})`;
+      set(progress.firstChild, 'textContent', order.phase === 'pickup' ? strings.loading : strings.unloading);
+      set(progress.lastChild.style, 'transform', `scaleX(${p})`);
     }
 
     // Where to go: an arrow along the route to its next corner (or the active zone), turned by the truck's
     // heading, and the straight-line distance to the zone.
-    goal.hidden = !order;
+    set(goal, 'hidden', !order);
     if (order) {
       const pickup = order.phase === 'pickup';
       const target = pickup ? order.pickup : order.dropoff;
@@ -96,17 +103,20 @@ export function createOrders(root, sim, map, tables, strings) {
       const [ax, az] = route.length > 1 ? pastNextTurn(route, truck) : [dx, dz];
       const ahead = ax * Math.sin(truck.heading) + az * Math.cos(truck.heading);
       const right = -ax * Math.cos(truck.heading) + az * Math.sin(truck.heading);
-      arrow.style.transform = `rotate(${Math.atan2(right, ahead)}rad)`;
-      arrow.style.color = `#${tables.palette[pickup ? 'pickup' : 'dropoff'].toString(16).padStart(6, '0')}`; // the zone marker's colour
-      goalText.textContent =
+      set(arrow.style, 'transform', `rotate(${Math.atan2(right, ahead).toFixed(2)}rad)`);
+      set(arrow.style, 'color', `#${tables.palette[pickup ? 'pickup' : 'dropoff'].toString(16).padStart(6, '0')}`); // the zone marker's colour
+      set(
+        goalText,
+        'textContent',
         `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
-        `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`;
-      hint.textContent = pickup ? strings.stopToLoad : dock ? strings.stopToDock : strings.stopToUnload;
+        `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`,
+      );
+      set(hint, 'textContent', pickup ? strings.stopToLoad : dock ? strings.stopToDock : strings.stopToUnload);
       // The damage meter, while fragile cargo is loaded.
-      damage.hidden = pickup || !order.cargo.fragile;
+      set(damage, 'hidden', pickup || !order.cargo.fragile);
       if (!damage.hidden) {
-        damageText.textContent = `${strings.offerTypes.fragile} · ${strings.damage} ${Math.round(order.damage * 100)} %`;
-        meter.value = order.damage;
+        set(damageText, 'textContent', `${strings.offerTypes.fragile} · ${strings.damage} ${Math.round(order.damage * 100)} %`);
+        set(meter, 'value', order.damage);
       }
     }
 

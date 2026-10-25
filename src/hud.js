@@ -22,6 +22,7 @@ export function createHud(root, tables, strings) {
   };
   let shownBar;
   let shownRank;
+  let shownKm;
 
   function update({ truck, rank, profile }) {
     set(speed, String(Math.round(Math.abs(truck.speed) * 3.6)));
@@ -31,7 +32,8 @@ export function createHud(root, tables, strings) {
     bar.classList.toggle('high', truck.rpm > upshiftRpm);
     set(rpm, `${Math.round(truck.rpm / 50) * 50} ${strings.rpm}`);
     set(rankTitle, rank.title);
-    set(distance, `${Math.floor(profile.distance / 1000).toLocaleString('de-DE')} ${strings.km}`);
+    const km = Math.floor(profile.distance / 1000); // formatted only on a change: toLocaleString is slow
+    if (km !== shownKm) distance.textContent = `${(shownKm = km).toLocaleString('de-DE')} ${strings.km}`;
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
   }
 

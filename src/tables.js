@@ -189,6 +189,7 @@ export const minimap = {
   routeWidth: 1, // map tiles
   spotRadius: 2, // map tiles
   labelSize: 4, // map tiles, spot letter height
+  rate: 15, // Hz, redraws of the truck marker and route; roads, spots and letters are drawn once
 };
 
 export const controls = {
