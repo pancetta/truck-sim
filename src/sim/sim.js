@@ -5,10 +5,16 @@ import { DIRS } from './map.js';
 
 const G = 9.81; // m/s²
 
+// The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and
+// teach save.js to migrate the old one. upgrades: id → level; equipped: slot → visual id.
+export function freshProfile() {
+  return { version: 1, money: 0, rankPoints: 0, upgrades: {}, owned: [], equipped: {} };
+}
+
 // `map` comes from parseMap(); without one the truck drives on an open plane with nothing to hit
 // (and resetToRoad() and requestOffers() have nowhere to go). `random` returns floats in [0, 1);
-// pass a seeded one for repeatable offers.
-export function createSim(tables, map, random = Math.random) {
+// pass a seeded one for repeatable offers. `profile` must already be valid (see save.js); it is copied.
+export function createSim(tables, map, random = Math.random, profile = freshProfile()) {
   const v = tables.vehicle;
   const o = tables.orders;
   // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
@@ -16,7 +22,17 @@ export function createSim(tables, map, random = Math.random) {
   // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
   // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
-  const state = { truck, collision: false, money: 0, offers: [], order: null, progress: 0, route: [] };
+  // `lastPayment` is replaced by a new object on every payment, so the UI can tell each one apart.
+  const state = {
+    truck,
+    collision: false,
+    profile: structuredClone(profile),
+    offers: [],
+    order: null,
+    progress: 0,
+    route: [],
+    lastPayment: null,
+  };
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
@@ -128,7 +144,8 @@ export function createSim(tables, map, random = Math.random) {
       order.phase = 'dropoff';
     } else {
       truck.mass = v.emptyMass;
-      state.money += order.pay;
+      state.profile.money += order.pay;
+      state.lastPayment = { amount: order.pay };
       state.order = null;
     }
   }

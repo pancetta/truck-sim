@@ -377,8 +377,8 @@ const LANE = `
   #.#
   #B#`;
 
-function laneSim(seed = 1) {
-  return createSim(tables, parseMap(LANE, tables), seeded(seed));
+function laneSim(seed = 1, profile) {
+  return createSim(tables, parseMap(LANE, tables), seeded(seed), profile);
 }
 
 function acceptFrom(sim, pickup) {
@@ -391,6 +391,35 @@ function acceptFrom(sim, pickup) {
 function parkAt(sim, id) {
   timeUntil(sim, id === 'B' ? GAS : BRAKE, () => sim.state.collision, 30);
 }
+
+describe('Sim: profile', () => {
+  const profile = { version: 1, money: 500, rankPoints: 7, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
+
+  test('a fresh Sim starts with no money and no payment', () => {
+    const sim = laneSim();
+    expect(sim.state.profile).toMatchObject({ version: 1, money: 0, rankPoints: 0 });
+    expect(sim.state.lastPayment).toBe(null);
+  });
+
+  test('a given profile comes back unchanged, and a delivery adds its pay to its money', () => {
+    const sim = laneSim(1, profile);
+    expect(sim.state.profile).toEqual(profile);
+
+    const offer = acceptFrom(sim, 'A');
+    parkAt(sim, 'A');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    parkAt(sim, 'B');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+
+    expect(sim.state.profile).toEqual({ ...profile, money: 500 + offer.pay });
+    expect(profile.money).toBe(500); // the caller's object is left alone
+  });
+
+  test('the profile round-trips into a new Sim', () => {
+    const sim = laneSim(1, laneSim(1, profile).state.profile);
+    expect(sim.state.profile).toEqual(profile);
+  });
+});
 
 describe('Sim: orders', () => {
   const { loadTime, basePay, payPerKm } = tables.orders;
@@ -495,7 +524,8 @@ describe('Sim: orders', () => {
     parkAt(sim, 'B');
     drive(sim, loadTime + 0.1, IDLE);
 
-    expect(sim.state.money).toBe(offer.pay);
+    expect(sim.state.profile.money).toBe(offer.pay);
+    expect(sim.state.lastPayment).toEqual({ amount: offer.pay });
     expect(sim.state.truck.mass).toBe(emptyMass);
     expect(sim.state.order).toBe(null);
     expect(sim.state.progress).toBe(0);

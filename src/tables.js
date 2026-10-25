@@ -46,6 +46,10 @@ export const orders = {
   ],
 };
 
+// Werkstatt items by id, filled in by the garage tickets; the save module drops ids not listed here.
+export const upgrades = {}; // id → { levels: [...] }
+export const visuals = {}; // id → { slot, ... }
+
 export const city = {
   tileSize: 14, // m per ASCII map tile; road width
   // m; kerbGap is the space between the obstacle and the tile edge. The road models' pavement

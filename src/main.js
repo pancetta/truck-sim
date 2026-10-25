@@ -2,6 +2,7 @@ import './style.css';
 import * as tables from './tables.js';
 import { strings } from './strings.js';
 import { createSim } from './sim/sim.js';
+import { createSave } from './save.js';
 import { parseMap } from './sim/map.js';
 import cityMap from './city.txt?raw';
 import { createControls } from './controls.js';
@@ -23,7 +24,15 @@ document.addEventListener('touchstart', (e) => e.target.closest?.('button') || e
 document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
 const map = parseMap(cityMap, tables);
-const sim = createSim(tables, map);
+let storage = null;
+try {
+  storage = window.localStorage;
+} catch {
+  // storage blocked (e.g. cookies off): the save module then plays unsaved
+}
+const save = createSave(storage, tables);
+const sim = createSim(tables, map, Math.random, save.load());
+let savedProfile = JSON.stringify(sim.state.profile);
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
 const view = createRenderer(document.getElementById('scene'), tables, map);
@@ -69,6 +78,12 @@ function frame(now) {
   hud.update(sim.state);
   orders.update(sim.state);
   minimap.update(sim.state);
+  // Autosave whenever the profile changes (a payment now; fines and purchases later).
+  const profile = JSON.stringify(sim.state.profile);
+  if (profile !== savedProfile) {
+    save.save(sim.state.profile);
+    savedProfile = profile;
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

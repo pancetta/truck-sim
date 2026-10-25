@@ -20,8 +20,9 @@ export function createOrders(root, sim, map, tables, strings) {
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)}</small>` +
     `<strong>${eur(o.pay)}</strong>`;
   let shown = null; // what the open panel shows, so it only redraws on a change
-  let lastMoney = sim.state.money;
+  let lastMoney = sim.state.profile.money;
   money.textContent = eur(lastMoney);
+  let lastPayment = sim.state.lastPayment;
   let paidTimer;
 
   root.querySelector('.orders-toggle').addEventListener('click', () => {
@@ -47,16 +48,18 @@ export function createOrders(root, sim, map, tables, strings) {
     return [(t.col + 0.5) * map.tileSize - x, (t.row + 0.5) * map.tileSize - z];
   }
 
-  function update({ money: m, order, offers, progress: p, truck, route }) {
-    if (m !== lastMoney) {
-      money.textContent = eur(m);
-      if (m > lastMoney) {
-        paid.textContent = `${strings.paid}: +${eur(m - lastMoney)}`;
-        paid.hidden = false;
-        clearTimeout(paidTimer);
-        paidTimer = setTimeout(() => (paid.hidden = true), tables.orders.paidNoticeTime * 1000);
-      }
-      lastMoney = m;
+  function update({ profile, lastPayment: payment, order, offers, progress: p, truck, route }) {
+    if (profile.money !== lastMoney) {
+      lastMoney = profile.money;
+      money.textContent = eur(lastMoney);
+    }
+    // Only payments show the notice; fines and purchases change the money too.
+    if (payment !== lastPayment) {
+      lastPayment = payment;
+      paid.textContent = `${strings.paid}: +${eur(payment.amount)}`;
+      paid.hidden = false;
+      clearTimeout(paidTimer);
+      paidTimer = setTimeout(() => (paid.hidden = true), tables.orders.paidNoticeTime * 1000);
     }
 
     progress.hidden = p === 0;
