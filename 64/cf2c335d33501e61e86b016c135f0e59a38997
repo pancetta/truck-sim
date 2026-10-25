@@ -1,0 +1,26 @@
+src/tables.js
+  s_ac9787cdd4ba14::t_570328effb0044 15
+  s_ac9787cdd4ba14::t_4e7b9c8a578374 29-31
+  s_ac9787cdd4ba14::t_a138968249b8c4 32-33
+src/controls.js
+  s_ac9787cdd4ba14::t_fdcab76cd5c29a 7
+  s_ac9787cdd4ba14::t_f8addeec40e86f 71-73,75-84
+  s_ac9787cdd4ba14::t_5a13354bf73b59 23-24,26,31,34-42,45
+  s_ac9787cdd4ba14::t_11737cf5a67dee 52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64cf2c335d33501e61e86b016c135f0e59a38997",
+  "prompts": {},
+  "sessions": {
+    "s_ac9787cdd4ba14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a950bfab-6432-406b-9d50-1a00ec539eb2",
+        "model": "unknown"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
