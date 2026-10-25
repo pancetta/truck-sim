@@ -1,6 +1,6 @@
 // Parses the ASCII city grid into tiles, spots and solid colliders (spec #1: "Map").
 // Tile (col, row) covers x from col to col + 1 and z from row to row + 1, in tile sizes.
-//   .  road               ,  open ground (drivable, not road)
+//   .  road               ,  open ground (drivable, not road; listed in `open`)
 //   #  building           A–Z  spot: a building whose zone is the road tile beside it
 //   c  parked car, p  pole: a road tile with the obstacle at its kerb
 // The road graph is the grid itself: road tiles are nodes, neighbouring road tiles are edges.
@@ -21,6 +21,7 @@ export function parseMap(text, tables) {
   const rows = tiles.length;
   const isRoad = (col, row) => ROAD.includes(tiles[row]?.[col]);
   const roads = [];
+  const open = [];
   const spots = [];
   const colliders = [];
 
@@ -33,6 +34,7 @@ export function parseMap(text, tables) {
       const where = `at column ${col + 1}, row ${row + 1}`;
 
       if (isRoad(col, row)) roads.push({ col, row });
+      if (t === ',') open.push({ col, row });
       if (t === '#') {
         colliders.push({ kind: 'building', ...box(x, z, half, half) });
       } else if (/[A-Z]/.test(t)) {
@@ -58,39 +60,64 @@ export function parseMap(text, tables) {
   });
   if (roads.length === 0) throw new Error('Map has no road');
 
-  // Shortest road path between two road tiles, both ends included; null if they aren't connected.
-  // Breadth-first search, since every edge is one tile long.
-  function route(from, to) {
-    const key = ({ col, row }) => row * cols + col;
-    const prev = new Map([[key(from), null]]);
-    const queue = [from];
+  const key = ({ col, row }) => row * cols + col;
+
+  // Breadth-first search outwards from the road tile `to` (every edge is one tile long): for each road
+  // tile connected to it, the next tile on a shortest path to `to` and that path's length in tiles.
+  function towards(to) {
+    const next = new Map([[key(to), { tile: null, steps: 0 }]]);
+    const queue = [to];
     for (let i = 0; i < queue.length; i++) {
       const tile = queue[i];
-      if (key(tile) === key(to)) {
-        const path = [];
-        for (let t = tile; t; t = prev.get(key(t))) path.unshift(t);
-        return path;
-      }
+      const steps = next.get(key(tile)).steps + 1;
       for (const [dc, dr] of DIRS) {
-        const next = { col: tile.col + dc, row: tile.row + dr };
-        if (isRoad(next.col, next.row) && !prev.has(key(next))) {
-          prev.set(key(next), tile);
-          queue.push(next);
+        const n = { col: tile.col + dc, row: tile.row + dr };
+        if (isRoad(n.col, n.row) && !next.has(key(n))) {
+          next.set(key(n), { tile, steps });
+          queue.push(n);
         }
       }
     }
-    return null;
+    return next;
   }
 
-  // The road tile under world position (x, z), or else the road tile whose centre is nearest.
-  function nearestRoad(x, z) {
-    const [col, row] = [Math.floor(x / tileSize), Math.floor(z / tileSize)];
-    if (isRoad(col, row)) return { col, row };
-    const away = (t) => ((t.col + 0.5) * tileSize - x) ** 2 + ((t.row + 0.5) * tileSize - z) ** 2;
-    return roads.reduce((a, b) => (away(b) < away(a) ? b : a));
+  function pathFrom(next, from) {
+    if (!next.has(key(from))) return null;
+    const path = [];
+    for (let t = from; t; t = next.get(key(t)).tile) path.push(t);
+    return path;
   }
 
-  return { cols, rows, tileSize, isRoad, roads, spots, colliders, route, nearestRoad };
+  // Shortest road path between two road tiles, both ends included; null if they aren't connected.
+  const route = (from, to) => pathFrom(towards(to), from);
+
+  // Shortest road path to the road tile `to` from the road tile under world position (x, z). Off the road,
+  // it starts from the road tile beside the truck's patch of open ground that makes the trip shortest:
+  // straight across to its centre, then by road. Null if no road reaches `to` from there.
+  // shortcut: "straight across" assumes the open ground is convex (true for the plaza); upgrade if a map
+  // gets an L-shaped open area.
+  function routeFrom(x, z, to) {
+    const next = towards(to);
+    const here = { col: Math.floor(x / tileSize), row: Math.floor(z / tileSize) };
+    if (isRoad(here.col, here.row)) return pathFrom(next, here);
+    const seen = new Set([key(here)]);
+    const patch = [here];
+    const exits = [];
+    for (let i = 0; i < patch.length; i++) {
+      for (const [dc, dr] of DIRS) {
+        const n = { col: patch[i].col + dc, row: patch[i].row + dr };
+        if (seen.has(key(n))) continue;
+        seen.add(key(n));
+        if (isRoad(n.col, n.row)) exits.push(n);
+        else if (tiles[n.row]?.[n.col] === ',') patch.push(n);
+      }
+    }
+    const trip = (t) =>
+      Math.hypot((t.col + 0.5) * tileSize - x, (t.row + 0.5) * tileSize - z) + (next.get(key(t))?.steps ?? Infinity) * tileSize;
+    return exits.length ? pathFrom(next, exits.reduce((a, b) => (trip(b) < trip(a) ? b : a))) : null;
+  }
+
+  return { cols, rows, tileSize, isRoad, roads, open, spots, colliders, route, routeFrom };
 }
 
 function box(x, z, hx, hz) {

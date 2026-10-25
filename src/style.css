@@ -127,13 +127,14 @@ body {
   top: calc(max(24px, env(safe-area-inset-top)) + 60px);
 }
 
-/* Dashboard: speed, gear and RPM, bottom centre between wheel and pedals. */
+/* Dashboard: speed, gear and RPM, bottom centre between wheel and pedals. The pedals take 26 px more
+   than the wheel, so it sits 13 px left of centre, and narrows on phones to keep a 6 px gap to both. */
 .dash {
   position: fixed;
-  left: 50%;
+  left: calc(50% - 13px);
   bottom: max(24px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: 220px;
+  width: min(220px, calc(100% - 446px));
   box-sizing: border-box;
   padding: 10px 14px 12px;
   display: grid;
@@ -238,12 +239,14 @@ body {
   pointer-events: auto;
 }
 
+/* Centred between the orders button (about 160 px from the left edge) and the reset button (about 240 px
+   from the right), so it covers neither. */
 .orders-panel {
   top: max(24px, env(safe-area-inset-top));
-  left: 50%;
+  left: calc(50% - 40px);
   transform: translateX(-50%);
   z-index: 1;
-  width: min(340px, calc(100% - 2 * 200px));
+  width: min(340px, calc(100% - 160px - 240px));
   min-width: 260px;
   max-height: calc(100% - 180px); /* stays clear of the dashboard and pedals */
   overflow-y: auto;

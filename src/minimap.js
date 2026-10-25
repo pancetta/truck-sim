@@ -4,33 +4,40 @@ export function createMinimap(canvas, map, tables) {
   const { palette } = tables;
   const { tile, truckSize, outline, routeWidth, spotRadius, labelSize } = tables.minimap;
   const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
-  const scale = tile * devicePixelRatio; // canvas px per map tile
-  canvas.width = map.cols * scale;
-  canvas.height = map.rows * scale;
   canvas.style.setProperty('--size', `${map.rows * tile}px`);
   const ctx = canvas.getContext('2d');
+  const base = document.createElement('canvas');
+  const bctx = base.getContext('2d');
+  let scale; // canvas px per map tile
+  let ratio; // devicePixelRatio the canvases are sized for
   const centre = (t) => [(t.col + 0.5) * scale, (t.row + 0.5) * scale];
 
-  // Roads and spots never change, so they're drawn once and copied in each frame.
-  const base = document.createElement('canvas');
-  [base.width, base.height] = [canvas.width, canvas.height];
-  const bctx = base.getContext('2d');
-  bctx.fillStyle = hex(palette.pavement);
-  for (const { col, row } of map.roads) bctx.fillRect(col * scale, row * scale, scale, scale);
-  bctx.font = `700 ${labelSize * scale}px system-ui, sans-serif`;
-  bctx.textAlign = 'center';
-  bctx.textBaseline = 'middle';
-  for (const s of map.spots) {
-    const [x, y] = centre(s.zoneTile);
+  // Sizes both canvases for the screen's pixel ratio, which changes with browser zoom or a move to
+  // another screen. Roads, open ground and spot discs never change, so they're drawn once onto `base`.
+  function resize() {
+    ratio = devicePixelRatio;
+    scale = tile * ratio;
+    [canvas.width, canvas.height] = [base.width, base.height] = [map.cols * scale, map.rows * scale];
+    bctx.fillStyle = hex(palette.ground);
+    for (const { col, row } of map.open) bctx.fillRect(col * scale, row * scale, scale, scale);
+    bctx.fillStyle = hex(palette.pavement);
+    for (const { col, row } of map.roads) bctx.fillRect(col * scale, row * scale, scale, scale);
     bctx.fillStyle = hex(palette.spot);
-    bctx.beginPath();
-    bctx.arc(x, y, spotRadius * scale, 0, 2 * Math.PI);
-    bctx.fill();
-    bctx.fillStyle = hex(palette.light);
-    bctx.fillText(s.id, x, y + 0.1 * scale);
+    for (const s of map.spots) {
+      bctx.beginPath();
+      bctx.arc(...centre(s.zoneTile), spotRadius * scale, 0, 2 * Math.PI);
+      bctx.fill();
+    }
+    // Resizing resets the context, so the label style is set again.
+    ctx.font = `700 ${labelSize * scale}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
   }
+  resize();
 
   function update({ truck, order, route }) {
+    if (devicePixelRatio !== ratio) resize();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(base, 0, 0);
     const [tx, ty] = [(truck.x / map.tileSize) * scale, (truck.z / map.tileSize) * scale];
@@ -64,6 +71,16 @@ export function createMinimap(canvas, map, tables) {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
+
+    // Spot letters go over the truck marker, outlined so they stay readable on it.
+    ctx.lineWidth = outline * scale;
+    ctx.strokeStyle = hex(palette.trim);
+    ctx.fillStyle = hex(palette.light);
+    for (const s of map.spots) {
+      const [x, y] = centre(s.zoneTile);
+      ctx.strokeText(s.id, x, y + 0.1 * scale);
+      ctx.fillText(s.id, x, y + 0.1 * scale);
+    }
   }
 
   return { update };

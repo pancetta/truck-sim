@@ -15,7 +15,7 @@ export function createSim(tables, map, random = Math.random) {
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: v.emptyMass, gear: 'N', rpm: v.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
   // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
-  // `route` is the shortest road path ({col, row} tiles) from the truck's nearest road tile to that zone.
+  // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
   const state = { truck, collision: false, money: 0, offers: [], order: null, progress: 0, route: [] };
   let nextOfferId = 1;
   let reversing = false;
@@ -100,7 +100,7 @@ export function createSim(tables, map, random = Math.random) {
     updateRoute();
   }
 
-  // Finds the route again only when the truck's road tile or the target changes.
+  // Finds the route again only when the truck's tile or the target changes.
   function updateRoute() {
     const order = state.order;
     if (!order) {
@@ -108,12 +108,11 @@ export function createSim(tables, map, random = Math.random) {
       routeKey = '';
       return;
     }
-    const from = map.nearestRoad(truck.x, truck.z);
     const target = targetOf(order);
-    const key = `${from.col},${from.row},${target.id}`;
+    const key = `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)},${target.id}`;
     if (key === routeKey) return;
     routeKey = key;
-    state.route = map.route(from, target.zoneTile) ?? [];
+    state.route = map.routeFrom(truck.x, truck.z, target.zoneTile) ?? [];
   }
 
   // Standing still in the active phase's zone fills `progress`; anything else resets it.
