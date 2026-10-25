@@ -71,9 +71,9 @@ export function createRenderer(canvas, tables) {
   resize();
 
   function render(state, input) {
-    const { x, z, heading } = state.truck;
+    const { x, z, heading, roll } = state.truck;
     truck.position.set(x, 0, z);
-    truck.rotation.y = heading;
+    truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
     // Same angle as the on-screen wheel; positive is clockwise from the driver's seat.
     wheel.rotation.z = THREE.MathUtils.degToRad(input.steer * tables.controls.wheelLock);
 

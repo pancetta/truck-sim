@@ -4,6 +4,7 @@ import { strings } from './strings.js';
 import { createSim } from './sim/sim.js';
 import { createControls } from './controls.js';
 import { createRenderer } from './renderer.js';
+import { createHud } from './hud.js';
 
 const { step, maxFrame } = tables.loop;
 
@@ -19,6 +20,7 @@ cameraButton.className = 'camera-toggle';
 cameraButton.textContent = strings.camera;
 cameraButton.addEventListener('click', view.toggleCamera);
 document.getElementById('controls').append(cameraButton);
+const hud = createHud(document.getElementById('dash'), tables, strings);
 
 let last = performance.now();
 let pending = 0;
@@ -39,6 +41,7 @@ function frame(now) {
     pending -= step;
   }
   view.render(sim.state, input);
+  hud.update(sim.state);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

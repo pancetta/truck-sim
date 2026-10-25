@@ -1,12 +1,33 @@
 // All tunables live here (see spec #1: "Tables").
 
 export const vehicle = {
-  engineAccel: 2.0, // m/s² at full gas from standstill
-  topSpeed: 22, // m/s (~80 km/h)
-  brakeDecel: 6.0, // m/s² at full brake
-  rollingDecel: 0.3, // m/s² when coasting
+  emptyMass: 8000, // kg
+  // Engine torque (Nm) by RPM, linear in between; zero past the last point (rev limiter).
+  torqueCurve: [
+    [600, 350],
+    [1100, 600],
+    [1700, 600],
+    [2300, 350],
+    [2500, 0],
+  ],
+  idleRpm: 600,
+  maxRpm: 2500, // also the top of the dashboard RPM gauge
+  gearRatios: [22, 15, 10.5, 7.5, 5.5, 4.2], // overall ratio (gearbox × axle) for gears 1..n
+  reverseRatio: 22,
+  upshiftRpm: 2000,
+  downshiftRpm: 1000,
+  wheelRadius: 0.5, // m
+  brakeForce: 50000, // N at full brake
+  rollingResistance: 0.02, // fraction of the truck's weight
+  drag: 4.2, // N per (m/s)²
+  stopSpeed: 0.1, // m/s; slower than this counts as standing still
+  reverseDelay: 0.5, // s of brake hold at a standstill before reverse engages
+  reverseSpeed: 4, // m/s (~14 km/h) reverse cap
   wheelbase: 5.0, // m
-  maxSteerAngle: 0.6, // rad, front wheels at full lock
+  maxSteerAngle: 0.6, // rad, front wheels at full lock when standing
+  steerFadeSpeed: 10, // m/s at which the steering lock is halved
+  rollPerAccel: 0.0025, // rad of body roll per m/s² of lateral acceleration, per tonne of mass
+  maxRoll: 0.12, // rad
 };
 
 export const controls = {

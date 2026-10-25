@@ -118,4 +118,72 @@ body {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+/* Dashboard: speed, gear and RPM, bottom centre between wheel and pedals. */
+.dash {
+  position: fixed;
+  left: 50%;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: 220px;
+  box-sizing: border-box;
+  padding: 10px 14px 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.85);
+  color: #fff;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-speed b {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.dash-speed small,
+.dash-rpm small {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.dash-gear {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 3px solid #e8c547;
+  border-radius: 50%;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.dash-rpm {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 8px;
+  margin-bottom: 14px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.15);
+}
+
+.dash-rpm i {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: #e8c547;
+  transform-origin: left;
+}
+
+.dash-rpm i.high {
+  background: #d1495b;
+}
+
+.dash-rpm small {
+  position: absolute;
+  top: 10px;
+  right: 0;
 }

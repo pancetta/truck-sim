@@ -5,4 +5,7 @@ export const strings = {
   brake: 'Bremse',
   rotate: 'Bitte Gerät drehen',
   camera: 'Kamera',
+  kmh: 'km/h',
+  gear: 'Gang',
+  rpm: 'U/min',
 };
