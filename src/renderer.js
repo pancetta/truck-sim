@@ -2,14 +2,14 @@ import * as THREE from 'three';
 
 // Draws Sim state; never writes to it.
 export function createRenderer(canvas, tables) {
-  const { palette } = tables;
+  const { palette, camera: cam } = tables;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(palette.sky);
-  scene.add(new THREE.HemisphereLight(0xffffff, palette.ground, 1.2));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+  scene.add(new THREE.HemisphereLight(palette.light, palette.ground, 1.2));
+  const sun = new THREE.DirectionalLight(palette.light, 1.5);
   sun.position.set(30, 60, 20);
   scene.add(sun);
 
@@ -33,7 +33,6 @@ export function createRenderer(canvas, tables) {
   scene.add(truck);
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
-  const behind = new THREE.Vector3();
 
   function resize() {
     const w = window.innerWidth;
@@ -51,9 +50,12 @@ export function createRenderer(canvas, tables) {
     truck.rotation.y = heading;
 
     // Basic chase camera: fixed offset behind and above the truck.
-    behind.set(x - Math.sin(heading) * 14, 6, z - Math.cos(heading) * 14);
-    camera.position.copy(behind);
-    camera.lookAt(x, 2, z);
+    camera.position.set(
+      x - Math.sin(heading) * cam.chaseDistance,
+      cam.chaseHeight,
+      z - Math.cos(heading) * cam.chaseDistance,
+    );
+    camera.lookAt(x, cam.lookHeight, z);
     renderer.render(scene, camera);
   }
 

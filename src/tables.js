@@ -14,7 +14,19 @@ export const controls = {
   wheelCentreTime: 0.5, // s for the released wheel to return from full lock to centre
 };
 
+export const loop = {
+  step: 1 / 60, // s, fixed Sim timestep
+  maxFrame: 0.25, // s; longer frames (e.g. after a stall) are cut so the Sim doesn't fast-forward
+};
+
+export const camera = {
+  chaseDistance: 14, // m behind the truck
+  chaseHeight: 6, // m above the ground
+  lookHeight: 2, // m above the truck's position the camera aims at
+};
+
 export const palette = {
+  light: 0xffffff,
   sky: 0x9fd3e6,
   ground: 0x7fb069,
   grid: 0x5e8c4a,

@@ -5,7 +5,7 @@ import { createSim } from './sim/sim.js';
 import { createControls } from './controls.js';
 import { createRenderer } from './renderer.js';
 
-const STEP = 1 / 60; // fixed Sim timestep, s
+const { step, maxFrame } = tables.loop;
 
 const sim = createSim(tables);
 const controls = createControls(document.getElementById('controls'), tables, strings);
@@ -15,13 +15,13 @@ let last = performance.now();
 let pending = 0;
 
 function frame(now) {
-  const dt = Math.min((now - last) / 1000, 0.25); // don't fast-forward after a stall
+  const dt = Math.min((now - last) / 1000, maxFrame);
   last = now;
   const input = controls.update(dt);
   pending += dt;
-  while (pending >= STEP) {
-    sim.step(STEP, input);
-    pending -= STEP;
+  while (pending >= step) {
+    sim.step(step, input);
+    pending -= step;
   }
   view.render(sim.state);
   requestAnimationFrame(frame);
