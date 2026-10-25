@@ -1,0 +1,19 @@
+src/minimap.js
+  s_4aa82e5171ad8b::t_6bfaa0df7831c4 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bc6c292a78052dd97af2bd79eaa32f532d04f7b9",
+  "prompts": {},
+  "sessions": {
+    "s_4aa82e5171ad8b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89a242b3-42ae-4341-92fe-0ca0c0ee3e19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
