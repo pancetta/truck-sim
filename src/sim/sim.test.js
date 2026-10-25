@@ -403,11 +403,11 @@ function deliver(sim) {
 }
 
 describe('Sim: profile', () => {
-  const profile = { version: 1, money: 500, rankPoints: 7, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
+  const profile = { version: 2, money: 500, rankPoints: 7, distance: 1000, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
 
   test('a fresh Sim starts with no money and no payment', () => {
     const sim = laneSim();
-    expect(sim.state.profile).toMatchObject({ version: 1, money: 0, rankPoints: 0 });
+    expect(sim.state.profile).toMatchObject({ version: 2, money: 0, rankPoints: 0, distance: 0 });
     expect(sim.state.lastPayment).toBe(null);
   });
 
@@ -417,13 +417,53 @@ describe('Sim: profile', () => {
 
     const offer = deliver(sim);
 
-    expect(sim.state.profile).toEqual({ ...profile, money: 500 + offer.pay, rankPoints: 7 + tables.rank.pointsPerDelivery });
+    expect(sim.state.profile).toEqual({
+      ...profile,
+      money: 500 + offer.pay,
+      rankPoints: 7 + tables.rank.pointsPerDelivery,
+      distance: sim.state.profile.distance, // see 'Sim: distance'
+    });
     expect(profile.money).toBe(500); // the caller's object is left alone
   });
 
   test('the profile round-trips into a new Sim', () => {
     const sim = laneSim(1, laneSim(1, profile).state.profile);
     expect(sim.state.profile).toEqual(profile);
+  });
+});
+
+describe('Sim: distance', () => {
+  test('driving forwards, then in reverse, adds both distances to the profile', () => {
+    const sim = createSim(tables);
+    const start = snapshot(sim);
+    drive(sim, 5, GAS);
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+    const forwards = moved(sim, start).forward; // straight, so the path length
+    expect(forwards).toBeGreaterThan(20);
+    expect(sim.state.profile.distance).toBeCloseTo(forwards, 6);
+
+    const stop = snapshot(sim);
+    drive(sim, tables.vehicle.reverseDelay + 3, BRAKE);
+    drive(sim, 3, IDLE);
+    const backwards = -moved(sim, stop).forward;
+    expect(backwards).toBeGreaterThan(2);
+    expect(sim.state.profile.distance).toBeCloseTo(forwards + backwards, 6);
+  });
+
+  test('pushing against a wall adds next to nothing, and resetToRoad() adds nothing', () => {
+    const sim = laneSim(1, { ...freshProfile(), distance: 1000 });
+    parkAt(sim, 'B'); // up against the dead end
+    const blocked = sim.state.profile.distance;
+    expect(blocked).toBeGreaterThan(1000);
+
+    drive(sim, 2, GAS);
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.profile.distance - blocked).toBeLessThan(0.1); // only the creep up to the wall
+
+    const before = sim.state.profile.distance;
+    sim.resetToRoad();
+    sim.resetToRoad();
+    expect(sim.state.profile.distance).toBe(before);
   });
 });
 

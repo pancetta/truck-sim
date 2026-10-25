@@ -1,4 +1,4 @@
-// Dashboard overlay: speed, gear, RPM and rank. Reads Sim state; never writes to it.
+// Dashboard overlay: speed, gear, RPM, rank and total distance. Reads Sim state; never writes to it.
 export function createHud(root, tables, strings) {
   const { idleRpm, upshiftRpm, torqueCurve } = tables.vehicle;
   const maxRpm = torqueCurve.at(-1)[0];
@@ -7,13 +7,15 @@ export function createHud(root, tables, strings) {
     <div class="dash-speed"><b></b><small>${strings.kmh}</small></div>
     <div class="dash-gear" aria-label="${strings.gear}"></div>
     <div class="dash-rpm" aria-label="${strings.rpm}"><i></i><small></small></div>
-    <div class="dash-rank" aria-label="${strings.rank}"><span></span><div><i></i></div></div>`;
+    <div class="dash-rank" aria-label="${strings.rank}"><span></span><small aria-label="${strings.distance}"></small><div><i></i></div></div>`;
   const speed = root.querySelector('.dash-speed b');
   const gear = root.querySelector('.dash-gear');
   const bar = root.querySelector('.dash-rpm i');
   const rpm = root.querySelector('.dash-rpm small');
   const rankTitle = root.querySelector('.dash-rank span');
   const rankBar = root.querySelector('.dash-rank i');
+  const distance = root.querySelector('.dash-rank small');
+  const km = new Intl.NumberFormat('de-DE'); // 1234 → "1.234"
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
@@ -22,7 +24,7 @@ export function createHud(root, tables, strings) {
   let shownBar;
   let shownRank;
 
-  function update({ truck, rank }) {
+  function update({ truck, rank, profile }) {
     set(speed, String(Math.round(Math.abs(truck.speed) * 3.6)));
     set(gear, String(truck.gear));
     const fill = ((truck.rpm - idleRpm) / (maxRpm - idleRpm)).toFixed(2);
@@ -30,6 +32,7 @@ export function createHud(root, tables, strings) {
     bar.classList.toggle('high', truck.rpm > upshiftRpm);
     set(rpm, `${Math.round(truck.rpm / 50) * 50} ${strings.rpm}`);
     set(rankTitle, rank.title);
+    set(distance, `${km.format(Math.floor(profile.distance / 1000))} ${strings.km}`);
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
   }
 

@@ -21,6 +21,8 @@ export const strings = {
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
   rank: 'Rang',
+  km: 'km',
+  distance: 'Gesamtstrecke',
   rankTitles: ['Aushilfsfahrer', 'Kurierfahrer', 'Berufskraftfahrer', 'Fernfahrer', 'Speditionsprofi'],
   werkstatt: 'Werkstatt',
   close: 'Schließen',

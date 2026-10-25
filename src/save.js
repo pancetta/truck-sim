@@ -16,10 +16,12 @@ export function createSave(storage, tables) {
   }
 
   function validate(data) {
-    // No migrations yet: other versions start fresh. Add one here when freshProfile's version goes up.
+    // Migrations, oldest first, then the checks for the current version; any other version starts fresh.
+    if (isObject(data) && data.version === 1) data = { ...data, version: 2, distance: 0 }; // v2 added the odometer
     if (!isObject(data) || data.version !== freshProfile().version) return null;
-    const { money, rankPoints, upgrades, owned, equipped } = data;
-    if (!isAmount(money) || !isAmount(rankPoints) || !isObject(upgrades) || !isObject(equipped)) return null;
+    const { money, rankPoints, distance, upgrades, owned, equipped } = data;
+    if (!isAmount(money) || !isAmount(rankPoints) || !isAmount(distance)) return null;
+    if (!isObject(upgrades) || !isObject(equipped)) return null;
     if (!Array.isArray(owned) || !owned.every((id) => typeof id === 'string')) return null;
 
     const levels = Object.entries(upgrades).filter(([id]) => Object.hasOwn(tables.upgrades, id));
@@ -31,6 +33,7 @@ export function createSave(storage, tables) {
       version: data.version,
       money,
       rankPoints,
+      distance,
       upgrades: Object.fromEntries(levels),
       owned: kept,
       equipped: Object.fromEntries(worn),

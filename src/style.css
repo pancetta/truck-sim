@@ -367,15 +367,22 @@ body {
   font-weight: 700;
 }
 
-/* Rank title and progress to the next tier, under the RPM bar. */
+/* Rank title and total distance, with progress to the next tier, under the RPM bar. */
 .dash-rank {
   grid-column: 1 / -1;
   display: grid;
-  gap: 4px;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
   font-size: 12px;
 }
 
+.dash-rank small {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
 .dash-rank div {
+  grid-column: 1 / -1;
   height: 4px;
   border-radius: 2px;
   background: rgb(255 255 255 / 0.15);

@@ -6,9 +6,9 @@ import { DIRS } from './map.js';
 const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and
-// teach save.js to migrate the old one. upgrades: id → level; equipped: slot → visual id.
+// teach save.js to migrate the old one. distance: m driven in total; upgrades: id → level; equipped: slot → visual id.
 export function freshProfile() {
-  return { version: 1, money: 0, rankPoints: 0, upgrades: {}, owned: [], equipped: {} };
+  return { version: 2, money: 0, rankPoints: 0, distance: 0, upgrades: {}, owned: [], equipped: {} };
 }
 
 // `map` comes from parseMap(); without one the truck drives on an open plane with nothing to hit
@@ -124,6 +124,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     // Solid stop, no damage: undo the move that hit something. Reverse backs a stuck truck off.
     state.collision = !fits(truck);
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
+    state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     checkRedLight(frontBefore, frontTile());
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
