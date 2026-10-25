@@ -3,4 +3,5 @@ export const strings = {
   wheel: 'Lenkrad',
   gas: 'Gas',
   brake: 'Bremse',
+  rotate: 'Bitte Gerät drehen',
 };
