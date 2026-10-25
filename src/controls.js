@@ -20,28 +20,38 @@ export function createControls(root, tables, strings) {
   root.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // Wheel: rotate by dragging around its centre; clockwise steers right.
-  // The first pointer on the wheel owns it until it lifts.
+  // Pointers on the wheel queue up; the first one steers, and when it lifts the next takes over.
   let angle = 0; // degrees
-  let dragPointer = null;
-  let lastPointerAngle = 0;
+  const wheelPointers = [];
+  let lastPointerAngle = null; // null: the next move only sets a fresh starting angle
 
   wheel.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || dragPointer !== null) return;
+    if (e.button !== 0) return;
     wheel.setPointerCapture(e.pointerId);
-    dragPointer = e.pointerId;
-    lastPointerAngle = polar(wheel, e).angle;
+    wheelPointers.push(e.pointerId);
+    if (wheelPointers.length === 1) lastPointerAngle = null;
   });
   wheel.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== dragPointer) return;
+    if (e.pointerId !== wheelPointers[0]) return;
     const { angle: a, nearHub } = polar(wheel, e);
-    const delta = ((a - lastPointerAngle + 540) % 360) - 180; // shortest way round
+    // Near the hub the direction is meaningless, so the wheel neither follows it nor
+    // measures the next move from it.
+    if (nearHub) {
+      lastPointerAngle = null;
+      return;
+    }
+    if (lastPointerAngle !== null) {
+      const delta = ((a - lastPointerAngle + 540) % 360) - 180; // shortest way round
+      angle = Math.max(-wheelLock, Math.min(wheelLock, angle + delta));
+    }
     lastPointerAngle = a;
-    // Near the hub the direction swings wildly, so the wheel doesn't follow it there.
-    if (!nearHub) angle = Math.max(-wheelLock, Math.min(wheelLock, angle + delta));
   });
   for (const type of RELEASE_EVENTS) {
     wheel.addEventListener(type, (e) => {
-      if (e.pointerId === dragPointer) dragPointer = null;
+      const i = wheelPointers.indexOf(e.pointerId);
+      if (i === -1) return;
+      wheelPointers.splice(i, 1);
+      if (i === 0) lastPointerAngle = null;
     });
   }
 
@@ -49,7 +59,7 @@ export function createControls(root, tables, strings) {
   holdPedal(brake, (down) => (input.brake = down ? 1 : 0));
 
   function update(dt) {
-    if (dragPointer === null) {
+    if (wheelPointers.length === 0) {
       const back = (wheelLock / wheelCentreTime) * dt;
       angle = Math.sign(angle) * Math.max(0, Math.abs(angle) - back);
     }
