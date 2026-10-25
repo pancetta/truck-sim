@@ -199,8 +199,10 @@ export const camera = {
   cabEye: [0.55, 2.45, 2.75], // driver's eye in truck space (x left, y up, z forward), m
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
   gimmickLook: [0.2, 2.3, 3.55], // where it aims in the Werkstatt to show the cab gimmick
-  rearEye: [0, 3.4, -4.2], // reversing camera above the rear doors, truck space
-  rearLook: [0, 0, -16], // and the point behind the truck it aims at
+  // Reversing camera on the roof's back edge, inside the footprint so it never ends up in the wall it backs up to,
+  // aimed steeply enough to show the bay right behind the rear doors.
+  rearEye: [0, 3.6, -3.6],
+  rearLook: [0, 0, -10],
 };
 
 // The Werkstatt's view: the camera circles the standing truck, aimed so the truck shows beside the panel.
