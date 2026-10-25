@@ -5,7 +5,7 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="money" aria-label="${strings.money}"></div>
     <button type="button" class="orders-toggle">${strings.orders}</button>
     <div class="orders-panel" hidden></div>
-    <div class="goal" hidden><i>↑</i><span></span><small></small></div>
+    <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
     <div class="notices"><div class="paid" hidden></div><div class="paid fined" hidden></div></div>`;
   const money = root.querySelector('.money');
@@ -14,12 +14,13 @@ export function createOrders(root, sim, map, tables, strings) {
   const paid = root.querySelector('.paid');
   const fined = root.querySelector('.fined');
   const goal = root.querySelector('.goal');
-  const [arrow, goalText, hint] = goal.children;
+  const [arrow, goalText, hint, damage] = goal.children;
+  const [damageText, meter] = damage.children;
   const eur = (n) => `${n.toLocaleString('de-DE')} €`;
   const km = (m) => `${(m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
   const clock = (s) => `${Math.floor(Math.ceil(s) / 60)}:${String(Math.ceil(s) % 60).padStart(2, '0')}`;
   const offerHtml = (o) =>
-    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)} · ` +
+    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t · ${strings.offerTypes[o.type]}<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)} · ` +
     `${strings.expectedTime} ${clock(o.expectedTime)}</small>` +
     `<strong>${eur(o.pay)}</strong>`;
   let shown = null; // what the open panel shows, so it only redraws on a change
@@ -101,6 +102,12 @@ export function createOrders(root, sim, map, tables, strings) {
         `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
         `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`;
       hint.textContent = pickup ? strings.stopToLoad : strings.stopToUnload;
+      // The damage meter, while fragile cargo is loaded.
+      damage.hidden = pickup || order.type !== 'fragile';
+      if (!damage.hidden) {
+        damageText.textContent = `${strings.offerTypes.fragile} · ${strings.damage} ${Math.round(order.damage * 100)} %`;
+        meter.value = order.damage;
+      }
     }
 
     if (panel.hidden) return;

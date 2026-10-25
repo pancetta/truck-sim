@@ -853,6 +853,126 @@ describe('Sim: time bonus', () => {
   });
 });
 
+describe('Sim: fragile cargo', () => {
+  const { loadTime, fragilePremium, maxCargo, types } = tables.orders;
+  const fragileTier = { ...freshProfile(), rankPoints: tables.rank.tiers[types.fragile].points };
+  const glass = { name: 'Glas', weight: 4, fragile: true };
+  // Every offer is fragile, so runs with the same driving carry the same mass.
+  const onlyGlass = { ...tables, orders: { ...tables.orders, cargo: [glass] } };
+  // A long north–south lane: A's zone is the tile below A, room to speed up and brake towards B.
+  const LONG = `#A#\n${'#.#\n'.repeat(14)}#B#`;
+  const longSim = (profile = fragileTier) => createSim(onlyGlass, parseMap(LONG, onlyGlass), seeded(1), profile);
+  // Spec #12's worked example on the time-bonus nook (see 'Sim: time bonus'): base + distance 100, 120 s expected.
+  const example = { ...onlyGlass, orders: { ...onlyGlass.orders, basePay: 100, loadTime: 30, slack: 60, hitDamage: 0.25 } };
+  const nookSim = () => createSim(example, parseMap('A.B', example), seeded(1), fragileTier);
+
+  // Loads a fragile order at A on the long lane; the truck then stands in A's zone facing B.
+  function loadAtA(sim) {
+    acceptFrom(sim, 'A');
+    parkAt(sim, 'A');
+    drive(sim, loadTime + 0.1, IDLE);
+    expect(sim.state.order).toMatchObject({ type: 'fragile', phase: 'dropoff', damage: 0 });
+  }
+
+  function typesOffered(sim) {
+    const seen = new Set();
+    for (let i = 0; i < 100; i++) for (const o of sim.requestOffers()) seen.add(o.type);
+    return seen;
+  }
+
+  test('fragile offers come only from their rank tier, and offers are the same for the same seed', () => {
+    const below = { ...freshProfile(), rankPoints: tables.rank.tiers[types.fragile - 1].points };
+    expect(typesOffered(laneSim(1, below))).toEqual(new Set(['normal']));
+    expect(typesOffered(laneSim(1, fragileTier))).toEqual(new Set(['normal', 'fragile']));
+
+    const offers = laneSim(3, fragileTier).requestOffers();
+    expect(laneSim(3, fragileTier).requestOffers()).toEqual(offers);
+    for (const o of offers) expect(o.type).toBe(o.cargo.fragile ? 'fragile' : 'normal');
+  });
+
+  test('cargo heavier than the base Ladefläche carries is a heavy offer', () => {
+    const sim = laneSim(1, { ...fragileTier, upgrades: { cargoBed: 1 } });
+    for (let i = 0; i < 50; i++) {
+      for (const o of sim.requestOffers()) if (!o.cargo.fragile) expect(o.type).toBe(o.cargo.weight > maxCargo ? 'heavy' : 'normal');
+    }
+    expect(typesOffered(sim)).toEqual(new Set(['normal', 'heavy', 'fragile']));
+  });
+
+  test('hard braking with fragile cargo loaded raises the damage; speeding up and coasting do not', () => {
+    const sim = longSim();
+    loadAtA(sim);
+
+    drive(sim, 4, GAS);
+    drive(sim, 2, IDLE);
+    expect(sim.state.truck.speed).toBeGreaterThan(5);
+    expect(sim.state.order.damage).toBe(0);
+
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+    expect(sim.state.collision).toBe(false);
+    expect(sim.state.order.damage).toBeGreaterThan(0);
+  });
+
+  test('braking before the cargo is loaded does no damage', () => {
+    const sim = longSim();
+    acceptFrom(sim, 'A');
+
+    drive(sim, 3, GAS);
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+
+    expect(sim.state.order.damage).toBe(0);
+  });
+
+  test('a higher Fahrwerk level means less damage for the same braking', () => {
+    function brakingDamage(suspension) {
+      const sim = longSim({ ...fragileTier, upgrades: suspension ? { suspension } : {} });
+      loadAtA(sim);
+      drive(sim, 4, GAS);
+      timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+      return sim.state.order.damage;
+    }
+    const [none, one, three] = [brakingDamage(0), brakingDamage(1), brakingDamage(3)];
+
+    expect(one).toBeLessThan(none);
+    expect(three).toBeLessThan(one);
+    expect(three).toBeGreaterThan(0);
+  });
+
+  test('worked example: one hit with fragile cargo loaded is damage 0.25, and the fragile line is 30 on the 100', () => {
+    const sim = nookSim();
+    sim.acceptOrder(sim.requestOffers()[0].id);
+    drive(sim, 30.1, IDLE); // loaded at 30 s
+
+    timeUntil(sim, GAS, () => sim.state.collision, 10); // into the map edge, still in the zone
+    expect(sim.state.collision).toBe(true);
+    drive(sim, 0.1, IDLE);
+    expect(sim.state.order.damage).toBe(0.25);
+    drive(sim, 31, IDLE);
+
+    expect(sim.state.order).toBe(null);
+    expect(sim.state.lastPayment.lines).toContainEqual({ label: 'base', amount: 100 });
+    expect(sim.state.lastPayment.lines).toContainEqual({ label: 'fragile', amount: 30 });
+  });
+
+  test('an undamaged fragile delivery gets the full premium and the extra rank points', () => {
+    const { pointsPerDelivery, timeBonusPoints, fragilePoints } = tables.rank;
+    const sim = nookSim();
+    sim.acceptOrder(sim.requestOffers()[0].id);
+
+    drive(sim, 61, IDLE); // loaded at 30 s, unloaded at 60 s
+
+    expect(sim.state.lastPayment).toEqual({
+      amount: 165,
+      lines: [
+        { label: 'base', amount: 100 },
+        { label: 'time', amount: 25 },
+        { label: 'fragile', amount: fragilePremium * 100 },
+      ],
+    });
+    expect(fragilePoints).toBeGreaterThan(0);
+    expect(sim.state.profile.rankPoints).toBe(fragileTier.rankPoints + pointsPerDelivery + timeBonusPoints / 2 + fragilePoints);
+  });
+});
+
 describe('Sim: route', () => {
   // A ring road: A's zone is the tile below A, B's the tile right of B. The truck starts on the top row
   // at column 3, facing east. A's zone is 7 tiles away round the left, 11 round the right; B's 5 and 13.

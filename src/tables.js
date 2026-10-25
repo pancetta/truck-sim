@@ -43,11 +43,23 @@ export const orders = {
   timeBonus: 0.5,
   referenceSpeed: 7, // m/s along the road route, for an offer's expected time
   slack: 20, // s added to the expected time, for lights and parking
-  maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade
+  // Fragile cargo, once loaded, takes damage (0..1) from braking harder than hardBrake and from each new hit,
+  // both scaled by the Fahrwerk factor. The premium is a share of the pay, lost in proportion to the damage.
+  // The brake pedal is on or off, so a loaded truck's brake is always hard: damage goes by the speed braked away.
+  fragilePremium: 0.4,
+  hardBrake: 2.5, // m/s² of deceleration; coasting stays well below
+  brakeDamage: 0.005, // per m/s of speed shed while braking hard: ~0.07 for a full stop from 50 km/h
+  hitDamage: 0.2, // per new collision
+  maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade; heavier is a 'heavy' offer
+  // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
+  // the cargo: fragile if marked so, else heavy above maxCargo, else normal.
+  types: { normal: 0, heavy: 0, fragile: 1 },
   cargo: [
     { name: 'Paletten', weight: 6 }, // t
     { name: 'Getränke', weight: 10 },
     { name: 'Möbel', weight: 4 },
+    { name: 'Glas', weight: 5, fragile: true },
+    { name: 'Elektronik', weight: 3, fragile: true },
     { name: 'Stahl', weight: 14 },
     { name: 'Baumaschine', weight: 18 },
     { name: 'Betonteile', weight: 24 },
@@ -58,12 +70,13 @@ export const orders = {
 export const rank = {
   pointsPerDelivery: 10,
   timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned
+  fragilePoints: 10, // extra points for an undamaged fragile delivery, less in proportion to the damage
   tiers: [0, 30, 80, 160, 300].map((points, i) => ({ points, title: strings.rankTitles[i] })),
 };
 
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
 // rank tier that may buy a level. `factor` scales a base vehicle constant: motor the torque curve, brakes
-// brakeForce, tyres steerFadeSpeed, suspension rollPerAccel. cargoBed's `maxCargo` replaces orders.maxCargo.
+// brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and fragile damage. cargoBed's `maxCargo` replaces orders.maxCargo.
 // The save module drops ids not listed here.
 export const upgrades = {
   motor: { levels: [{ price: 1200, rank: 0, factor: 1.15 }, { price: 3000, rank: 1, factor: 1.3 }, { price: 6000, rank: 3, factor: 1.45 }] },

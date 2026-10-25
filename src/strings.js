@@ -20,7 +20,9 @@ export const strings = {
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
-  payLines: { base: 'Grundlohn', time: 'Zeitbonus' }, // state.lastPayment line labels
+  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie' }, // state.lastPayment line labels
+  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich' },
+  damage: 'Schaden',
   expectedTime: 'Soll-Zeit',
   bonusTime: 'Bonuszeit',
   rank: 'Rang',

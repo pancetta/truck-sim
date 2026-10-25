@@ -21,7 +21,7 @@ Every push to `main` runs the *Test and deploy to Pages* workflow (`.github/work
 
 Vite, plain JavaScript (ES modules), Three.js, no backend.
 
-- **Sim** (`src/sim/sim.js`): all game logic: vehicle, collisions, orders, upgrades (`buyUpgrade`), visual items (`buyVisual`, `equipVisual`) and rank, and the **profile** (money and the rest of the progress that persists). It must stay headless: no Three.js, no DOM. It is the main test seam: tests build it with `createSim(tables, map, random, profile?)`, drive it through `step()` and the order and reset commands, and assert only on its state.
+- **Sim** (`src/sim/sim.js`): all game logic: vehicle, collisions, orders (offer types, time bonus, fragile damage), upgrades (`buyUpgrade`), visual items (`buyVisual`, `equipVisual`) and rank, and the **profile** (money and the rest of the progress that persists). It must stay headless: no Three.js, no DOM. It is the main test seam: tests build it with `createSim(tables, map, random, profile?)`, drive it through `step()` and the order and reset commands, and assert only on its state.
 - **Save** (`src/save.js`): loads, saves and resets the profile in one slot per browser. It takes a storage object of the `localStorage` shape, so it is tested with a fake; `load()` always returns a valid profile, migrating saves from older versions.
 - **Map** (`src/sim/map.js`, `src/city.txt`): parses the ASCII city grid into tiles, spots, colliders and the road graph, and answers routes.
 - **Tables** (`src/tables.js`): every tunable (vehicle, orders and pay, cameras, palette, UI sizes) as plain data. Tweak numbers here.
