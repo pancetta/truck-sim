@@ -4,7 +4,7 @@
 export function createSim(tables) {
   const v = tables.vehicle;
   const truck = { x: 0, z: 0, heading: 0, speed: 0 };
-  const state = { truck };
+  const state = { truck }; // read-only for callers: only step() and Sim commands change it
 
   function step(dt, input) {
     // Engine pull fades to zero at top speed.
