@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { createSim } from './sim.js';
 import * as tables from '../tables.js';
+import { parseMap } from './map.js';
+import city from '../city.txt?raw';
 
 const DT = 1 / 60;
 const GAS = { steer: 0, gas: 1, brake: 0 };
@@ -235,5 +237,122 @@ describe('Sim: mass', () => {
     // Positive roll leans the body to the truck's right; a right turn leans it left.
     expect(lean(tables.vehicle.emptyMass)).toBeLessThan(0);
     expect(lean(tables.vehicle.emptyMass * 1.5)).toBeLessThan(lean(tables.vehicle.emptyMass));
+  });
+});
+
+// Test grids use the real tile size; the tile under the truck is read straight from the ASCII.
+const TILE = tables.city.tileSize;
+
+function simOn(grid) {
+  return createSim(tables, parseMap(grid, tables));
+}
+
+function tileUnder(grid, sim) {
+  const rows = grid.trim().split('\n').map((line) => line.trim());
+  return rows[Math.floor(sim.state.truck.z / TILE)][Math.floor(sim.state.truck.x / TILE)];
+}
+
+describe('Sim: city', () => {
+  test('on load the truck stands still on a road tile of the city map', () => {
+    const sim = simOn(city);
+
+    expect(tileUnder(city, sim)).toBe('.');
+    expect(sim.state.truck.speed).toBe(0);
+  });
+
+  test('driving into a building stops the truck outside it and flags the collision', () => {
+    // A north–south lane closed off by buildings; the truck starts facing south (+z).
+    const grid = `
+      ###
+      #.#
+      #.#
+      #.#
+      ###`;
+    const sim = simOn(grid);
+    expect(sim.state.truck.heading).toBeCloseTo(0);
+
+    drive(sim, 1, { steer: 0, gas: 1, brake: 0 });
+    expect(sim.state.collision).toBe(false);
+    drive(sim, 10, { steer: 0, gas: 1, brake: 0 });
+
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.speed).toBe(0);
+    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(4 * TILE);
+  });
+
+  test('driving into the map edge stops the truck inside the map', () => {
+    const grid = `
+      ...
+      ...
+      ...`;
+    const sim = simOn(grid);
+
+    drive(sim, 10, { steer: 0, gas: 1, brake: 0 });
+
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.speed).toBe(0);
+    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(3 * TILE);
+  });
+
+  test('driving into a parked car stops the truck at the car', () => {
+    // The car stands at the north kerb of its tile, across the lane the truck drives down.
+    const grid = `
+      ###
+      ###
+      #.#
+      #,#
+      #c#
+      ###`;
+    const sim = simOn(grid);
+    expect(sim.state.truck.z).toBeCloseTo(2.5 * TILE);
+    expect(sim.state.truck.heading).toBeCloseTo(0);
+
+    drive(sim, 10, { steer: 0, gas: 1, brake: 0 });
+
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.speed).toBe(0);
+    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(4 * TILE + tables.city.kerbGap);
+  });
+
+  test('driving at an angle past a building corner without touching it does not stop the truck', () => {
+    // The truck veers left (+x) towards the lone building, then passes its south-west corner diagonally.
+    const grid = `
+      .,,,,,
+      ,#,,,,
+      ,,,,,,
+      ,,,,,,
+      ,,,,,,
+      ,,,,,,`;
+    const sim = simOn(grid);
+    let hit = false;
+    for (let t = 0; t < 7; t += DT) {
+      sim.step(DT, { steer: t < 2.25 ? -0.5 : 0, gas: 1, brake: 0 });
+      hit ||= sim.state.collision;
+    }
+
+    expect(hit).toBe(false);
+    expect(sim.state.truck.z).toBeGreaterThan(2 * TILE);
+  });
+
+  test('resetToRoad() from off-road puts the truck on the nearest road, along it, stopped in first gear', () => {
+    // A north–south road with open ground to the east.
+    const grid = `
+      .,,,,
+      .,,,,
+      .,,,,
+      .,,,,`;
+    const sim = simOn(grid);
+    for (let t = 0; t < 10 && tileUnder(grid, sim) !== ','; t += DT) {
+      sim.step(DT, { steer: -1, gas: 1, brake: 0 }); // steer left, towards +x
+    }
+    expect(tileUnder(grid, sim)).toBe(',');
+
+    sim.resetToRoad();
+
+    expect(tileUnder(grid, sim)).toBe('.');
+    expect(sim.state.truck.x).toBeCloseTo(TILE / 2);
+    expect(Math.sin(sim.state.truck.heading)).toBeCloseTo(0); // facing north or south
+    expect(sim.state.truck.speed).toBe(0);
+    expect(sim.state.truck.gear).toBe(1);
   });
 });

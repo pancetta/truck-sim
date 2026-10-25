@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
 // Draws Sim state; never writes to it.
-export function createRenderer(canvas, tables) {
-  const { palette, camera: cam } = tables;
+export function createRenderer(canvas, tables, map) {
+  const { palette, camera: cam, city } = tables;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -19,9 +19,32 @@ export function createRenderer(canvas, tables) {
   );
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
-  const grid = new THREE.GridHelper(2000, 200, palette.grid, palette.grid);
-  grid.position.y = 0.01;
-  scene.add(grid);
+
+  // City from the parsed map, as placeholder boxes until the art ticket.
+  const ts = map.tileSize;
+  const roads = map.roads.map(({ col, row }) => ({ minX: col * ts, maxX: (col + 1) * ts, minZ: row * ts, maxZ: (row + 1) * ts }));
+  const solids = (kind) => map.colliders.filter((b) => b.kind === kind);
+  const [low, high] = city.buildingHeight;
+  // Stable pseudo-random height per tile.
+  const towers = (b) => ({ ...b, height: low + (high - low) * Math.abs(Math.sin(b.minX * 12.9898 + b.minZ * 78.233)) });
+  addBoxes(palette.road, roads, 0.02);
+  addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
+  addBoxes(palette.building, solids('building').map(towers));
+  addBoxes(palette.spot, solids('spot').map(towers));
+  addBoxes(palette.car, solids('car'), city.obstacles.car.height);
+  addBoxes(palette.pole, solids('pole'), city.obstacles.pole.height);
+
+  // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.
+  function addBoxes(color, boxes, height) {
+    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color }), boxes.length);
+    const m = new THREE.Matrix4();
+    boxes.forEach((b, i) => {
+      const h = b.height ?? height;
+      m.makeScale(b.maxX - b.minX, h, b.maxZ - b.minZ).setPosition((b.minX + b.maxX) / 2, h / 2, (b.minZ + b.maxZ) / 2);
+      mesh.setMatrixAt(i, m);
+    });
+    scene.add(mesh);
+  }
 
   // Placeholder truck: cargo box with the cab at the front (+z).
   const truck = new THREE.Group();

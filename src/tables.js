@@ -28,6 +28,18 @@ export const vehicle = {
   steerFadeSpeed: 8, // m/s at which the steering lock is halved
   rollPerAccel: 0.0025, // rad of body roll per m/s² of lateral acceleration, per tonne of mass
   maxRoll: 0.12, // rad
+  length: 8, // m, footprint for collisions, centred on the truck's position
+  width: 2.5, // m
+};
+
+export const city = {
+  tileSize: 14, // m per ASCII map tile; road width
+  kerbGap: 0.3, // m between a parked car or pole and the kerb
+  obstacles: {
+    car: { length: 4.5, width: 1.9, height: 1.5 }, // m
+    pole: { length: 0.3, width: 0.3, height: 4 }, // m
+  },
+  buildingHeight: [6, 24], // m, lowest and highest; the renderer picks per tile
 };
 
 export const controls = {
@@ -58,7 +70,12 @@ export const palette = {
   light: 0xffffff,
   sky: 0x9fd3e6,
   ground: 0x7fb069,
-  grid: 0x5e8c4a,
+  road: 0x5a5f66,
+  building: 0xd9cbb4,
+  spot: 0x4f86c6,
+  zone: 0x8fc1f0,
+  car: 0x3d6b8c,
+  pole: 0x2e2e2e,
   truckBody: 0xe8c547,
   truckCab: 0xd1495b,
   dashboard: 0x3b4252,

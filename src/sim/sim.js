@@ -1,13 +1,17 @@
 // Headless game simulation. Must not import Three.js or touch the DOM.
 // Heading 0 faces +z; forward is (sin heading, cos heading) in the x/z plane.
 
+import { DIRS } from './map.js';
+
 const G = 9.81; // m/s²
 
-export function createSim(tables) {
+// `map` comes from parseMap(); without one the truck drives on an open plane with nothing to hit
+// (and resetToRoad() has nowhere to go).
+export function createSim(tables, map) {
   const v = tables.vehicle;
   // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: v.emptyMass, gear: 'N', rpm: v.idleRpm, roll: 0 };
-  const state = { truck }; // read-only for callers: only step() and Sim commands change it
+  const state = { truck, collision: false }; // read-only for callers: only step() and Sim commands change it
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
 
@@ -72,14 +76,77 @@ export function createSim(tables) {
     // Bicycle model; positive steer turns right, which lowers the heading. Lock fades with speed².
     const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / v.steerFadeSpeed) ** 2);
     const yawRate = -(truck.speed / v.wheelbase) * Math.tan(angle);
+    const { x, z, heading } = truck;
     truck.heading += yawRate * dt;
     truck.x += Math.sin(truck.heading) * truck.speed * dt;
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
+
+    // Solid stop, no damage: undo the move that hit something. Reverse backs a stuck truck off.
+    state.collision = !fits(truck);
+    if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
     truck.roll = Math.max(-v.maxRoll, Math.min(v.maxRoll, lean));
   }
 
-  return { state, step };
+  // Puts the truck on the nearest free road tile, facing along the road, at a standstill in first gear.
+  function resetToRoad() {
+    const poses = map.roads.map(roadPose);
+    const away = (p) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
+    poses.sort((a, b) => away(a) - away(b));
+    Object.assign(truck, poses.find(fits) ?? poses[0], { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
+    reversing = false;
+    brakeHold = 0;
+  }
+
+  // Tile centre, heading towards the road neighbour that needs the smallest turn.
+  function roadPose({ col, row }) {
+    const pose = { x: (col + 0.5) * map.tileSize, z: (row + 0.5) * map.tileSize, heading: truck.heading };
+    let smallest = Infinity;
+    for (const [dc, dr] of DIRS) {
+      if (!map.isRoad(col + dc, row + dr)) continue;
+      const heading = Math.atan2(dc, dr);
+      const turn = Math.abs(Math.atan2(Math.sin(heading - truck.heading), Math.cos(heading - truck.heading)));
+      if (turn < smallest) [pose.heading, smallest] = [heading, turn];
+    }
+    return pose;
+  }
+
+  // Whether the truck's footprint at `pose` stays inside the map and clear of every collider.
+  function fits(pose) {
+    if (!map) return true;
+    const cs = corners(pose);
+    const [w, h] = [map.cols * map.tileSize, map.rows * map.tileSize];
+    if (!cs.every((c) => c.x >= 0 && c.x <= w && c.z >= 0 && c.z <= h)) return false;
+    return !map.colliders.some((b) => overlaps(pose, cs, b));
+  }
+
+  // Footprint corners; right is (-cos heading, sin heading).
+  function corners({ x, z, heading }) {
+    const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
+    const [l, w] = [v.length / 2, v.width / 2];
+    return [[l, w], [l, -w], [-l, -w], [-l, w]].map(([a, b]) => ({ x: x + fx * a - fz * b, z: z + fz * a + fx * b }));
+  }
+
+  // Separating-axis test of the truck's box against an axis-aligned box; touching isn't overlapping.
+  function overlaps({ x, z, heading }, cs, b) {
+    if (cs.every((c) => c.x <= b.minX) || cs.every((c) => c.x >= b.maxX)) return false;
+    if (cs.every((c) => c.z <= b.minZ) || cs.every((c) => c.z >= b.maxZ)) return false;
+    const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
+    const [l, w] = [v.length / 2, v.width / 2];
+    const bc = [[b.minX, b.minZ], [b.maxX, b.minZ], [b.maxX, b.maxZ], [b.minX, b.maxZ]];
+    const along = bc.map(([px, pz]) => (px - x) * fx + (pz - z) * fz);
+    const right = bc.map(([px, pz]) => -(px - x) * fz + (pz - z) * fx);
+    if (along.every((a) => a >= l) || along.every((a) => a <= -l)) return false;
+    return !(right.every((r) => r >= w) || right.every((r) => r <= -w));
+  }
+
+  if (map) {
+    // Start parked on the road nearest the middle of the city.
+    Object.assign(truck, { x: (map.cols * map.tileSize) / 2, z: (map.rows * map.tileSize) / 2 });
+    resetToRoad();
+  }
+
+  return { state, step, resetToRoad };
 }

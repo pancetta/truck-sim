@@ -2,15 +2,18 @@ import './style.css';
 import * as tables from './tables.js';
 import { strings } from './strings.js';
 import { createSim } from './sim/sim.js';
+import { parseMap } from './sim/map.js';
+import cityMap from './city.txt?raw';
 import { createControls } from './controls.js';
 import { createRenderer } from './renderer.js';
 import { createHud } from './hud.js';
 
 const { step, maxFrame } = tables.loop;
 
-const sim = createSim(tables);
+const map = parseMap(cityMap, tables);
+const sim = createSim(tables, map);
 const controls = createControls(document.getElementById('controls'), tables, strings);
-const view = createRenderer(document.getElementById('scene'), tables);
+const view = createRenderer(document.getElementById('scene'), tables, map);
 document.getElementById('rotate').textContent = strings.rotate;
 const portrait = matchMedia('(orientation: portrait)');
 
@@ -21,6 +24,13 @@ cameraButton.textContent = strings.camera;
 cameraButton.addEventListener('click', view.toggleCamera);
 document.getElementById('controls').append(cameraButton);
 const hud = createHud(document.getElementById('dash'), tables, strings);
+
+const resetButton = document.createElement('button');
+resetButton.type = 'button';
+resetButton.className = 'reset';
+resetButton.textContent = strings.resetToRoad;
+resetButton.addEventListener('click', () => sim.resetToRoad());
+document.getElementById('controls').append(resetButton);
 
 let last = performance.now();
 let pending = 0;

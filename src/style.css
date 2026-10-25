@@ -28,7 +28,8 @@ body {
 
 .wheel,
 .pedal,
-.camera-toggle {
+.camera-toggle,
+.reset {
   pointer-events: auto;
   touch-action: none;
   /* A light halo keeps the dark controls readable over the dark cab interior. */
@@ -106,7 +107,8 @@ body {
   }
 }
 
-.camera-toggle {
+.camera-toggle,
+.reset {
   position: absolute;
   top: max(24px, env(safe-area-inset-top));
   right: max(24px, env(safe-area-inset-right));
@@ -118,6 +120,11 @@ body {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* Under the camera button. */
+.reset {
+  top: calc(max(24px, env(safe-area-inset-top)) + 60px);
 }
 
 /* Dashboard: speed, gear and RPM, bottom centre between wheel and pedals. */

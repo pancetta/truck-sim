@@ -8,4 +8,5 @@ export const strings = {
   kmh: 'km/h',
   gear: 'Gang',
   rpm: 'U/min',
+  resetToRoad: 'Zurück auf die Straße',
 };
