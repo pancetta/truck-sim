@@ -185,7 +185,7 @@ The `?perf` harness (T1) is now in the repo, so the numbers below are the ones t
 
 **How to measure:**
 - Open the game with `?perf` for the overlay, or `?perf&auto` to let the autopilot drive the loop on rows 8/36 and columns 1/57 with an order accepted. The autopilot starts from a fresh profile with the Sim seeded (`tables.perf.seed`), plays unsaved, and never touches the player's save.
-- The overlay shows median / p95 / mean over the last 1200 frames (20 s at 60 Hz), refreshed every second, so read it 25 s after loading, or 25 s after a camera switch. The camera button switches cab and chase.
+- The overlay shows median / p95 / mean over the last 1200 frames (20 s at 60 Hz), refreshed every second, so read it 25 s after loading, a camera switch, or a pause. Paused frames (portrait, Werkstatt) count with zero work and pull the medians down. The camera button switches cab and chase.
 - **busy** is the sum of sim, render, dom (HUD, orders, Werkstatt) and minimap. It leaves out the browser's own style, layout and paint.
 - **steps** is the highest number of Sim steps in one frame within the window. It is at most `tables.loop.maxSteps` (4); after a stall the rest of the time is dropped.
 - Renderer stats come from the last frame. WebGPURenderer counts programs per shader stage, so its program count isn't comparable with WebGL's.
