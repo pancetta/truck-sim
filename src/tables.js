@@ -12,6 +12,7 @@ export const vehicle = {
 export const controls = {
   wheelLock: 180, // degrees of on-screen wheel turn for full steering
   wheelCentreTime: 0.5, // s for the released wheel to return from full lock to centre
+  hubRadius: 0.25, // fraction of the wheel radius where drags don't steer
 };
 
 export const loop = {
@@ -23,6 +24,11 @@ export const camera = {
   chaseDistance: 14, // m behind the truck
   chaseHeight: 6, // m above the ground
   lookHeight: 2, // m above the truck's position the camera aims at
+};
+
+export const lighting = {
+  ambient: 1.2, // hemisphere light intensity
+  sun: 1.5, // directional light intensity
 };
 
 export const palette = {
