@@ -12,7 +12,9 @@ test('Sim modules use neither Three.js nor DOM APIs', () => {
     const code = readFileSync(fileUrl, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
 
     // Only relative imports that stay in src/sim/, plus the tables (plain data).
-    for (const [, , spec] of code.matchAll(/\b(?:import|export)\b[^'"`;]*?(['"`])([^'"`]+)\1/g)) {
+    // shortcut: plain regexes, so a `//` inside a string or a DOM word inside a string can
+    // fool them; switch to a real parser if that ever bites.
+    for (const [, , spec] of code.matchAll(/\b(?:from|import)\s*\(?\s*(['"`])([^'"`]+)\1/g)) {
       const target = spec.startsWith('.') ? new URL(spec, fileUrl).href : spec;
       expect(target === tables || target.startsWith(simDir.href), `${file} imports ${spec}`).toBe(true);
     }
