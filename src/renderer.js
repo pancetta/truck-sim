@@ -8,8 +8,8 @@ export function createRenderer(canvas, tables) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(palette.sky);
-  scene.add(new THREE.HemisphereLight(palette.light, palette.ground, 1.2));
-  const sun = new THREE.DirectionalLight(palette.light, 1.5);
+  scene.add(new THREE.HemisphereLight(palette.light, palette.ground, tables.lighting.ambient));
+  const sun = new THREE.DirectionalLight(palette.light, tables.lighting.sun);
   sun.position.set(30, 60, 20);
   scene.add(sun);
 
