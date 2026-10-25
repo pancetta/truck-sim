@@ -16,6 +16,8 @@ src/sim/sim.js
   s_7ae3da505a9f26::t_4bcd8993de79f6 131-133
   s_7ae3da505a9f26::t_93296a01119b87 135,151-152,155
   s_7ae3da505a9f26::t_92e0c0d4d686cc 24-26,81,129-130,153-154,156-158,227-229,232-233,314,317,324,335,344
+README.md
+  s_7ae3da505a9f26::t_76fcb32e5c5fdf 24
 ---
 {
   "schema_version": "authorship/3.0.0",
