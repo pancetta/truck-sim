@@ -22,9 +22,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const base = tables.vehicle;
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. `order` is the active offer plus its
-  // phase ('pickup' or 'dropoff'); `progress` runs 0..1 while the truck stands in that phase's zone.
+  // phase ('pickup' or 'dropoff') and `elapsed` (s since it was accepted); `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
-  // `lastPayment` is replaced by a new object on every payment, so the UI can tell each one apart;
+  // `lastPayment` ({ amount, lines: [{ label, amount }] }, label a key of strings.payLines) is replaced by a
+  // new object on every payment, so the UI can tell each one apart;
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red').
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
@@ -51,6 +52,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
   let routeKey = ''; // start tile and target the current route was found for
+  let offersTile = ''; // tile the current offers were made on; their expected times count from there
+  const tileKey = () => `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)}`;
 
   const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
 
@@ -131,7 +134,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
     truck.roll = Math.max(-v.maxRoll, Math.min(v.maxRoll, lean));
 
-    if (state.order) loadOrUnload(dt);
+    if (state.order) {
+      state.order.elapsed += dt;
+      loadOrUnload(dt);
+    } else if (state.offers.length && tileKey() !== offersTile) state.offers = []; // the panel asks again
+
     updateRoute();
   }
 
@@ -178,7 +185,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       return;
     }
     const target = targetOf(order);
-    const key = `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)},${target.id}`;
+    const key = `${tileKey()},${target.id}`;
     if (key === routeKey) return;
     routeKey = key;
     state.route = map.routeFrom(truck.x, truck.z, target.zoneTile) ?? [];
@@ -197,9 +204,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       order.phase = 'dropoff';
     } else {
       truck.mass = v.emptyMass;
-      state.profile.money += order.pay;
-      state.profile.rankPoints += tables.rank.pointsPerDelivery;
-      state.lastPayment = { amount: order.pay };
+      // The time bonus shrinks from its full share at once to 0 at the expected time; late pays the base.
+      const timeShare = Math.max(0, order.expectedTime - order.elapsed) / order.expectedTime;
+      const lines = [
+        { label: 'base', amount: order.pay },
+        { label: 'time', amount: Math.round(o.timeBonus * timeShare * order.pay) },
+      ];
+      const amount = lines.reduce((sum, l) => sum + l.amount, 0);
+      state.profile.money += amount;
+      state.profile.rankPoints += tables.rank.pointsPerDelivery + Math.round(tables.rank.timeBonusPoints * timeShare);
+      state.lastPayment = { amount, lines };
       state.order = null;
       updateRank();
     }
@@ -252,10 +266,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const pick = (list) => list[Math.floor(random() * list.length)];
 
   // New offers between distinct spots, paid by the road route length; none while an order is active.
-  // Cargo is only what the Ladefläche carries.
+  // Cargo is only what the Ladefläche carries. The expected time is the truck's route to the pickup plus the
+  // paid route, at reference speed, plus loading, unloading and slack.
   function requestOffers() {
     state.offers = [];
     if (state.order) return state.offers;
+    offersTile = tileKey();
     const maxCargo = levelOf('cargoBed')?.maxCargo ?? o.maxCargo;
     const cargoes = o.cargo.filter((c) => c.weight <= maxCargo);
     for (let i = 0; i < o.offerCount; i++) {
@@ -266,7 +282,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (!path) continue; // a spot cut off from the road network gets no orders
       const distance = (path.length - 1) * map.tileSize;
       const pay = Math.round(o.basePay + (o.payPerKm * distance) / 1000);
-      state.offers.push({ id: nextOfferId++, cargo, pickup: from.id, dropoff: to.id, distance, pay });
+      const toPickup = ((map.routeFrom(truck.x, truck.z, from.zoneTile)?.length ?? 1) - 1) * map.tileSize;
+      const expectedTime = (toPickup + distance) / o.referenceSpeed + 2 * o.loadTime + o.slack;
+      state.offers.push({ id: nextOfferId++, cargo, pickup: from.id, dropoff: to.id, distance, pay, expectedTime });
     }
     return state.offers;
   }
@@ -275,7 +293,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function acceptOrder(id) {
     const offer = state.offers.find((x) => x.id === id);
     if (state.order || !offer) return;
-    state.order = { ...offer, phase: 'pickup' };
+    state.order = { ...offer, phase: 'pickup', elapsed: 0 };
     state.offers = [];
     updateRoute();
   }

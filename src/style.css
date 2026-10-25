@@ -357,14 +357,25 @@ body {
   transform-origin: left;
 }
 
-.paid {
+/* Payment and fine notices, stacked when both show. */
+.notices {
+  position: absolute;
   top: 40%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.paid {
+  position: static;
   padding: 10px 16px;
   color: #e8c547;
   font-weight: 700;
+  white-space: pre-line; /* one payment line per line */
 }
 
 /* Rank title and total distance, with progress to the next tier, under the RPM bar. */
@@ -513,11 +524,6 @@ body {
 
 .fined {
   color: #ff6b5e;
-}
-
-/* Below the payment notice only while both show, so short screens keep the speedometer clear. */
-.paid:not([hidden]) + .fined {
-  top: calc(40% + 52px);
 }
 
 /* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals.

@@ -392,9 +392,11 @@ function parkAt(sim, id) {
   timeUntil(sim, id === 'B' ? GAS : BRAKE, () => sim.state.collision, 30);
 }
 
-// Takes an order from A to B on the lane and delivers it; returns the offer.
-function deliver(sim) {
+// Takes an order from A to B on the lane and delivers it; returns the offer. A late delivery idles out the
+// expected time first, so it earns no time bonus.
+function deliver(sim, late = false) {
   const offer = acceptFrom(sim, 'A');
+  if (late) drive(sim, offer.expectedTime, IDLE);
   parkAt(sim, 'A');
   drive(sim, tables.orders.loadTime + 0.1, IDLE);
   parkAt(sim, 'B');
@@ -415,7 +417,7 @@ describe('Sim: profile', () => {
     const sim = laneSim(1, profile);
     expect(sim.state.profile).toEqual(profile);
 
-    const offer = deliver(sim);
+    const offer = deliver(sim, true);
 
     expect(sim.state.profile).toEqual({
       ...profile,
@@ -582,7 +584,7 @@ describe('Sim: rank', () => {
     const sim = at(tiers[1].points - pointsPerDelivery);
     expect(sim.state.rank.tier).toBe(0);
 
-    deliver(sim);
+    deliver(sim, true);
 
     expect(sim.state.profile.rankPoints).toBe(tiers[1].points);
     expect(sim.state.rank).toEqual({ tier: 1, title: tiers[1].title, progress: 0 });
@@ -688,9 +690,10 @@ describe('Sim: orders', () => {
     expect(sim.state.order.phase).toBe('dropoff');
   });
 
-  test('unloading pays exactly the offer, restores empty mass and clears the order', () => {
+  test('a late unloading pays exactly the offer (base + distance), restores empty mass and clears the order', () => {
     const sim = laneSim();
     const offer = acceptFrom(sim, 'A');
+    drive(sim, offer.expectedTime, IDLE);
     parkAt(sim, 'A');
     drive(sim, loadTime + 0.1, IDLE);
     expect(sim.state.order.phase).toBe('dropoff');
@@ -699,7 +702,14 @@ describe('Sim: orders', () => {
     drive(sim, loadTime + 0.1, IDLE);
 
     expect(sim.state.profile.money).toBe(offer.pay);
-    expect(sim.state.lastPayment).toEqual({ amount: offer.pay });
+    expect(sim.state.lastPayment).toEqual({
+      amount: offer.pay,
+      lines: [
+        { label: 'base', amount: offer.pay },
+        { label: 'time', amount: 0 },
+      ],
+    });
+    expect(sim.state.profile.rankPoints).toBe(tables.rank.pointsPerDelivery);
     expect(sim.state.truck.mass).toBe(emptyMass);
     expect(sim.state.order).toBe(null);
     expect(sim.state.progress).toBe(0);
@@ -717,6 +727,75 @@ describe('Sim: orders', () => {
     }
 
     expect(speedAfterLoadStop(true)).toBeLessThan(speedAfterLoadStop(false) * 0.8);
+  });
+});
+
+describe('Sim: time bonus', () => {
+  const { loadTime, referenceSpeed, slack } = tables.orders;
+  // Spec #12's worked example: base + distance 100 and an expected time of 120 s. One road tile between A and B
+  // is both their zones, so the order loads and unloads where the truck starts, with no route; loading and
+  // unloading take 30 s each, and the slack makes up the other 60 s.
+  const example = { ...tables, orders: { ...tables.orders, basePay: 100, loadTime: 30, slack: 60 } };
+  const nookSim = () => createSim(example, parseMap('A.B', example), seeded(1));
+
+  test("an offer expects the routes to the pickup and on to the drop-off at reference speed, plus load, unload and slack", () => {
+    // On the lane the truck starts one tile from A's zone, which is two tiles from B's.
+    const offer = laneSim().requestOffers().find((o) => o.pickup === 'A');
+
+    expect(offer.expectedTime).toBeCloseTo((3 * TILE) / referenceSpeed + 2 * loadTime + slack);
+  });
+
+  test('offers are dropped once the truck leaves the tile they were made on, so their times stay true', () => {
+    const sim = laneSim();
+    sim.requestOffers();
+    drive(sim, 1, IDLE);
+    expect(sim.state.offers.length).toBeGreaterThan(0);
+
+    timeUntil(sim, GAS, () => sim.state.offers.length === 0, 10);
+
+    expect(sim.state.offers).toEqual([]);
+    expect(Math.abs(sim.state.truck.z - 2.5 * TILE)).toBeGreaterThan(TILE / 2 - 0.5); // it got to the next tile
+  });
+
+  test('the active order counts the time since it was accepted', () => {
+    const sim = nookSim();
+    const offer = sim.requestOffers()[0];
+    expect(offer).toMatchObject({ pay: 100, expectedTime: 120 });
+    drive(sim, 5, IDLE); // not counted before accepting
+
+    sim.acceptOrder(offer.id);
+    drive(sim, 10, IDLE);
+
+    expect(sim.state.order).toMatchObject({ expectedTime: 120 });
+    expect(sim.state.order.elapsed).toBeCloseTo(10, 1);
+  });
+
+  test('worked example: delivered after 60 of 120 s, the time line is 25 on top of the 100', () => {
+    const sim = nookSim();
+    sim.acceptOrder(sim.requestOffers()[0].id);
+
+    drive(sim, 61, IDLE); // loaded at 30 s, unloaded at 60 s
+
+    expect(sim.state.order).toBe(null);
+    expect(sim.state.lastPayment).toEqual({
+      amount: 125,
+      lines: [
+        { label: 'base', amount: 100 },
+        { label: 'time', amount: 25 },
+      ],
+    });
+    expect(sim.state.profile.money).toBe(125);
+  });
+
+  test('the time bonus adds rank points in proportion to the bonus earned', () => {
+    const { pointsPerDelivery, timeBonusPoints } = tables.rank;
+    const sim = nookSim();
+    sim.acceptOrder(sim.requestOffers()[0].id);
+
+    drive(sim, 61, IDLE); // half the expected time left: half the full time bonus
+
+    expect(timeBonusPoints).toBeGreaterThan(0);
+    expect(sim.state.profile.rankPoints).toBe(pointsPerDelivery + timeBonusPoints / 2);
   });
 });
 

@@ -7,8 +7,7 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="paid" hidden></div>
-    <div class="paid fined" hidden></div>`;
+    <div class="notices"><div class="paid" hidden></div><div class="paid fined" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
@@ -18,8 +17,10 @@ export function createOrders(root, sim, map, tables, strings) {
   const [arrow, goalText, hint] = goal.children;
   const eur = (n) => `${n.toLocaleString('de-DE')} €`;
   const km = (m) => `${(m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+  const clock = (s) => `${Math.floor(Math.ceil(s) / 60)}:${String(Math.ceil(s) % 60).padStart(2, '0')}`;
   const offerHtml = (o) =>
-    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)}</small>` +
+    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)} · ` +
+    `${strings.expectedTime} ${clock(o.expectedTime)}</small>` +
     `<strong>${eur(o.pay)}</strong>`;
   let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.profile.money;
@@ -67,7 +68,8 @@ export function createOrders(root, sim, map, tables, strings) {
     // Only payments show the payment notice and only fines the fine notice; purchases change the money too.
     if (payment !== lastPayment) {
       lastPayment = payment;
-      notify(paid, `${strings.paid}: +${eur(payment.amount)}`);
+      const lines = payment.lines.map((l) => `${strings.payLines[l.label]} +${eur(l.amount)}`);
+      notify(paid, [`${strings.paid}: +${eur(payment.amount)}`, ...lines].join('\n'));
     }
 
     if (fine !== lastFine) {
@@ -95,7 +97,9 @@ export function createOrders(root, sim, map, tables, strings) {
       const right = -ax * Math.cos(truck.heading) + az * Math.sin(truck.heading);
       arrow.style.transform = `rotate(${Math.atan2(right, ahead)}rad)`;
       arrow.style.color = `#${tables.palette[pickup ? 'pickup' : 'dropoff'].toString(16).padStart(6, '0')}`; // the zone marker's colour
-      goalText.textContent = `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m`;
+      goalText.textContent =
+        `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
+        `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`;
       hint.textContent = pickup ? strings.stopToLoad : strings.stopToUnload;
     }
 

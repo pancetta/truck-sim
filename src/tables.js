@@ -38,7 +38,11 @@ export const orders = {
   loadTime: 2, // s standing still in a zone to load or unload
   basePay: 200, // € per delivery
   payPerKm: 150, // € per km of road route from pickup to drop-off
-  paidNoticeTime: 3, // s the payment confirmation stays on screen
+  paidNoticeTime: 4, // s the payment confirmation stays on screen
+  // Time bonus: a share of the pay (base + distance) that shrinks from timeBonus at once to 0 at the expected time.
+  timeBonus: 0.5,
+  referenceSpeed: 7, // m/s along the road route, for an offer's expected time
+  slack: 20, // s added to the expected time, for lights and parking
   maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade
   cargo: [
     { name: 'Paletten', weight: 6 }, // t
@@ -53,6 +57,7 @@ export const orders = {
 // Rank points per delivery; a tier is reached at its points. Titles are in strings.rankTitles, same order.
 export const rank = {
   pointsPerDelivery: 10,
+  timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned
   tiers: [0, 30, 80, 160, 300].map((points, i) => ({ points, title: strings.rankTitles[i] })),
 };
 

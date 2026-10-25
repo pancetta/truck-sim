@@ -20,6 +20,9 @@ export const strings = {
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
+  payLines: { base: 'Grundlohn', time: 'Zeitbonus' }, // state.lastPayment line labels
+  expectedTime: 'Soll-Zeit',
+  bonusTime: 'Bonuszeit',
   rank: 'Rang',
   km: 'km',
   distance: 'Gesamtstrecke',
