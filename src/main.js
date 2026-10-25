@@ -10,6 +10,16 @@ import { createHud } from './hud.js';
 
 const { step, maxFrame } = tables.loop;
 
+// iPad Safari ignores user-scalable=no and doesn't fully honour touch-action: none, so a
+// pinch or a quick double tap on a pedal zooms the page. Cancel those gestures in script.
+// Pointer events still fire, so the wheel and pedals keep working; real buttons keep their
+// default touch handling so their clicks still work.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault());
+}
+document.addEventListener('touchstart', (e) => e.target.closest?.('button') || e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
+
 const map = parseMap(cityMap, tables);
 const sim = createSim(tables, map);
 const controls = createControls(document.getElementById('controls'), tables, strings);
