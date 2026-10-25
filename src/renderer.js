@@ -1,4 +1,48 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { DIRS } from './sim/map.js';
+
+// CC0 kit models in public/models/ (see CREDITS.md).
+const MODELS = `${import.meta.env.BASE_URL}models/`;
+// Road pieces with the sides they open to, as modelled (DIRS order: north/-z, east/+x, south/+z, west/-x).
+const ROAD_PIECES = [
+  ['roads/road-square.glb', []],
+  ['roads/road-end-round.glb', [1]],
+  ['roads/road-straight.glb', [1, 3]],
+  ['roads/road-bend-square.glb', [2, 3]],
+  ['roads/road-intersection.glb', [1, 2, 3]],
+  ['roads/road-crossroad.glb', [0, 1, 2, 3]],
+];
+const BUILDINGS = [...'abcdefghijklmn'].map((l) => `commercial/low-detail-building-${l}.glb`);
+const CARS = ['cars/sedan.glb', 'cars/suv.glb', 'cars/van.glb'];
+const POLE = 'roads/light-square.glb';
+const TRUCK = 'cars/delivery.glb';
+const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of it
+
+const loader = new GLTFLoader();
+const kitMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+
+// Stretches a geometry into the unit box: x and z in [-0.5, 0.5], y in [0, 1].
+function unitBox(geometry) {
+  const { min, max } = geometry.boundingBox;
+  return geometry
+    .translate(-(min.x + max.x) / 2, -min.y, -(min.z + max.z) / 2)
+    .scale(1 / (max.x - min.x), 1 / (max.y - min.y), 1 / (max.z - min.z));
+}
+
+// RGBA bytes of a colour-map image, read once per image.
+const pixelCache = new WeakMap();
+function readPixels(image) {
+  if (!pixelCache.has(image)) {
+    const canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = [image.width, image.height];
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    pixelCache.set(image, context.getImageData(0, 0, image.width, image.height));
+  }
+  return pixelCache.get(image);
+}
 
 // Draws Sim state; never writes to it.
 export function createRenderer(canvas, tables, map) {
@@ -8,7 +52,7 @@ export function createRenderer(canvas, tables, map) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(palette.sky);
-  scene.add(new THREE.HemisphereLight(palette.light, palette.ground, tables.lighting.ambient));
+  scene.add(new THREE.HemisphereLight(palette.light, palette.shade, tables.lighting.ambient));
   const sun = new THREE.DirectionalLight(palette.light, tables.lighting.sun);
   sun.position.set(30, 60, 20);
   scene.add(sun);
@@ -20,19 +64,85 @@ export function createRenderer(canvas, tables, map) {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // City from the parsed map, as placeholder boxes until the art ticket.
+  // City from the parsed map, built from kit models. Each model is one instanced draw call.
   const ts = map.tileSize;
-  const roads = map.roads.map(({ col, row }) => ({ minX: col * ts, maxX: (col + 1) * ts, minZ: row * ts, maxZ: (row + 1) * ts }));
-  const solids = (kind) => map.colliders.filter((b) => b.kind === kind);
+  const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place
+  const pick = (list, x, z) => list[Math.floor(hash(x, z) * 9973) % list.length];
+  const centre = (b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 });
+  const placements = new Map(); // model file -> [{ x, z, angle, size: [x, y, z], tint }]
+  const place = (file, p) => (placements.get(file) ?? placements.set(file, []).get(file)).push(p);
+
+  for (const { col, row } of map.roads) {
+    const open = DIRS.map(([dc, dr]) => map.isRoad(col + dc, row + dr));
+    // Turning a piece a quarter turn moves each open side from direction i to i - 1.
+    for (const [file, sides] of ROAD_PIECES) {
+      const turn = [0, 1, 2, 3].find((k) => open.every((o, i) => o === sides.includes((i + k) % 4)));
+      if (turn === undefined) continue;
+      place(file, { x: (col + 0.5) * ts, z: (row + 0.5) * ts, angle: (turn * Math.PI) / 2, size: [ts, roadHeight, ts] });
+      break;
+    }
+  }
+
+  // Only buildings that face a drivable tile are drawn; the solid block behind them stays empty.
   const [low, high] = city.buildingHeight;
-  // Stable pseudo-random height per tile.
-  const towers = (b) => ({ ...b, height: low + (high - low) * Math.abs(Math.sin(b.minX * 12.9898 + b.minZ * 78.233)) });
-  addBoxes(palette.road, roads, 0.02);
+  const blocks = map.colliders.filter((b) => b.kind === 'building' || b.kind === 'spot');
+  const solid = new Set(blocks.map((b) => `${Math.floor(b.minX / ts)},${Math.floor(b.minZ / ts)}`));
+  for (const b of blocks) {
+    const [col, row] = [Math.floor(b.minX / ts), Math.floor(b.minZ / ts)];
+    if (DIRS.every(([dc, dr]) => solid.has(`${col + dc},${row + dr}`))) continue;
+    const { x, z } = centre(b);
+    place(pick(BUILDINGS, x, z), {
+      x,
+      z,
+      angle: (Math.floor(hash(z, x) * 4) * Math.PI) / 2,
+      size: [ts, low + (high - low) * hash(x, z), ts],
+      tint: b.kind === 'spot' ? palette.spot : pick(palette.buildings, z, x),
+    });
+  }
+
+  for (const b of map.colliders.filter((c) => c.kind === 'car')) {
+    const { x, z } = centre(b);
+    const alongX = b.maxX - b.minX > b.maxZ - b.minZ;
+    const [w, l] = alongX ? [b.maxZ - b.minZ, b.maxX - b.minX] : [b.maxX - b.minX, b.maxZ - b.minZ];
+    // Kit cars point along +z; parked either way round.
+    const angle = (alongX ? Math.PI / 2 : 0) + (hash(x, z) > 0.5 ? Math.PI : 0);
+    place(pick(CARS, z, x), { x, z, angle, size: [w, city.obstacles.car.height, l] });
+  }
+
+  // The lamp's arm points along its -z; turn it out over the road tile it stands on.
+  for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
+    const { x, z } = centre(b);
+    const angle = Math.atan2(x - (Math.floor(x / ts) + 0.5) * ts, z - (Math.floor(z / ts) + 0.5) * ts);
+    place(POLE, { x, z, angle, size: [1, 1, 1] });
+  }
+
+  for (const [file, list] of placements) {
+    // Building walls are white so their per-building tint shows as is.
+    loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette).then((geometry) => {
+      // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
+      if (file === POLE) {
+        const { min, max } = geometry.boundingBox;
+        const s = city.obstacles.pole.height / (max.y - min.y);
+        geometry.translate(0, -min.y, 0).scale(s, s, s);
+      } else unitBox(geometry);
+      addInstances(geometry, list);
+    });
+  }
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
-  addBoxes(palette.building, solids('building').map(towers));
-  addBoxes(palette.spot, solids('spot').map(towers));
-  addBoxes(palette.car, solids('car'), city.obstacles.car.height);
-  addBoxes(palette.pole, solids('pole'), city.obstacles.pole.height);
+
+  function addInstances(geometry, list) {
+    const mesh = new THREE.InstancedMesh(geometry, kitMaterial, list.length);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const tint = new THREE.Color();
+    list.forEach((p, i) => {
+      m.compose(new THREE.Vector3(p.x, 0, p.z), q.setFromAxisAngle(up, p.angle), new THREE.Vector3(...p.size));
+      mesh.setMatrixAt(i, m);
+      if (p.tint !== undefined) mesh.setColorAt(i, tint.setHex(p.tint));
+    });
+    scene.add(mesh);
+  }
 
   // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.
   function addBoxes(color, boxes, height) {
@@ -55,16 +165,60 @@ export function createRenderer(canvas, tables, map) {
   marker.position.y = city.markerHeight / 2;
   scene.add(marker);
 
-  // Placeholder truck: cargo box with the cab at the front (+z).
-  const truck = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3, 6), new THREE.MeshLambertMaterial({ color: palette.truckBody }));
-  body.position.set(0, 1.9, -1);
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.6, 2), new THREE.MeshLambertMaterial({ color: palette.truckCab }));
-  cab.position.set(0, 1.7, 3);
-  truck.add(body, cab);
+  // A kit model as one flat-coloured geometry: each face takes the palette colour named by the
+  // kit colour nearest to its colour-map sample (tables.kitColours). `colours` overrides palette entries.
+  async function loadModel(file, colours = palette) {
+    const gltf = await loader.loadAsync(MODELS + file);
+    gltf.scene.updateMatrixWorld();
+    const parts = [];
+    const c = new THREE.Color();
+    gltf.scene.traverse((mesh) => {
+      if (!mesh.isMesh) return;
+      const source = mesh.geometry.toNonIndexed();
+      const uv = source.getAttribute('uv');
+      const { data, width, height } = readPixels(mesh.material.map.image);
+      const colour = new Float32Array(uv.count * 3);
+      for (let i = 0; i < uv.count; i += 3) {
+        const u = (uv.getX(i) + uv.getX(i + 1) + uv.getX(i + 2)) / 3;
+        const v = (uv.getY(i) + uv.getY(i + 1) + uv.getY(i + 2)) / 3;
+        const p = 4 * (Math.min(height - 1, Math.floor(v * height)) * width + Math.min(width - 1, Math.floor(u * width)));
+        c.setHex(colours[nearestKitColour(data[p], data[p + 1], data[p + 2])]);
+        for (let k = 0; k < 3; k++) c.toArray(colour, (i + k) * 3);
+      }
+      const part = new THREE.BufferGeometry();
+      part.setAttribute('position', source.getAttribute('position'));
+      part.setAttribute('color', new THREE.BufferAttribute(colour, 3));
+      parts.push(part.applyMatrix4(mesh.matrixWorld));
+    });
+    // Free the decoded colour maps now; they are never drawn.
+    gltf.scene.traverse((mesh) => mesh.material?.map?.image.close?.());
+    const geometry = mergeGeometries(parts);
+    geometry.computeBoundingBox();
+    return geometry;
+  }
 
-  // Cab interior, our own design: a dashboard and a steering wheel inside the cab box.
-  // The cab box's faces only render from outside, so from the driver's seat the walls are see-through.
+  function nearestKitColour(r, g, b) {
+    let best;
+    let bestDistance = Infinity;
+    for (const [name, hex] of Object.entries(tables.kitColours)) {
+      const d = (r - (hex >> 16)) ** 2 + (g - ((hex >> 8) & 255)) ** 2 + (b - (hex & 255)) ** 2;
+      if (d < bestDistance) [best, bestDistance] = [name, d];
+    }
+    return best;
+  }
+
+  // Truck from the kit, stretched to the collision footprint; the cab is at the front (+z).
+  const truck = new THREE.Group();
+  const exterior = new THREE.Mesh(new THREE.BufferGeometry(), kitMaterial);
+  loadModel(TRUCK, { ...palette, green: palette.truckBody, wall: palette.truckCab }).then((geometry) => {
+    const { min, max } = geometry.boundingBox;
+    const s = tables.vehicle.width / (max.x - min.x);
+    exterior.geometry = unitBox(geometry);
+    exterior.scale.set(tables.vehicle.width, (max.y - min.y) * s, tables.vehicle.length);
+  });
+  truck.add(exterior);
+
+  // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view.
   const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshLambertMaterial({ color: palette.dashboard }));
   dashboard.position.set(0, 1.85, 3.65);
   const wheelMaterial = new THREE.MeshLambertMaterial({ color: palette.steeringWheel });
@@ -84,13 +238,16 @@ export function createRenderer(canvas, tables, map) {
     spoke,
   );
   column.add(shaft, wheel);
-  truck.add(dashboard, column);
+  const interior = new THREE.Group();
+  interior.add(dashboard, column);
+  truck.add(interior);
   scene.add(truck);
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
   const eye = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
-  let cabView = true;
+  let cabView;
+  setCabView(true);
 
   function resize() {
     const w = window.innerWidth;
@@ -134,8 +291,15 @@ export function createRenderer(canvas, tables, map) {
     renderer.render(scene, camera);
   }
 
+  // Each view shows one side of the cab: the kit's cab is lower than our interior.
+  function setCabView(on) {
+    cabView = on;
+    exterior.visible = !on;
+    interior.visible = on;
+  }
+
   function toggleCamera() {
-    cabView = !cabView;
+    setCabView(!cabView);
   }
 
   return { render, toggleCamera };

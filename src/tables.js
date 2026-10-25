@@ -85,16 +85,42 @@ export const palette = {
   light: 0xffffff,
   sky: 0x9fd3e6,
   ground: 0x7fb069,
-  road: 0x5a5f66,
-  building: 0xd9cbb4,
-  spot: 0x4f86c6,
+  shade: 0x9a948a, // light from below, on faces turned away from the sky
+  spot: 0x4f86c6, // tint of the pickup and drop-off buildings
   zone: 0x8fc1f0,
   pickup: 0x6cc551, // active order's zone marker
   dropoff: 0xf08a4b,
-  car: 0x3d6b8c,
-  pole: 0x2e2e2e,
+  // Colours the kit models are recoloured to; see kitColours.
+  trim: 0x2b2d33,
+  dark: 0x3b4252,
+  road: 0x5a5f66,
+  pavement: 0xc4bcae,
+  wall: 0xf4ecdc,
+  glass: 0x9cc9de,
+  green: 0x5e9e6e,
+  red: 0xd1495b,
+  orange: 0xe07a3f,
+  yellow: 0xe8c547,
+  blue: 0x3d6b8c,
+  buildings: [0xd9cbb4, 0xe3b29a, 0xbfcfb4, 0xc9c3d6, 0xe8d9a8, 0xb8c8d4], // per-building wall tints
   truckBody: 0xe8c547,
   truckCab: 0xd1495b,
   dashboard: 0x3b4252,
   steeringWheel: 0x1f232b,
+};
+
+// The kit models (CREDITS.md) are recoloured face by face: each face takes the palette colour
+// whose kit colour here is nearest to the face's colour in the kit's own colour map.
+export const kitColours = {
+  trim: 0x36363a,
+  dark: 0x515566,
+  road: 0x686d83,
+  pavement: 0xa8b0d3,
+  wall: 0xe2e2ed,
+  glass: 0xe4f3ff,
+  green: 0x45af7e,
+  red: 0xe76047,
+  orange: 0xd5805a,
+  yellow: 0xffd02b,
+  blue: 0x5f73ca,
 };
