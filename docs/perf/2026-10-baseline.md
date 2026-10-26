@@ -557,6 +557,54 @@ Both simulator runs settled at a ratio of 1.75 (`dpr`). The frame cost doesn't c
 - *First playable frame:* 2.7–2.8 s at 10 Mbit/s on a quiet machine, under the 3 s target, with about 0.25 s to spare. On a loaded machine it took 3.4–4.6 s, while main took 8.4–8.8 s. Later assets the first frame needn't wait for (props, far copies, tree pictures) should load after it, as the 2k sky does.
 - *60 fps:* holds in Chrome and in the simulator, at the same frame cost as before. The real iPad's numbers, including the sky's 21 MB of half-float texture there, remain for the owner's run.
 
+## Procedural buildings (#39)
+
+The Kenney building models give way to procedural buildings (`src/buildings.js`, numbers in `tables.buildings`): rows of buildings along every street face of a block, with plastered or brick walls, recessed windows in stone surrounds, sills, shutters, shop fronts, cornices, plinths and tiled roofs. Four Poly Haven textures come with them: three walls and a roof, 1.95 MB. The kit's commercial models go (−0.2 MB), so `public/` is now 7.3 MB of 12 MB.
+
+**How it is drawn:**
+- *Merged meshes:* walls, roofs and facade parts are merged per 196 m chunk of the map, a mesh per material. Each chunk is culled whole against the view and the sun. 98 m chunks drew fewer triangles, but cost 0.5–2 ms more render CPU, from twice as many objects in both passes.
+- *Close-up detail:* window surrounds, sills and open shutters (86% of the city's 0.92M triangles) are in separate meshes, one per direction the facades face. They draw only within 120 m and only on facades facing the camera, and they cast no shadow.
+- *Geometry:* indexed and without normals (flat shading), with colours as bytes. Box parts share their eight corners. That makes 31 MB of vertex data for the whole city. three keeps it in the JS heap as well as on the GPU. The heap after a forced GC goes from 21 to 64 MB.
+- *Textures:* the wall and roof textures load after the first frame. Until then the materials use one-texel stand-ins sampled alike, so the swap builds no new shaders: 43 programs throughout.
+- *Generation:* about 350 ms on the M2. It runs one macrotask after `createRenderer`, so the model and texture requests go out first.
+
+**How measured:** as for #37 and #38. Production builds of main `324a938` (*before*) and this change (*after*), `?perf&auto`, alternating runs, load average 6–13.
+
+**Chrome** (M2, WebGPU, DPR 2, vsync):
+
+| | before | after |
+|---|---|---|
+| Render CPU median, cab | 1.68, 1.76 | 2.09, 2.25 |
+| Render CPU median, chase | 2.28, 2.13 | 1.99, 2.26 |
+| GPU at vsync, cab | 5.05, 5.91 | 4.94, 6.67 |
+| GPU at vsync, chase | 5.26, 6.58 | 6.54, 6.77 |
+| Draw calls / triangles, cab | 476–477 / 63–64k | 263–265 / 177k |
+| Frames over 20 ms | 0 | 0 |
+| First playable frame at 10 Mbit/s | 2.95–3.25 s | 3.06–3.28 s |
+| On the wire | 2.58 MB | 2.39 MB |
+
+**iPad (A16) simulator** (Safari, WebGL 2, cab, a window of 1,200 frames; ms median / p95 / mean):
+
+| | frame | render | ratio | calls / tris |
+|---|---|---|---|---|
+| before | 16.68 / 20.16 / 17.03 | 2.28 / 3.08 / 2.36 | 2 | 18 / 38k |
+| first version: close-up detail cast shadows | 18.52 / 21.42 / 18.76 | 1.88 / 2.48 / 1.95 | 1.25 | 88 / 258k |
+| … close-up detail switched off | 17.30 / 27.96 / 18.95 | 1.94 / 2.96 / 2.08 | 1.25 | 61 / 68k |
+| … walls without textures | 18.70 / 25.90 / 19.44 | 2.04 / 2.70 / 2.09 | 1.25 | 74 / 227k |
+| … buildings cast no shadow at all | 16.68 / 19.96 / 17.07 | 1.40 / 2.12 / 1.50 | 1.5 | 49 / 117k |
+| shipped: close-up detail casts no shadow | 16.74 / 19.86 / 17.22 | 1.60 / 2.42 / 1.68 | 1.25–1.5 | 81–104 / 113–175k |
+
+- *The cost was the shadow pass*, not triangles or textures: the close-up detail of whole chunks drawn into the sun's shadow map. Without it, the simulator holds 60 fps.
+- *Ratio:* the adaptive ratio settled lower than before. It was at 1.25 one minute in and 1.5 later, against 2 before. The simulator draws on the Mac's GPU, so this says little about a real iPad's GPU.
+
+**Verdict:**
+- *60 fps:* holds in the cab view in Chrome and in the simulator, but the simulator gets there at a lower pixel ratio than before.
+- *Real iPad:* the owner's `?perf&auto` run on a real iPad decides. If it misses, these are the first costs to cut:
+  - building shadows (walls and roofs still cast);
+  - the detail distance (`tables.buildings.detailDistance`);
+  - the walls' full PBR maps.
+- *Budget:* the download budget check passes, at 7.3 of 12 MB. Render CPU is up 0.3–0.5 ms in the cab view.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
