@@ -97,6 +97,8 @@ function frame(now) {
 
 // The loading screen covers the controls until the city is in; only then does the Sim start.
 view.ready.then(() => {
+  // A first frame behind the loading screen, so compiling the shaders (up to 1 s on the WebGL 2 backend) doesn't stall play.
+  view.render(sim.state, { steer: 0 }, werkstatt.look, werkstatt.showroom);
   perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto);
   loading.remove();
   last = performance.now();

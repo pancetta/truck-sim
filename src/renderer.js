@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
@@ -22,7 +22,9 @@ const TRUCK = 'cars/delivery.glb';
 const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of it
 
 const loader = new GLTFLoader();
-const kitMaterial = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const newKitMaterial = () => new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+// One kit material per mesh variant: shared across variants, the renderer re-derives the program on every draw.
+const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), tinted: newKitMaterial() };
 
 // Stretches a geometry into the unit box: x and z in [-0.5, 0.5], y in [0, 1].
 function unitBox(geometry) {
@@ -63,8 +65,15 @@ function readPixels(image) {
 export function createRenderer(canvas, tables, map, onProgress) {
   const { palette, camera: cam, city } = tables;
   const kitColours = Object.entries(tables.kitColours);
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  // WebGPU where the browser has it, else its WebGL 2 backend; ?webgl forces the fallback for comparison.
+  const forceWebGL = new URLSearchParams(location.search).has('webgl');
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // sRGB output in the material shaders, as WebGLRenderer did: the default pipeline draws into a half-float MSAA
+  // target and adds a full-screen output pass, which doubled the GPU time on the WebGL 2 backend.
+  const pipeline = new THREE.DirectRenderPipeline(renderer);
+  // A lost GPU device (iPad Safari under memory pressure) can't be rebuilt in place; the save survives a reload.
+  renderer.onDeviceLost = () => location.reload();
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(palette.sky);
@@ -175,7 +184,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // AI cars: one instanced mesh per kit car with room for the busiest rank tier; a car's id picks its model.
   const maxTraffic = Math.max(...tables.rank.tiers.map((t) => t.traffic));
   const trafficMeshes = carModels.map((model) => {
-    const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), kitMaterial, maxTraffic);
+    const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), kitMaterials.instanced, maxTraffic);
     mesh.frustumCulled = false; // the cars move, so bounds computed once would go stale
     loads.push(model.then((geometry) => (mesh.geometry = unitBox(geometry))));
     scene.add(mesh);
@@ -211,10 +220,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   });
   scene.add(signals, lamps);
   addBoxes(palette.stopLine, stopLines, 0.045);
-  let shownPhases = null;
+  let shownLights = null;
 
   function addInstances(geometry, list) {
-    const mesh = new THREE.InstancedMesh(geometry, kitMaterial, list.length);
+    const tinted = list.some((p) => p.tint !== undefined);
+    const mesh = new THREE.InstancedMesh(geometry, tinted ? kitMaterials.tinted : kitMaterials.instanced, list.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
@@ -240,10 +250,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
 
   // Active order's zone: a see-through column, one colour for the pickup and one for the drop-off,
-  // tall enough to show over the roofs.
+  // tall enough to show over the roofs. Premultiplied, because DirectRenderPipeline's output step expects premultiplied
+  // colour; straight alpha would apply the opacity twice and wash the colour out.
   const marker = new THREE.Mesh(
     new THREE.BoxGeometry(ts, city.markerHeight, ts),
-    new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.35, depthWrite: false }),
+    new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.35, depthWrite: false, premultipliedAlpha: true }),
   );
   marker.position.y = city.markerHeight / 2;
   scene.add(marker);
@@ -293,7 +304,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Truck from the kit, stretched to the collision footprint; the cab is at the front (+z). Its body and cab
   // faces load in marker colours, so a paint item can recolour them later (see paint()).
   const truck = new THREE.Group();
-  const exterior = new THREE.Mesh(new THREE.BufferGeometry(), kitMaterial);
+  const exterior = new THREE.Mesh(new THREE.BufferGeometry(), kitMaterials.mesh);
   const MARKS = { body: 0xff00ff, cab: 0x00ffff }; // in no palette
   const painted = { body: [], cab: [] }; // vertex indices
   loads.push(loadModel(TRUCK, { ...palette, green: MARKS.body, wall: MARKS.cab }).then((geometry) => {
@@ -406,9 +417,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     showLook(look);
     parts.sway(roll, dt);
 
-    const phases = state.lights.map((l) => l.phase).join();
-    if (phases !== shownPhases && state.lights.length) {
-      shownPhases = phases;
+    if (state.lightsVersion !== shownLights && state.lights.length) {
+      shownLights = state.lightsVersion;
       const c = new THREE.Color();
       state.lights.forEach((l, i) =>
         LAMP_PHASES.forEach((p, k) => lamps.setColorAt(i * 3 + k, c.setHex(l.phase === p ? lampColours[k] : palette.lampOff))),
@@ -461,7 +471,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       );
       camera.lookAt(x, cam.lookHeight, z);
     }
-    renderer.render(scene, camera);
+    pipeline.render(scene, camera);
   }
 
   const carMatrix = new THREE.Matrix4();
@@ -482,9 +492,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     cabView = !cabView;
   }
 
-  // A model that fails to load is logged and left out, as before; it doesn't hold up the game.
+  // A model that fails to load is logged and left out, as before; it doesn't hold up the game. A renderer that can't
+  // start does: `ready` rejects and the loading screen stays.
   let loaded = 0;
-  const ready = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
+  const models = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
+  const ready = Promise.all([renderer.init(), models]);
 
   return { render, toggleCamera, ready, renderer };
 }

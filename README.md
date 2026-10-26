@@ -35,7 +35,7 @@ Vite, plain JavaScript (ES modules), Three.js, no backend.
 - **Map** (`src/sim/map.js`, `src/city.txt`): parses the ASCII city grid into tiles, spots, colliders (signal posts included), traffic lights and the road graph, and answers routes.
 - **Tables** (`src/tables.js`): every tunable (vehicle, orders and pay, cameras, palette, UI sizes) as plain data. Tweak numbers here.
 - **Strings** (`src/strings.js`): all UI text, German only.
-- **Renderer** (`src/renderer.js`, `src/truckLook.js`): Three.js scene, cab and chase cameras, and the Werkstatt's orbit camera. Draws the truck from a *look* (the equipped visual items plus Werkstatt previews) that the app hands it; `truckLook.js` holds the visual items' own geometry. Reads Sim state, never writes it.
+- **Renderer** (`src/renderer.js`, `src/truckLook.js`): Three.js scene on `WebGPURenderer` (WebGL 2 where WebGPU is missing; `?webgl` forces it), cab and chase cameras, and the Werkstatt's orbit camera. Draws the truck from a *look* (the equipped visual items plus Werkstatt previews) that the app hands it; `truckLook.js` holds the visual items' own geometry. Reads Sim state, never writes it.
 - **Controls** (`src/controls.js`): on-screen wheel and pedals, turned into the input the Sim takes.
 - **HUD and orders UI** (`src/hud.js`, `src/orders.js`, `src/minimap.js`): dashboard, orders panel and goal banner, minimap. They read Sim state; orders go through the Sim's commands.
 - **Werkstatt** (`src/werkstatt.js`): the garage button and panel; buys through the Sim's commands, holds the tried-on (unbought) visual items, and resets the save.

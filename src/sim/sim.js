@@ -30,7 +30,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lastPayment` ({ amount, lines: [{ label, amount }] }, label a key of strings.payLines) is replaced by a
   // new object on every payment, so the UI can tell each one apart;
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
-  // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red').
+  // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red');
+  // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane } and more (see traffic.js).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
@@ -45,6 +46,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lastPayment: null,
     lastFine: null,
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
+    lightsVersion: 0,
     traffic: [],
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
@@ -184,7 +186,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function updateLights() {
     for (const l of state.lights) {
       const t = (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
-      l.phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : 'red';
+      const phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : 'red';
+      if (phase !== l.phase) {
+        l.phase = phase;
+        state.lightsVersion++;
+      }
     }
   }
 

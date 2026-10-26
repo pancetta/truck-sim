@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Our own geometry for the Werkstatt's visual items (tables.visuals), in truck space: metres, +z forward,

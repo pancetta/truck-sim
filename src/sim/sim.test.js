@@ -1299,6 +1299,19 @@ describe('Sim: traffic lights', () => {
     expect(changes[0][0][0] - changes[1][0][0]).toBeCloseTo(junctionOffset, 1);
   });
 
+  test('lightsVersion goes up exactly on the steps where some phase changes', () => {
+    const sim = crossingSim();
+    const phases = () => sim.state.lights.map((l) => l.phase).join();
+    let [version, shown, changes] = [sim.state.lightsVersion, phases(), 0];
+    for (let t = 0; t < 60; t += DT) {
+      sim.step(DT, IDLE);
+      expect(sim.state.lightsVersion !== version).toBe(phases() !== shown);
+      if (phases() !== shown) changes++;
+      [version, shown] = [sim.state.lightsVersion, phases()];
+    }
+    expect(changes).toBeGreaterThan(2);
+  });
+
   test('crossing the stop line on red fines once', () => {
     const sim = crossingSim();
     placeAt(sim, 1, 3, EAST);
