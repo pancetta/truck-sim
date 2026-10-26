@@ -363,7 +363,7 @@ export const ground = {
 // Generated cars (src/vehicles.js) for the AI cars and the parked cars, all at city.obstacles.car's footprint. Per
 // body type: the side profile [x, y] in m from the rear (x = 0) to the front, the side window outline, the axles,
 // the wheel radius, the B-pillar and the door spans (rear edge, front edge) for the painted panel gaps. Lengths
-// are stretched to the footprint's; the body is as wide as the footprint less the mirrors.
+// are stretched so the car with its bumpers fits the footprint; the body is as wide as it less the mirrors.
 export const vehicles = {
   types: {
     hatch: {
