@@ -9,6 +9,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+import { newData, tri, toGeometry, flat } from './geometry.js';
+import { glassTextures, louvreTexture, doorTexture, rollerTexture, shopTexture, facadeTexture, arcadeTexture } from './textures.js';
+import { carGeometries, scooterGeometry, bikeGeometry } from './vehicles.js';
+import { buildRing } from './ring.js';
 
 const BASE = `${import.meta.env.BASE_URL}prototype-monti/`;
 const VARIANTS = [
@@ -36,6 +40,9 @@ const WALL_TEXTURES = [
 const GRIME = 2.5; // m of darkening at the foot of each wall
 const SHUTTERS = ['#3f5b3a', '#4d6b45', '#6b4a2e', '#55603c', '#7a5a3a'];
 const STONE = '#e6dcc6';
+const DOORS = ['#6b4a2e', '#4f3a26', '#3f5b3a', '#5a2a26', '#7a5a3a'];
+const ROLLERS = ['#9a9a96', '#b4b2ac', '#7d7f80', '#5f6b5a'];
+const SIGNS = ['#24442f', '#5a1f24', '#1f2f4a', '#2b2b2b', '#7a5a2a'];
 const ROAD_WIDTH = { secondary: 12, tertiary: 10, residential: 7, unclassified: 7, living_street: 6, pedestrian: 6, service: 4 };
 const rnd = (id, k) => {
   const x = Math.sin(id * 12.9898 + k * 78.233) * 43758.5453;
@@ -45,36 +52,9 @@ const pick = (list, id, k) => list[Math.floor(rnd(id, k) * list.length)];
 const linear = (hex) => new THREE.Color(hex);
 
 const osm = await (await fetch(`${BASE}monti-osm.json`)).json();
+const ringItems = await (await fetch(`${BASE}ring.json`)).json();
 
 // ---- geometry -------------------------------------------------------------------------------------------------
-const newData = () => ({ pos: [], uv: [], col: [] });
-// Pushes one triangle of [x, y, z, u, v] corners; a corner's optional sixth item overrides `color` there.
-function tri(d, a, b, c, color) {
-  for (const [x, y, z, u, v, own] of [a, b, c]) {
-    d.pos.push(x, y, z);
-    d.uv.push(u, v);
-    const col = own ?? color;
-    if (col) d.col.push(col.r, col.g, col.b);
-  }
-}
-function toGeometry(d) {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
-  if (d.col.length) g.setAttribute('color', new THREE.Float32BufferAttribute(d.col, 3));
-  g.computeVertexNormals();
-  return g;
-}
-// Flat polygon at height y, faces up, UVs in world metres / `tile`.
-function flat(d, ring, y, tile, color) {
-  const faces = THREE.ShapeUtils.triangulateShape(ring.map(([x, z]) => new THREE.Vector2(x, z)), []);
-  for (let [a, b, c] of faces) {
-    const [A, B, C] = [ring[a], ring[b], ring[c]];
-    if ((B[1] - A[1]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[1] - A[1]) < 0) [b, c] = [c, b];
-    tri(d, ...[a, b, c].map((i) => [ring[i][0], y, ring[i][1], ring[i][0] / tile, ring[i][1] / tile]), color);
-  }
-}
-
 // Edges shared by two buildings are party walls: no windows, no cornice.
 const edgeKey = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
 const edgeUse = new Map();
@@ -88,8 +68,11 @@ for (const el of buildingEls) {
 
 const walls = WALL_TEXTURES.map(() => newData());
 const roofs = newData();
-const parts = { glass: [], frame: [], sill: [], shutter: [], cornice: [], plinth: [], bollard: [], cap: [] };
-const facades = []; // outside walls, for the wall lanterns
+const parts = { frame: [], sill: [], shutter: [], cornice: [], plinth: [], bollard: [], cap: [], sign: [], door: [], roller: [], shop: [], glass0: [], glass1: [], glass2: [], glass3: [] };
+const facades = []; // outside walls, for the wall lanterns and leaning bikes
+const footprints = []; // building rings, for parking clearances
+const pots = []; // potted plants beside doors
+const windowBoxes = []; // flower boxes on sills
 let partyEdges = 0;
 
 for (const el of buildingEls) {
@@ -116,6 +99,9 @@ for (const el of buildingEls) {
   const grimy = tint.clone().multiplyScalar(0.62);
   const shutter = linear(pick(SHUTTERS, el.id, 4));
   const stone = linear(STONE);
+  const fancy = rnd(el.id, 12) < 0.4; // a cornice over the first-floor windows
+  const flowers = rnd(el.id, 13) < 0.15; // flower boxes on open windows
+  footprints.push(ring);
 
   // A random texture offset per building, so neighbours' plaster doesn't line up; walls split at GRIME so the
   // darkening fades out over the bottom band only.
@@ -143,28 +129,41 @@ for (const el of buildingEls) {
     const put = (part, along, y, out, sx, sy, sz, color) =>
       parts[part].push({ x: e.px + ux * along + e.nx * out, y, z: e.pz + uz * along + e.nz * out, rot: e.rot, sx, sy, sz, color });
 
+    const spot = (along, out) => ({ x: e.px + ux * along + e.nx * out, y: 0, z: e.pz + uz * along + e.nz * out, rot: e.rot });
+    // An opening: its leaf (glass, door, shutter) `back` metres out, inside a stone surround of three bars 14 cm deep.
+    const opening = (kind, along, y, w, h, back, color) => {
+      put(kind, along, y, back + 0.01, w, h, 0.02, color);
+      for (const side of [-1, 1]) put('frame', along + side * (w / 2 + 0.08), y + 0.08, 0.07, 0.16, h + 0.16, 0.14, stone);
+      put('frame', along, y + h / 2 + 0.08, 0.07, w + 0.32, 0.16, 0.14, stone);
+    };
+
     put('cornice', L / 2, height - 0.3, 0.2, L + 0.5, 0.6, 0.6, stone);
-    // Front at 0.06 m, behind the door frames (0.08) and glass (0.10): coplanar faces flickered.
+    // Front at 0.06 m, behind the ground-floor leaves (0.08): coplanar faces flickered.
     put('plinth', L / 2, 0.35, 0.03, L + 0.1, 0.7, 0.06, linear('#a39a8a'));
     const n = Math.floor((L - 1) / 3.2);
     for (let k = 0; k < n; k++) {
       const along = ((k + 0.5) * L) / n;
-      const r = rnd(el.id, i * 37 + k);
-      if (levels > 0 && r < 0.55) {
-        // Shop front or portone on the ground floor.
-        put('glass', along, 1.45, 0.08, 2.0, 2.9, 0.04);
-        put('frame', along, 1.55, 0.04, 2.5, 3.1, 0.08, stone);
+      const key = i * 37 + k;
+      const r = rnd(el.id, key);
+      // Ground floor: a shop window, a pulled-down shop shutter or a wooden portone, in front of the plinth.
+      if (levels > 0 && r < 0.6) {
+        const [kind, w, h, color] =
+          r < 0.25 ? ['shop', 2.2, 2.8] : r < 0.45 ? ['roller', 2.2, 2.8, linear(pick(ROLLERS, el.id, key))] : ['door', 1.6, 2.9, linear(pick(DOORS, el.id, 5))];
+        opening(kind, along, h / 2, w, h, 0.07, color);
+        if (kind === 'shop' && rnd(el.id, key + 500) < 0.6) put('sign', along, h + 0.5, 0.1, w + 0.4, 0.5, 0.06, linear(pick(SIGNS, el.id, key)));
+        if (kind === 'door' && rnd(el.id, key + 600) < 0.2) for (const side of [-1, 1]) pots.push(spot(along + side * (w / 2 + 0.55), 0.45));
       }
       for (let f = 1; f < levels; f++) {
         const y = GROUND_FLOOR + (f - 1) * FLOOR + 1.6;
-        put('glass', along, y, 0.08, 1.1, 1.9, 0.04);
-        put('frame', along, y, 0.04, 1.45, 2.25, 0.08, stone);
-        put('sill', along, y - 1.1, 0.14, 1.6, 0.12, 0.28, stone);
-        const closed = rnd(el.id, i * 37 + k + f * 101) < 0.3;
+        opening(`glass${Math.floor(rnd(el.id, key + f * 53) * 4)}`, along, y, 1.1, 1.9, 0);
+        put('sill', along, y - 1.01, 0.14, 1.6, 0.12, 0.28, stone);
+        if (f === 1 && fancy) put('frame', along, y + 1.25, 0.12, 1.75, 0.12, 0.24, stone);
+        const closed = rnd(el.id, key + f * 101) < 0.3;
         for (const side of [-1, 1]) {
-          if (closed) put('shutter', along + side * 0.28, y, 0.13, 0.55, 1.9, 0.05, shutter);
-          else put('shutter', along + side * 1.0, y, 0.06, 0.55, 1.9, 0.05, shutter);
+          if (closed) put('shutter', along + side * 0.275, y, 0.05, 0.55, 1.9, 0.03, shutter);
+          else put('shutter', along + side * 1.0, y, 0.035, 0.55, 1.9, 0.03, shutter);
         }
+        if (flowers && !closed) windowBoxes.push({ ...spot(along, 0.24), y: y - 0.95 });
       }
     }
   });
@@ -223,7 +222,7 @@ for (const el of osm.elements) {
   ribbon(asphaltData, el.geometry.map(toXZ), (ROAD_WIDTH[t.highway] ?? 6) / 2, 0.03, 4, null);
 }
 const groundData = newData();
-flat(groundData, [[-600, -600], [600, -600], [600, 600], [-600, 600]], 0, 1.4, null);
+flat(groundData, [[-2500, -2500], [2500, -2500], [2500, 2500], [-2500, 2500]], 0, 1.4, null);
 
 // ---- street furniture from OSM ----------------------------------------------------------------------------------
 const furniture = (await (await fetch(`${BASE}monti-furniture.json`)).json()).elements;
@@ -277,6 +276,143 @@ for (const { e, L, height, id, i } of facades) {
     if (nearStreet(x + e.nx * 2, z + e.nz * 2)) wallLamps.push({ x, y: 3.3, z, rot: e.rot });
   }
 }
+// ---- parked vehicles -----------------------------------------------------------------------------------------
+// Rows along the right-hand edge of streets that cars use (both edges on wide ones): random kinds with gaps, 8 m
+// clear of junctions, and only where the spot keeps clear of buildings and pavements. Scooters park in clusters
+// across the kerb. A few bikes lean on street-facing walls.
+const CELL = 25; // m, building lookup grid
+const grid = new Map();
+// Background buildings near the detailed area count too, or cars park into them along its edge.
+for (const b of ringItems) if (b.base === 0 && b.r.every(([x, z]) => Math.abs(x) < 600 && Math.abs(z) < 500)) footprints.push(b.r);
+footprints.forEach((ring, k) => {
+  const xs = ring.map(([x]) => x);
+  const zs = ring.map(([, z]) => z);
+  for (let cx = Math.floor(Math.min(...xs) / CELL); cx <= Math.floor(Math.max(...xs) / CELL); cx++)
+    for (let cz = Math.floor(Math.min(...zs) / CELL); cz <= Math.floor(Math.max(...zs) / CELL); cz++) {
+      const key = `${cx},${cz}`;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(k);
+    }
+});
+const segDist = (x, z, a, b) => {
+  const [dx, dz] = [b[0] - a[0], b[1] - a[1]];
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz);
+};
+const insideRing = (x, z, ring) => {
+  let inside = false;
+  ring.forEach(([x1, z1], i) => {
+    const [x2, z2] = ring[(i + 1) % ring.length];
+    if (z1 > z !== z2 > z && x < ((x2 - x1) * (z - z1)) / (z2 - z1) + x1) inside = !inside;
+  });
+  return inside;
+};
+// Distance from (x, z) to the nearest building wall within a cell or so; 0 inside a building.
+function clearance(x, z) {
+  let best = Infinity;
+  const [cx, cz] = [Math.floor(x / CELL), Math.floor(z / CELL)];
+  for (let i = -1; i <= 1; i++)
+    for (let j = -1; j <= 1; j++)
+      for (const k of grid.get(`${cx + i},${cz + j}`) ?? []) {
+        const ring = footprints[k];
+        if (insideRing(x, z, ring)) return 0;
+        ring.forEach((a, n) => (best = Math.min(best, segDist(x, z, a, ring[(n + 1) % ring.length]))));
+      }
+  return best;
+}
+const pavementSegs = furniture
+  .filter((e) => e.type === 'way')
+  .flatMap((w) => {
+    const pts = w.geometry.map(toXZ);
+    const half = (parseFloat(w.tags.width) || 2) / 2;
+    return pts.slice(1).map((q, i) => [pts[i], q, half]);
+  });
+const onPavement = (x, z, margin) => pavementSegs.some(([a, b, half]) => segDist(x, z, a, b) < half + margin);
+const nodeUse = new Map();
+for (const w of drivable) for (const n of w.nodes) nodeUse.set(n, (nodeUse.get(n) ?? 0) + 1);
+const junctions = drivable.flatMap((w) => w.nodes.flatMap((n, i) => (nodeUse.get(n) > 1 ? [toXZ(w.geometry[i])] : [])));
+const nearJunction = (x, z) => junctions.some(([jx, jz]) => Math.hypot(x - jx, z - jz) < 8);
+
+const PAINT = ['#f2f2f0', '#c9ccce', '#8d9196', '#2b2d31', '#1f2f4a', '#7a1f24', '#3f4a3a', '#d8cfb8', '#b8402e', '#e2c547'];
+const SCOOTER_PAINT = ['#f2f2f0', '#9ec3c7', '#2b2d31', '#b8402e', '#e8d9b8', '#c9ccce'];
+const carGeos = carGeometries();
+const scooterGeo = scooterGeometry();
+const bikeGeo = bikeGeometry();
+const KINDS = [['city', 0.3], ['hatch', 0.25], ['micro', 0.1], ['sedan', 0.15], ['van', 0.05], ['scooters', 0.15]];
+const parked = { ...Object.fromEntries(Object.keys(carGeos).map((k) => [k, []])), scooter: [], bike: [] };
+// Parked spots so far, by 10 m cell: parallel ways (dual carriageways, a square's sides) would stack cars.
+const taken = new Map();
+const tkey = (x, z) => `${Math.floor(x / 10)},${Math.floor(z / 10)}`;
+function free(x, z, reach) {
+  const [cx, cz] = [Math.floor(x / 10), Math.floor(z / 10)];
+  for (let i = -1; i <= 1; i++)
+    for (let j = -1; j <= 1; j++) for (const [ox, oz, r] of taken.get(`${cx + i},${cz + j}`) ?? []) if (Math.hypot(x - ox, z - oz) < reach + r) return false; // rough circles: a row along one kerb still fits
+  return true;
+}
+const take = (x, z, reach) => {
+  const key = tkey(x, z);
+  if (!taken.has(key)) taken.set(key, []);
+  taken.get(key).push([x, z, reach]);
+};
+for (const w of drivable) {
+  if (!['residential', 'tertiary', 'secondary', 'unclassified', 'living_street'].includes(w.tags.highway)) continue;
+  const pts = w.geometry.map(toXZ);
+  const half = (ROAD_WIDTH[w.tags.highway] ?? 6) / 2;
+  for (const side of half >= 5 ? [1, -1] : [1]) {
+    pts.slice(1).forEach((b, si) => {
+      const a = pts[si];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const [ux, uz] = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+      const rot = Math.atan2(-uz, ux) + (side < 0 ? Math.PI : 0);
+      let cursor = 2;
+      for (let slot = 0; ; slot++) {
+        const seed = w.id + si * 131 + slot * 17 + side;
+        const roll = rnd(seed, 1);
+        let acc = 0;
+        const kind = KINDS.find(([, share]) => (acc += share) > roll)?.[0] ?? 'city';
+        const [len, width] = kind === 'scooters' ? [2.6, 1.8] : [carGeos[kind].length, carGeos[kind].width];
+        if (cursor + len > L - 2) break;
+        const mid = cursor + len / 2;
+        const off = side * (half - width / 2 - 0.15);
+        const at = (along) => [a[0] + ux * along - uz * off, a[1] + uz * along + ux * off];
+        const [x, z] = at(mid);
+        const ok =
+          rnd(seed, 2) > 0.25 && !nearJunction(x, z) && clearance(x, z) > width / 2 + 0.3 &&
+          [at(cursor), at(cursor + len)].every(([ex, ez]) => clearance(ex, ez) > 0.3) && !onPavement(x, z, width / 2 + 0.2) && free(x, z, len / 2);
+        if (ok) take(x, z, len / 2);
+        if (ok && kind === 'scooters') {
+          const count = 3 + Math.floor(rnd(seed, 3) * 2);
+          for (let k = 0; k < count; k++) {
+            const [sx, sz] = at(cursor + 0.4 + k * 0.62);
+            parked.scooter.push({ x: sx, y: 0, z: sz, rot: rot + side * (Math.PI / 2) + (rnd(seed, 4 + k) - 0.5) * 0.3, color: linear(pick(SCOOTER_PAINT, seed, 9 + k)) });
+          }
+        } else if (ok) parked[kind].push({ x, y: 0, z, rot, color: linear(pick(PAINT, seed, 5)) });
+        cursor += len + 0.6 + rnd(seed, 6);
+      }
+    });
+  }
+}
+for (const { e, L, id, i } of facades) {
+  if (rnd(id, i + 700) > 0.05 || L < 4) continue;
+  const along = 1 + rnd(id, i + 701) * (L - 3);
+  const [x, z] = [e.px + e.ux * along + e.nx * 0.32, e.pz + e.uz * along + e.nz * 0.32];
+  if (nearStreet(x + e.nx * 2, z + e.nz * 2) && !onPavement(x, z, -0.5)) parked.bike.push({ x, y: 0, z, rot: e.rot, lean: -0.16, color: linear(pick(PAINT, id, i + 702)) });
+}
+
+// Shrubs scattered over the parks: the olive picture, small.
+const shrubs = [];
+for (const el of osm.elements) {
+  if (!el.tags?.leisure || el.nodes[0] !== el.nodes.at(-1)) continue;
+  const ring = el.geometry.slice(0, -1).map(toXZ);
+  const xs = ring.map(([x]) => x);
+  const zs = ring.map(([, z]) => z);
+  for (let x = Math.min(...xs); x < Math.max(...xs); x += 6)
+    for (let z = Math.min(...zs); z < Math.max(...zs); z += 6) {
+      const [jx, jz] = [x + rnd(el.id, x * 7 + z) * 5, z + rnd(el.id, x + z * 7) * 5];
+      if (rnd(el.id, x * 13 + z * 3) < 0.35 && insideRing(jx, jz, ring)) shrubs.push({ id: el.id + shrubs.length, xz: [jx, jz] });
+    }
+}
+
 const atNodes = (list, y = 0) => list.map(({ id, xz: [x, z] }) => ({ x, y, z, rot: rnd(id, 5) * Math.PI * 2 }));
 
 // ---- materials ------------------------------------------------------------------------------------------------
@@ -295,7 +431,7 @@ async function pbr(name, extra = {}) {
 const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
 const gltfLoader = new GLTFLoader();
 const model = (id) => gltfLoader.loadAsync(`${BASE}models/${id}/${id}_1k.gltf`);
-const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTex, wallLampModel, poleLampModel, binModel] = await Promise.all([
+const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTexs, wallLampModel, poleLampModel, binModel, potModel, boxModel] = await Promise.all([
   new HDRLoader().loadAsync(`${BASE}sky_2k.hdr`),
   Promise.all(WALL_TEXTURES.map(([name]) => pbr(name, { vertexColors: true }))),
   pbr('clay_roof_tiles_02'),
@@ -303,13 +439,15 @@ const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTex, wallL
   pbr('asphalt_02'),
   pbr('leafy_grass'),
   pbr('floor_pavement'),
-  texLoader.loadAsync(`${BASE}tree_jacaranda.png`),
+  Promise.all(['jacaranda', 'olive', 'slender'].map((t) => texLoader.loadAsync(`${BASE}tree_${t}.png`))),
   model('street_lamp_02'),
   model('street_lamp_01'),
   model('metal_trash_can'),
+  model('potted_plant_02'),
+  model('planter_box_01'),
 ]);
 skyHdr.mapping = THREE.EquirectangularReflectionMapping;
-treeTex.colorSpace = THREE.SRGBColorSpace;
+for (const t of treeTexs) t.colorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 const looks = []; // { mesh, A, B }: the flat and the PBR material of each mesh
@@ -328,14 +466,30 @@ add(new THREE.Mesh(toGeometry(pavement.pavers), paversM), lambert('#b9b0a0'), pa
 add(new THREE.Mesh(toGeometry(pavement.asphalt), asphaltM), lambert('#4a4d55'), asphaltM);
 add(new THREE.Mesh(toGeometry(pavement.cobble), groundM), lambert('#9a968e'), groundM);
 
+const skyline = buildRing(ringItems, (b, k) => (b.stone ? linear(STONE) : linear(pick(WALL_TINTS, k, 2)).multiplyScalar(0.85 + rnd(k, 3) * 0.2)));
+const ringM = new THREE.MeshStandardMaterial({ map: facadeTexture(), vertexColors: true, roughness: 0.9 });
+add(new THREE.Mesh(skyline.walls, ringM), flatWalls, ringM);
+const monumentM = new THREE.MeshStandardMaterial({ map: arcadeTexture(), vertexColors: true, roughness: 0.9 });
+add(new THREE.Mesh(skyline.monuments, monumentM), flatWalls, monumentM);
+add(new THREE.Mesh(skyline.roofs, roofM), lambert('#b5603e'), roofM);
+const domeM = new THREE.MeshStandardMaterial({ color: '#8e979c', roughness: 0.5, metalness: 0.25 });
+const domeMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), domeM, skyline.domes.length);
+skyline.domes.forEach((d, i) => domeMesh.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(d.x, d.y, d.z), new THREE.Quaternion(), new THREE.Vector3(d.r, d.h, d.r))));
+add(domeMesh, lambert('#8e979c'), domeM);
+
 const box = new THREE.BoxGeometry(1, 1, 1);
 const cylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
 const partGeometry = { bollard: cylinder, cap: cylinder };
+const textured = (map, extra) => [new THREE.MeshLambertMaterial({ map }), new THREE.MeshStandardMaterial({ map, ...extra })];
 const partLooks = {
-  glass: [lambert('#2c3440'), new THREE.MeshStandardMaterial({ color: '#1b2128', roughness: 0.06, metalness: 0.6 })],
+  ...Object.fromEntries(glassTextures().map((map, i) => [`glass${i}`, textured(map, { roughness: 0.08 })])),
+  door: textured(doorTexture(), { roughness: 0.7 }),
+  roller: textured(rollerTexture(), { roughness: 0.45, metalness: 0.5 }),
+  shop: textured(shopTexture(), { roughness: 0.08 }),
+  sign: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.5 })],
   frame: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.8 })],
   sill: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.8 })],
-  shutter: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.55 })],
+  shutter: textured(louvreTexture(), { roughness: 0.6 }),
   cornice: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.85 })],
   plinth: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.9 })],
   bollard: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.6 })],
@@ -354,47 +508,86 @@ for (const [name, list] of Object.entries(parts)) {
     if (p.color) mesh.setColorAt(i, p.color);
   });
   instances += list.length;
-  mesh.castShadow = name === 'cornice' || name === 'shutter' || name === 'bollard';
+  mesh.castShadow = ['cornice', 'shutter', 'bollard', 'frame', 'sill'].includes(name);
   mesh.receiveShadow = true;
   scene.add(mesh);
   looks.push({ mesh, A, B });
 }
 
-// Trees: the jacaranda rendered once (prototype-monti-bake.html) on three crossed quads. Upward normals light all
-// quads alike, as a canopy; the picture is TREE_SPAN metres wide with the trunk at u = 0.54.
-const TREE_SPAN = 24.2;
-const treeData = newData();
-for (const a of [0, Math.PI / 3, (2 * Math.PI) / 3]) {
-  const P = (u, v) => [(u - 0.54) * Math.cos(a), v, (u - 0.54) * Math.sin(a), u, v];
-  tri(treeData, P(0, 0), P(1, 0), P(1, 1));
-  tri(treeData, P(0, 0), P(1, 1), P(0, 1));
-}
-const treeGeometry = toGeometry(treeData);
-treeGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(Array.from({ length: 18 }, () => [0, 1, 0]).flat(), 3));
+// Trees: Poly Haven trees rendered once each (prototype-monti-bake.html) on three crossed quads. Upward normals
+// light all quads alike, as a canopy. Each picture: [metres wide, where the trunk stands across it].
+const TREE_PICS = { jacaranda: [24.2, 0.54], olive: [4.21, 0.488], slender: [4.56, 0.467] };
 const trees = furniture.filter((e) => e.tags?.natural === 'tree');
-const treeLook = { map: treeTex, alphaTest: 0.5, side: THREE.DoubleSide };
-const treeB = new THREE.MeshStandardMaterial({ ...treeLook, roughness: 1 });
-const treeMesh = new THREE.InstancedMesh(treeGeometry, treeB, trees.length);
-trees.forEach((t, i) => {
-  const [x, z] = toXZ(t);
+const treeLists = { jacaranda: [], olive: [], slender: [] };
+for (const t of trees) {
+  // OSM's pines get the broad jacaranda, nearest to an umbrella pine; other trees a mix. Sizes are metres wide.
   const pine = t.tags.leaf_type === 'needleleaved' || t.tags.genus === 'Pinus';
-  const s = TREE_SPAN * (pine ? 0.5 + rnd(t.id, 6) * 0.1 : 0.32 + rnd(t.id, 6) * 0.15);
-  treeMesh.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 0, z), quat.setFromAxisAngle(yAxis, rnd(t.id, 7) * Math.PI), new THREE.Vector3(s, s, s)));
+  const r = rnd(t.id, 8);
+  const [pic, metres] = pine || r < 0.3 ? ['jacaranda', pine ? 12 + rnd(t.id, 6) * 3 : 8 + rnd(t.id, 6) * 3] : r < 0.6 ? ['olive', 7 + rnd(t.id, 6) * 3] : ['slender', 8 + rnd(t.id, 6) * 3];
+  treeLists[pic].push({ id: t.id, xz: toXZ(t), size: metres / TREE_PICS[pic][0] });
+}
+for (const { id, xz } of shrubs) treeLists.olive.push({ id, xz, size: (1.8 + rnd(id, 6) * 1.4) / TREE_PICS.olive[0] });
+Object.entries(TREE_PICS).forEach(([pic, [span, trunk]], k) => {
+  const data = newData();
+  for (const a of [0, Math.PI / 3, (2 * Math.PI) / 3]) {
+    const P = (u, v) => [(u - trunk) * Math.cos(a), v, (u - trunk) * Math.sin(a), u, v];
+    tri(data, P(0, 0), P(1, 0), P(1, 1));
+    tri(data, P(0, 0), P(1, 1), P(0, 1));
+  }
+  const geometry = toGeometry(data);
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(Array.from({ length: 18 }, () => [0, 1, 0]).flat(), 3));
+  const look = { map: treeTexs[k], alphaTest: 0.5, side: THREE.DoubleSide };
+  const B = new THREE.MeshStandardMaterial({ ...look, roughness: 1 });
+  const list = treeLists[pic];
+  const mesh = new THREE.InstancedMesh(geometry, B, list.length);
+  list.forEach(({ id, xz: [x, z], size }, i) => {
+    const s = span * size;
+    const flip = rnd(id, 9) < 0.5 ? -1 : 1; // mirrored copies look like other trees
+    mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 0, z), quat.setFromAxisAngle(yAxis, rnd(id, 7) * Math.PI), new THREE.Vector3(s * flip, s, s)));
+  });
+  mesh.castShadow = true; // not receiving: the crossed quads shadowed each other black
+  scene.add(mesh);
+  looks.push({ mesh, A: new THREE.MeshLambertMaterial(look), B });
 });
-treeMesh.castShadow = true; // not receiving: the crossed quads shadowed each other black
-scene.add(treeMesh);
-looks.push({ mesh: treeMesh, A: new THREE.MeshLambertMaterial(treeLook), B: treeB });
+
+// ---- parked vehicles' meshes: one InstancedMesh per kind and material, the paint per instance ----------------
+const carPaint = new THREE.MeshPhysicalMaterial({ roughness: 0.35, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.08 });
+const vehicleLooks = {
+  body: [lambert('#ffffff'), carPaint],
+  glass: [lambert('#20262d'), new THREE.MeshStandardMaterial({ color: '#151a20', roughness: 0.05, metalness: 0.2 })],
+  dark: [lambert('#1d1d1f'), new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 })],
+  metal: [lambert('#b9bcc0'), new THREE.MeshStandardMaterial({ color: '#b9bcc0', roughness: 0.3, metalness: 0.9 })],
+};
+const lean = new THREE.Quaternion();
+let vehicleCount = 0;
+for (const [kind, list] of Object.entries(parked)) {
+  const geos = kind === 'scooter' ? scooterGeo : kind === 'bike' ? bikeGeo : carGeos[kind];
+  vehicleCount += list.length;
+  for (const [part, [A, B]] of Object.entries(vehicleLooks)) {
+    if (!geos[part] || !list.length) continue;
+    const mesh = new THREE.InstancedMesh(geos[part], B, list.length);
+    list.forEach((p, i) => {
+      quat.setFromAxisAngle(yAxis, p.rot).multiply(lean.setFromAxisAngle(new THREE.Vector3(1, 0, 0), p.lean ?? 0));
+      mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(p.x, p.y, p.z), quat, new THREE.Vector3(1, 1, 1)));
+      if (part === 'body') mesh.setColorAt(i, p.color);
+    });
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    looks.push({ mesh, A, B });
+  }
+}
 
 // A Poly Haven model as instances standing on y = 0 at each placement. `wall`: its back at z = 0, so it sits on a
 // facade whose outward normal is the placement's local +z. Each sub-mesh gets a near and a far InstancedMesh:
 // full detail within LOD_NEAR metres of the camera, a meshoptimizer-simplified copy (`keep` of the vertices)
-// beyond; updateLods() re-sorts the instances between them.
+// beyond, nothing past PROP_CULL (haze hides them there); updateLods() re-sorts the instances between them.
 const LOD_NEAR = 25; // m
+const PROP_CULL = 150; // m
 const simplifier = new SimplifyModifier();
 const lodModels = [];
 let fullTris = 0;
 let lowTris = 0;
-async function instanceModel(gltf, placements, { wall = false, keep = 0.05 } = {}) {
+async function instanceModel(gltf, placements, { wall = false, keep = 0.05, shadows = true } = {}) {
   const root = gltf.scene;
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(root);
@@ -414,7 +607,8 @@ async function instanceModel(gltf, placements, { wall = false, keep = 0.05 } = {
     const [near, far] = [o.geometry, low].map((g) => {
       const mesh = new THREE.InstancedMesh(g, o.material, placements.length);
       mesh.frustumCulled = false; // instances move between near and far, so the bounds would go stale
-      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = true;
       scene.add(mesh);
       looks.push({ mesh, A: o.material, B: o.material });
       return mesh;
@@ -426,10 +620,10 @@ async function instanceModel(gltf, placements, { wall = false, keep = 0.05 } = {
 let lodOn = !new URLSearchParams(location.search).has('nolod');
 function updateLods(eye) {
   for (const { placements, parts } of lodModels) {
-    const close = placements.map((p) => !lodOn || Math.hypot(p.x - eye.x, p.z - eye.z) < LOD_NEAR);
+    const dist = placements.map((p) => (lodOn ? Math.hypot(p.x - eye.x, p.z - eye.z) : 0));
     for (const { near, far, matrices } of parts) {
       let [n, f] = [0, 0];
-      matrices.forEach((m, i) => (close[i] ? near.setMatrixAt(n++, m) : far.setMatrixAt(f++, m)));
+      matrices.forEach((m, i) => (dist[i] < LOD_NEAR ? near.setMatrixAt(n++, m) : dist[i] < PROP_CULL && far.setMatrixAt(f++, m)));
       [near.count, far.count] = [n, f];
       near.instanceMatrix.needsUpdate = far.instanceMatrix.needsUpdate = true;
     }
@@ -440,7 +634,10 @@ const bins = atNodes(nodesOf('amenity', 'waste_basket'));
 await instanceModel(wallLampModel, wallLamps, { wall: true });
 await instanceModel(poleLampModel, poleLamps);
 await instanceModel(binModel, bins);
-const propsLine = `trees ${trees.length}  lanterns ${wallLamps.length}+${poleLamps.length}  bins ${bins.length}\n` +
+await instanceModel(potModel, pots, { keep: 0.01, shadows: false });
+await instanceModel(boxModel, windowBoxes, { keep: 0.03, shadows: false });
+const propsLine = `trees ${trees.length}+${shrubs.length} shrubs  lanterns ${wallLamps.length}+${poleLamps.length}  bins ${bins.length}\n` +
+  `vehicles ${vehicleCount}  pots ${pots.length}  window boxes ${windowBoxes.length}  ring ${ringItems.length}\n` +
   `prop meshes ${(fullTris / 1000).toFixed(1)}k → ${(lowTris / 1000).toFixed(1)}k tris beyond ${LOD_NEAR} m`;
 
 // ---- lights, renderer, post -----------------------------------------------------------------------------------
@@ -530,7 +727,8 @@ function along(s) {
 const params = new URLSearchParams(location.search);
 let variant = VARIANTS.some(([k]) => k === params.get('variant')) ? params.get('variant') : 'B';
 let view = params.get('view') === 'drive' ? 'drive' : 'orbit';
-const fog = new THREE.FogExp2('#c4cfd8', 0.0022);
+// Haze fades the background ring into the sky; C keeps its thicker haze.
+const fogs = { B: new THREE.FogExp2('#c4cfd8', 0.0012), C: new THREE.FogExp2('#c4cfd8', 0.0022) };
 
 function applyVariant() {
   const pbrLook = variant !== 'A';
@@ -538,7 +736,7 @@ function applyVariant() {
   scene.background = pbrLook ? skyHdr : new THREE.Color('#9ec9e8');
   scene.environment = pbrLook ? skyHdr : null;
   scene.environmentIntensity = 0.7;
-  scene.fog = variant === 'C' ? fog : null;
+  scene.fog = fogs[variant] ?? null;
   hemi.intensity = pbrLook ? 0 : 1.2;
   sun.intensity = pbrLook ? 3.2 : 2.2;
   sun.castShadow = pbrLook;
@@ -629,4 +827,4 @@ renderer.setAnimationLoop(() => {
   }
 });
 document.getElementById('loading').remove();
-window.proto = { camera, controls, sun, lightX, lightY, drive, driveLen, renderer, wallLamps, trees: trees.map(toXZ), nasoni: nodesOf('amenity', 'drinking_water') }; // console poking only
+window.proto = { scene, camera, controls, sun, lightX, lightY, drive, driveLen, renderer, wallLamps, parked, trees: trees.map(toXZ), nasoni: nodesOf('amenity', 'drinking_water') }; // console poking only
