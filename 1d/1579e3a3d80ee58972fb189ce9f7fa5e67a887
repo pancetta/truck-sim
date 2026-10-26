@@ -1,0 +1,19 @@
+src/tables.js
+  s_42f3d1d4365464::t_46ec117d8c0c15 366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d1579e3a3d80ee58972fb189ce9f7fa5e67a887",
+  "prompts": {},
+  "sessions": {
+    "s_42f3d1d4365464": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a95ecda-7a72-44fd-9cc3-73764e37494d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
