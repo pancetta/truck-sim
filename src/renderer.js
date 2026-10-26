@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { texture, uv } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
@@ -438,6 +439,35 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let chaseArm = cam.chaseDistance; // m, chase camera distance behind the truck
   let shifted = false; // whether the picture is moved aside for the Werkstatt panel
 
+  // Reversing camera as an inset over the view (owner's decision on #43): while the gear is R and `rearHold` s
+  // after, the scene from the roof camera goes into a small render target, then onto the inset's rectangle,
+  // mirrored like a real one. The rectangle is the inside of the `.rear-inset` frame (style.css), measured when it
+  // shows and on resize.
+  const rearCamera = new THREE.PerspectiveCamera(cam.rearFov, 1, 0.1, cam.fog[1]);
+  const rearTarget = new THREE.RenderTarget(1, 1);
+  const insetScene = new THREE.Scene();
+  const insetCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  // Drawn over the finished view without clearing it, so no depth test against it.
+  const insetMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+  // Mirrored left to right; and render targets are sampled from the top, so v is turned too (as QuadMesh does).
+  insetMaterial.colorNode = texture(rearTarget.texture, uv().oneMinus());
+  insetScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), insetMaterial));
+  const frame = document.createElement('div');
+  frame.className = 'rear-inset';
+  frame.hidden = true;
+  canvas.after(frame);
+  const inset = { x: 0, y: 0, width: 0, height: 0 }; // CSS px
+  let rearTime = 0; // s the inset still shows
+
+  function measureInset() {
+    const { left, top } = frame.getBoundingClientRect();
+    Object.assign(inset, { x: left + frame.clientLeft, y: top + frame.clientTop, width: frame.clientWidth, height: frame.clientHeight });
+    rearCamera.aspect = inset.width / inset.height;
+    rearCamera.updateProjectionMatrix();
+    const ratio = renderer.getPixelRatio();
+    rearTarget.setSize(Math.round(inset.width * ratio), Math.round(inset.height * ratio));
+  }
+
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -445,6 +475,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     camera.aspect = w / h;
     shifted = false; // shift() sets the offset again for the new size
     camera.clearViewOffset();
+    if (!frame.hidden) measureInset();
   }
 
   function shift(on) {
@@ -466,6 +497,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const ratio = resolution.frame(now - lastFrame);
     if (ratio) renderer.setPixelRatio(ratio);
     const dt = Math.min((now - lastFrame) / 1000, 0.1);
+    if (ratio && !frame.hidden) measureInset();
     lastFrame = now;
     const { x, z, heading, roll } = state.truck;
     truck.position.set(x, 0, z);
@@ -493,10 +525,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
       marker.material.color.setHex(order.phase === 'pickup' ? palette.pickup : palette.dropoff);
     }
 
-    // Each view shows one side of the cab: the interior from the seat, the kit's cab from outside. In reverse gear the reversing
-    // camera takes over; the chosen view comes back when the gear leaves R.
-    const rear = !showroom && state.truck.gear === 'R';
-    const inCab = showroom ? showroom === 'cab' : cabView && !rear;
+    // Each view shows one side of the cab: the interior from the seat, the kit's cab from outside. In reverse gear the
+    // reversing camera shows in an inset over the chosen view.
+    rearTime = !showroom && state.truck.gear === 'R' ? cam.rearHold : Math.max(0, rearTime - dt);
+    if (frame.hidden !== !rearTime) {
+      frame.hidden = !rearTime;
+      if (rearTime) measureInset();
+    }
+    const inCab = showroom ? showroom === 'cab' : cabView;
     exterior.visible = parts.exterior.visible = !inCab;
     interior.visible = inCab;
     shift(!!showroom);
@@ -511,9 +547,6 @@ export function createRenderer(canvas, tables, map, onProgress) {
       arm = Math.min(room, arm + armSpeed * dt);
       camera.position.set(x + dx * arm, height, z + dz * arm);
       camera.lookAt(x, lookHeight, z);
-    } else if (rear) {
-      camera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
-      camera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     } else if (inCab) {
       // Truck-space points, so the camera follows anything that moves the truck.
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye)));
@@ -528,8 +561,24 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
     }
-    drawTraffic(state.traffic);
+    if (rearTime) {
+      rearCamera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
+      rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
+    }
+    drawTraffic(state.traffic, !!rearTime);
     pipeline.render(scene, camera);
+    if (rearTime) {
+      // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
+      renderer.setRenderTarget(rearTarget);
+      renderer.render(scene, rearCamera);
+      renderer.setRenderTarget(null);
+      const autoClear = renderer.autoClear;
+      renderer.autoClear = false;
+      renderer.setViewport(inset.x, inset.y, inset.width, inset.height);
+      pipeline.render(insetScene, insetCamera);
+      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+      renderer.autoClear = autoClear;
+    }
   }
 
   // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most chaseDistance. The ray is
@@ -547,16 +596,22 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const carTurn = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const frustum = new THREE.Frustum();
+  const rearFrustum = new THREE.Frustum();
   const viewProjection = new THREE.Matrix4();
   const carBounds = new THREE.Sphere(new THREE.Vector3(), carSize.length() / 2);
-  // Only the cars in view are drawn: the meshes span the whole spawn ring, so the renderer can't cull them.
-  function drawTraffic(cars) {
-    camera.updateMatrixWorld();
-    frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse), camera.coordinateSystem);
+  const frustumOf = (c, out) => {
+    c.updateMatrixWorld();
+    return out.setFromProjectionMatrix(viewProjection.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse), c.coordinateSystem);
+  };
+  // Only the cars in view, or in the inset's while it shows, are drawn: the meshes span the whole spawn ring, so
+  // the renderer can't cull them.
+  function drawTraffic(cars, rear) {
+    frustumOf(camera, frustum);
+    if (rear) frustumOf(rearCamera, rearFrustum);
     for (const mesh of trafficMeshes) mesh.count = 0;
     for (const car of cars) {
       carBounds.center.set(car.x, carSize.y / 2, car.z);
-      if (!frustum.intersectsSphere(carBounds)) continue;
+      if (!frustum.intersectsSphere(carBounds) && !(rear && rearFrustum.intersectsSphere(carBounds))) continue;
       const mesh = trafficMeshes[car.id % trafficMeshes.length];
       carMatrix.compose(carPosition.set(car.x, 0, car.z), carTurn.setFromAxisAngle(up, car.heading), carSize);
       mesh.setMatrixAt(mesh.count++, carMatrix);

@@ -263,11 +263,13 @@ export const camera = {
   cabEye: [0.55, 2.05, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the cab roof (2.33 m)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
   gimmickLook: [0.2, 1.9, 2.35], // where it aims in the Werkstatt to show the cab gimmick
-  // Reversing camera above the roof's back edge, inside the footprint so it never ends up in the wall it backs up
-  // to, aimed nearly straight down: it shows ~5 m behind the rear doors, and at the dock the truck's back edge
-  // against the dock edge, with the bay lines either side, above the dashboard.
-  rearEye: [0, 5, -3.95],
-  rearLook: [0, 0, -5.2],
+  // Reversing camera on the roof's back edge, inside the footprint so it never ends up in the wall it backs up to.
+  // It shows in an inset (renderer.js) while the gear is R and `rearHold` s after, so stops while reversing don't
+  // make it flicker. Aimed down so the bottom of the picture is straight down: at the dock the bay edge shows.
+  rearEye: [0, 3.6, -3.95],
+  rearLook: [0, 0, -6],
+  rearFov: 70, // degrees, vertical; wide, as reversing cameras are
+  rearHold: 1.5, // s
   // m: sky-coloured distance fog starts at the first and is full at the second, where the camera stops drawing
   fog: [150, 350],
 };

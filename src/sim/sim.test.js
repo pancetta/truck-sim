@@ -1835,6 +1835,19 @@ describe('Sim: right of way and collisions', () => {
       expect(most).toBe(1);
     });
 
+    test('two cars turning left from opposite sides, one with a car queued behind it, all go', () => {
+      // #43 review: the northbound turner waits for the southbound car going straight, which is behind the
+      // southbound turner; that one mustn't wait for the northbound turner then.
+      const sim = lightSim();
+      const a = addCar(sim, 1, northThenWest);
+      const b = addCar(sim, 2, [[3, 2], [3, 3], [4, 3], [5, 3]]);
+      const c = addCar(sim, 3, through[SOUTH]);
+
+      const { entered } = watch(sim, [a, b, c], 14);
+
+      expect([a, b, c].map((car) => entered.has(car))).toEqual([true, true, true]);
+    });
+
     test('two cars turning left from opposite sides both go', () => {
       const sim = lightSim();
       const a = addCar(sim, 1, northThenWest);
@@ -1951,6 +1964,22 @@ describe('Sim: right of way and collisions', () => {
     drive(sim, 1.5, BRAKE);
     expect(truck.z).toBeLessThan(start.z - 0.5);
     expect(sim.state.lastFine).toBe([...fines][0]);
+  });
+
+  test('driving on past a car that drove into the truck’s side is free: sliding along it isn’t pushing', () => {
+    // The truck stands facing north beside a car whose lane starts there, the car 2 m ahead of the truck's
+    // middle and 0.3 m into its right side.
+    const sim = crossSim({ ...freshProfile(), money: 500 });
+    const car = addCar(sim, 1, through[NORTH]);
+    const { truck } = sim.state;
+    Object.assign(truck, { x: car.x - CAR.width / 2 + 0.3 - tables.vehicle.width / 2, z: car.z + 2, heading: NORTH });
+    sim.step(DT, IDLE);
+    const start = truck.z;
+
+    drive(sim, 2, GAS);
+
+    expect(truck.z).toBeLessThan(start - 2);
+    expect(sim.state.lastFine).toBe(null);
   });
 
   describe('the truck standing in a crossing or a light junction', () => {

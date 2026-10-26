@@ -384,8 +384,9 @@ export function createTraffic(tables, map, random) {
   // into it of the cars in it (`inside`) or arriving within `giveWay`, and of the truck driving in. A car
   // turning left there waits for those coming towards it, and they wait for it once it is past stopping.
   // Two turning left from opposite sides would meet in the middle, so they take turns: the one past stopping
-  // goes, and of two that can stop, the one travelling north or east. No car drives in while one of the other
-  // axis is still in it (stuck behind the truck when the lights changed, say).
+  // goes, and of two that can stop, the one travelling north or east, unless it waits for traffic coming the
+  // other way itself (queued behind the other turner, say, which would then wait for good). No car drives in
+  // while one of the other axis is still in it (stuck behind the truck when the lights changed, say).
   function see(col, row, dir, bits) {
     const j = junctionAt[tileAt(col, row)];
     if (!j) return;
@@ -399,7 +400,8 @@ export function createTraffic(tables, map, random) {
   const yields = (p) => {
     const j = junctionAt[tileAt(p.col, p.row)];
     if (j?.stamp !== now) return false;
-    const towards = p.to === (p.from + 3) % 4 ? j.seen | j.leftIn | (p.from >= 2 ? j.left : 0) : j.leftIn;
+    const first = p.from >= 2 && (j.seen & (1 << p.from)) === 0; // the other turner can go first
+    const towards = p.to === (p.from + 3) % 4 ? j.seen | j.leftIn | (first ? j.left : 0) : j.leftIn;
     const across = (1 << ((p.from + 1) % 4)) | (1 << ((p.from + 3) % 4));
     return ((towards & (1 << ((p.from + 2) % 4))) | (j.inside & across)) !== 0;
   };
@@ -468,8 +470,8 @@ export function createTraffic(tables, map, random) {
   // The fastest the car may go now: cruise, slower through turns, and able to stop at `brake` before a stop
   // line that isn't green, traffic in a light junction it must let go first (see atJunctions), a crossing it
   // may not drive into yet, a box whose exit is queued up or where the truck stands in its way, and behind the
-  // car or truck ahead. A light it can't stop for at `maxBrake` (it turned amber too late) is driven through. Goes into
-  // targets[i] for cars[i]: a returned number would be boxed on every call.
+  // car or truck ahead. A light it can't stop for at `maxBrake` (it turned amber too late) is driven through.
+  // Goes into targets[i] for cars[i]: a returned number would be boxed on every call.
   function targetSpeed(ci, truck, lights) {
     const car = cars[ci];
     let speed = car.lane.from === car.lane.to ? t.speed : turnSpeed(car.lane);

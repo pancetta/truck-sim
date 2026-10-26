@@ -6,7 +6,7 @@ A browser truck-delivery game: drive a heavy truck around a small low-poly city,
 
 ## In the game
 
-- **Orders:** pick one of three offers, load at the pickup, unload at the drop-off. Pay grows with the road distance, plus a **time bonus** that shrinks to nothing at the offer's expected time. **Fragile** cargo pays a premium that hard braking and hits wear away. Drop-offs at a **dock** pay a bonus when you reverse into the bay (the reversing camera comes on in R).
+- **Orders:** pick one of three offers, load at the pickup, unload at the drop-off. Pay grows with the road distance, plus a **time bonus** that shrinks to nothing at the offer's expected time. **Fragile** cargo pays a premium that hard braking and hits wear away. Drop-offs at a **dock** pay a bonus when you reverse into the bay, right up to the dock edge (in R a mirrored reversing-camera picture shows at the top of the screen).
 - **Rank:** deliveries (and their bonuses) earn rank points; a higher rank unlocks harder offer types, Werkstatt upgrades and more traffic.
 - **Werkstatt:** buy upgrades (motor, brakes, tyres, suspension, cargo bed) and looks (paint, livery, light bar, cab gimmick, rims, chrome), trying looks on before buying. Opens only while standing with no order.
 - **Traffic:** AI cars drive the right-hand lane at the 50 km/h limit, stop at red lights, give way right before left at unsignalled crossings, wait to turn left at lights while traffic comes the other way, and don't drive into a crossing whose exit is queued up or where the truck stands.
@@ -36,7 +36,7 @@ Vite, plain JavaScript (ES modules), Three.js, no backend.
 - **Map** (`src/sim/map.js`, `src/city.txt`): parses the ASCII city grid into tiles, spots, colliders (signal posts included), traffic lights and the road graph, and answers routes.
 - **Tables** (`src/tables.js`): every tunable (vehicle, orders and pay, cameras, palette, UI sizes) as plain data. Tweak numbers here.
 - **Strings** (`src/strings.js`): all UI text, German only.
-- **Renderer** (`src/renderer.js`, `src/truckLook.js`): Three.js scene on `WebGPURenderer` (WebGL 2 where WebGPU is missing; `?webgl` forces it), cab and chase cameras, and the Werkstatt's orbit camera. Draws the truck from a *look* (the equipped visual items plus Werkstatt previews) that the app hands it; `truckLook.js` holds the visual items' own geometry. Reads Sim state, never writes it.
+- **Renderer** (`src/renderer.js`, `src/truckLook.js`): Three.js scene on `WebGPURenderer` (WebGL 2 where WebGPU is missing; `?webgl` forces it), cab and chase cameras, the reversing-camera inset, and the Werkstatt's orbit camera. Draws the truck from a *look* (the equipped visual items plus Werkstatt previews) that the app hands it; `truckLook.js` holds the visual items' own geometry. Reads Sim state, never writes it.
 - **Controls** (`src/controls.js`): on-screen wheel and pedals, turned into the input the Sim takes.
 - **HUD and orders UI** (`src/hud.js`, `src/orders.js`, `src/minimap.js`): dashboard, orders panel and goal banner, minimap. They read Sim state; orders go through the Sim's commands.
 - **Werkstatt** (`src/werkstatt.js`): the garage button and panel; buys through the Sim's commands, holds the tried-on (unbought) visual items, and resets the save.

@@ -20,6 +20,28 @@ body {
   display: block;
 }
 
+/* Frame of the reversing camera's inset, which renderer.js draws into: top centre, like a display above the
+   windscreen, clear of the wheel, pedals and dashboard. The goal banner, there too, hides while it shows. */
+.rear-inset {
+  position: fixed;
+  top: max(24px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max(240px, 30vw);
+  aspect-ratio: 16 / 10;
+  border: 3px solid #1d1f24;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.rear-inset[hidden] {
+  display: none;
+}
+
+body:has(.rear-inset:not([hidden])) .goal {
+  visibility: hidden;
+}
+
 #controls {
   position: fixed;
   inset: 0;

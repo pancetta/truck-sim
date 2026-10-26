@@ -146,12 +146,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
 
     // Solid stop, no damage to the truck: undo the move that hit something, a wall or a car it wasn't
-    // already touching, or that pushed into a car it was (one that drove into it): the move brought their
-    // centres closer. Reverse backs a stuck truck off.
+    // already touching, or that pushed into a car it was (one that drove into it): the move brought the car's
+    // centre closer to the truck's footprint (sliding along it isn't pushing). Reverse backs a stuck truck off.
     const shed = speedBefore - Math.abs(truck.speed);
     const met = traffic ? traffic.touching(corners(truck)) : [];
     const before = met.length ? traffic.touching(corners({ x, z, heading })) : [];
-    const closer = (c) => Math.hypot(c.x - truck.x, c.z - truck.z) < Math.hypot(c.x - x, c.z - z);
+    const closer = (c) => outside(c, truck) < outside(c, { x, z, heading }) - 1e-6;
     const pushed = before.filter((c) => met.includes(c) && closer(c));
     const blocked = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0;
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
@@ -482,6 +482,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       }
     }
     return true;
+  }
+
+  // How far point `p` lies outside the truck's footprint at `pose`; negative inside, by how far it is in.
+  function outside(p, { x, z, heading }) {
+    const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
+    const along = Math.abs((p.x - x) * fx + (p.z - z) * fz) - v.length / 2;
+    const right = Math.abs(-(p.x - x) * fz + (p.z - z) * fx) - v.width / 2;
+    return along > 0 || right > 0 ? Math.hypot(Math.max(0, along), Math.max(0, right)) : Math.max(along, right);
   }
 
   // Footprint corners, `grow` m larger all round; right is (-cos heading, sin heading).
