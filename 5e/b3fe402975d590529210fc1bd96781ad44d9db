@@ -1,0 +1,22 @@
+src/sim/sim.test.js
+  s_8f83dd87ede197::t_11d46004c9cf72 1867-1868
+  s_8f83dd87ede197::t_f5e173cc970358 1864-1866,1869-1876
+src/sim/traffic.js
+  s_8f83dd87ede197::t_8eb9f5a327badd 61-62,66,387-395,397,400,402-406,418-426,434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5eb3fe402975d590529210fc1bd96781ad44d9db",
+  "prompts": {},
+  "sessions": {
+    "s_8f83dd87ede197": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9fd7c66d-fd50-4bbf-87bd-961d436b6105",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
