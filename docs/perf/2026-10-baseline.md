@@ -1,4 +1,4 @@
-> **Decision (2026-10-25, owner):** despite the measurements below, the renderer moves to Three's `WebGPURenderer` to prepare for phase 3 graphics. The migration lands after the `?perf` harness so the switch is measured against this baseline. Other decisions: adaptive resolution between DPR 1.25 and 2 (start at 1.5 on touch devices), and sky-tinted distance fog at roughly 300–400 m together with sector culling.
+> **Decision (2026-10-25, owner):** despite the measurements below, the renderer moves to Three's `WebGPURenderer` to prepare for phase 3 graphics. The migration lands after the `?perf` harness so the switch is measured against this baseline; it landed with #28 within budget (see "WebGPURenderer switch (#28)" below). Other decisions: adaptive resolution between DPR 1.25 and 2 (start at 1.5 on touch devices), and sky-tinted distance fog at roughly 300–400 m together with sector culling.
 
 # Truck Sim: performance and architecture before phase 3
 
@@ -228,6 +228,91 @@ As before, the simulator uses the Mac's GPU, so this checks compatibility, not i
 **WebGPURenderer check** (a scratch copy with `three/webgpu` and `renderer.init()`, Chrome, cab, about 10 s): the overlay showed every value on both backends. On WebGPU (`apple metal-3`): busy 1.62 / 2.43, render 0.90 / 1.46, 38 calls, 312k triangles, 39 programs. On its WebGL 2 fallback: busy 1.41 / 2.42, render 0.79 / 1.41. These are smoke-test numbers, not a comparison; #28 measures the switch.
 
 **Step cap:** after a 1 s main-thread stall in Chrome, the overlay's steps maximum rose from 1 to 4. Before the cap it would have been 15 (0.25 s of `maxFrame`).
+
+## WebGPURenderer switch (#28)
+
+The renderer now runs on `WebGPURenderer` (`three/webgpu`). Where WebGPU is missing it falls back to the WebGL 2 backend on its own, and `?webgl` forces that backend. It renders through three's `DirectRenderPipeline`, which does the sRGB conversion in the material shaders, as `WebGLRenderer` did. Also folded in:
+- one kit material per mesh variant (plain, instanced, instanced and tinted);
+- a `lightsVersion` counter in the Sim instead of the per-frame `join()` of light phases.
+
+**Why `DirectRenderPipeline`:** `WebGPURenderer`'s default pipeline draws the scene into a half-float 4× MSAA target at full resolution and then adds a full-screen output pass. In Chrome, the WebGL 2 backend then took 7.9 ms per uncapped frame, against 2.6 ms for `WebGLRenderer`. In the iPad simulator, which has no WebGPU adapter and so runs that backend, 100 cars dropped frames: frame median / p95 / mean of 16.68 / 21.28 / 18.00 and 18.22 / 24.76 / 19.13 ms in two runs, against 16.66 / 16.78 / 16.70 ms before. The CPU was busy for only 3–4 ms, so this was GPU-bound. An 8-bit output buffer (`outputBufferType`) brought the uncapped frame down to only 5.1 ms. `DirectRenderPipeline` brought it down to 2.5 ms. It blends the translucent order marker in sRGB space, as `WebGLRenderer` did. Its output step expects premultiplied colour, so the marker material sets `premultipliedAlpha`. With straight alpha the opacity was applied twice: a test quad came out (73, 86, 64) instead of `WebGLRenderer`'s (89, 114, 74), and with `premultipliedAlpha` it matches exactly.
+
+**First frame:** shaders compile on the first render, which took 0.5–1 s on the WebGL 2 backend. `main.js` now draws one frame before it removes the loading screen. The longest frame in the first 2 s of play is then 17 ms on the WebGL 2 backend and 67 ms on WebGPU, against 33 ms on main.
+
+**How measured:** `?perf&auto` A/B runs in one sitting, from production builds served with COOP/COEP by a scratch static server.
+- *Before:* main at `81df88a` (`WebGLRenderer`, with #27 and #32).
+- *After:* the same commit plus this change.
+- *Chrome:* Chrome 155 headless at 1180×820 and DPR 2 (buffer 2360×1640), load average 3–9. The GPU string is `ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)` on WebGL and `apple metal-3` on WebGPU.
+- *Per run:* the overlay is read after 25 s. Then come 10 s of allocation sampling (the CDP sampling heap profiler, including objects already collected) and a count of frame intervals.
+- *100 cars:* a scratch copy with every rank tier at 100 cars and the spawn ring widened to 45–400 m (despawn at 450 m), as in the phase-3 stress above.
+
+**Chrome, vsync 60 Hz, 8 cars** (ms, median / p95 / mean):
+
+| | before, WebGL | after, WebGPU | after, `?webgl` |
+|---|---|---|---|
+| Frame, cab | 16.67 / 16.67 / 16.68 | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Frame, chase | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Frames over 20 ms in 10 s (cab, chase) | 0, 0 | 0, 0 | 0, 0 |
+| Busy, cab | 0.56 / 1.23 / 0.66 | 0.54 / 1.85 / 0.79 | 0.54 / 1.46 / 0.69 |
+| Busy, chase | 0.87 / 1.52 / 0.86 | 0.48 / 1.22 / 0.57 | 0.83 / 1.59 / 0.90 |
+| Render CPU, cab | 0.35 / 0.85 / 0.44 | 0.38 / 1.34 / 0.56 | 0.38 / 1.07 / 0.49 |
+| Render CPU, chase | 0.61 / 1.09 / 0.60 | 0.32 / 0.88 / 0.40 | 0.58 / 1.20 / 0.64 |
+| Allocated per frame, cab / chase | 132 / 134 KB | 97 / 95 KB | 98 / 97 KB |
+| Draw calls / triangles, cab | 37 / 312k | 38 / 314k | 38 / 314k |
+
+Render CPU is within run-to-run noise of before, with a slightly longer p95 tail on WebGPU. Allocations fall by about 27%. The material variants and the lights counter save more than `WebGPURenderer` adds.
+
+**GPU** (Chrome, chase):
+
+| | before, WebGL | after, WebGPU | after, `?webgl` |
+|---|---|---|---|
+| Uncapped frame time, median / mean | 2.42 / 2.56 ms | 0.98 / 1.07 ms | 2.47 / 1.80 ms |
+| GPU timer per frame at vsync, chase / cab | 5.56 / 5.74 ms¹ | 2.75 / 2.66 ms | 2.79 ms / – |
+
+¹ Measured at `bc6c292` earlier the same day. #27 doesn't touch the GPU.
+
+Uncapped (`--disable-frame-rate-limit --disable-gpu-vsync`), a frame can't be shorter than its GPU work once the pipeline is full, so that row is the comparison to trust. The timer row uses scratch copies with `EXT_disjoint_timer_query_webgl2` (before) and three's `trackTimestamp` (after). Those are two different mechanisms, and the GPU clocks down at vsync, so read that row as indicative. Uncapped, three's timestamp pool skips frames while a resolve is pending, and its readings were unusable. In short: WebGPU costs less GPU than before, and the WebGL 2 backend costs the same.
+
+**Chrome, 100 cars, vsync** (ms, median / p95 / mean):
+
+| | before, WebGL² | after, WebGPU | after, `?webgl` |
+|---|---|---|---|
+| Frame, cab | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Frame, chase | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 | – |
+| Frames over 20 ms in 10 s (cab, chase) | 1, 1 | 1, 0 | 1, – |
+| Render CPU, cab | 0.27 / 0.52 / 0.29 | 0.34 / 0.63 / 0.36 | 0.31 / 0.76 / 0.37 |
+| Render CPU, chase | 0.30 / 0.64 / 0.33 | 0.31 / 0.63 / 0.34 | – |
+| Allocated per frame, cab | 4011 KB | 3762 KB | 3772 KB |
+| Triangles | 511k | 513k | 513k |
+
+² At `bc6c292`, without #27's collider index.
+
+The one 33 ms frame per 10 s at 100 cars appears before and after alike. It's a GC pause from the traffic hot path's 4 MB per frame (R7), not the renderer. #31 landed after these runs and removes those allocations.
+
+**iPad (A16) simulator**, iPadOS 27.0 Safari, landscape at DPR 2 (buffer 2360×1376), ms, median / p95 / mean. The simulator has no WebGPU adapter, so *after* runs on the WebGL 2 backend. It found the backend automatically, with no `?webgl`.
+
+| | before, WebGL (`bc6c292`) | after, WebGL 2 backend |
+|---|---|---|
+| Frame, cab, 8 cars | 16.66 / 16.74 / 16.67 | 16.66 / 16.76 / 16.69 |
+| Frame, chase, 8 cars | – | 16.66 / 16.82 / 16.69 |
+| Render, cab, 8 cars | 0.26 / 0.40 / 0.26 | 0.26 / 0.40 / 0.28 |
+| Render, chase, 8 cars | – | 0.28 / 0.40 / 0.29 |
+| Busy, cab, 8 cars | 0.48 / 0.72 / 0.50 | 0.42 / 0.60 / 0.43 |
+| Frame, cab, 100 cars | 16.66 / 16.78 / 16.70 | 16.66 / 16.74 / 16.67 |
+| Frame, chase, 100 cars | – | 16.66 / 16.72 / 16.79 |
+| Render, cab, 100 cars | 0.24 / 0.44 / 0.28 | 0.28 / 0.44 / 0.30 |
+
+As before, the simulator uses the Mac's GPU. It shows the WebGL 2 backend holding 60 fps, but says nothing about iPad speed. WebGPU on the iPad itself remains for the owner's `?perf&auto` run.
+
+**Budget verdict:**
+- *60 fps on the autopilot route:* holds in Chrome (both views, both backends, no frame over 20 ms) and in the simulator.
+- *60 fps at 100 cars:* holds as well as before, in Chrome and in the simulator. The one GC hitch per 10 s in Chrome is there before and after.
+- *Allocations per frame:* 95–98 KB, against 132–134 KB before.
+- *Render CPU:* about the same as before (median 0.3–0.6 ms in Chrome, 0.26–0.30 ms in the simulator).
+- *GPU:* lower on WebGPU. The WebGL 2 backend matches `WebGLRenderer`.
+- *Bundle:* 922 KB minified / 259 KB gzip, against 664 / 173 KB. `three/webgpu` brings the node system; the classic `WebGLRenderer` is tree-shaken out.
+- *Programs:* about 40 against 5–6. WebGPURenderer counts one per shader stage and pipeline (see above), so the two counts aren't comparable.
+- *Device loss:* a lost GPU device or WebGL context now reloads the page. Neither backend restores itself, while `WebGLRenderer` did. The save survives the reload; an order in progress doesn't.
 
 ## Files
 
