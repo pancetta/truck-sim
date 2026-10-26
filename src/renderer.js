@@ -317,6 +317,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // which load after the first frame and stay empty until then.
   const carRoom = parked.length + Math.max(...tables.rank.tiers.map((t) => t.traffic));
   const carMeshes = []; // all of them, for drawCars
+  // Whether drawCars leaves the empty meshes visible for a frame: three sets up a mesh's shaders and textures, for
+  // the view and the shadow, even with no instances to draw. Else the first car of a kind to come into view
+  // stalled that frame (by 130–180 ms for the covered car).
+  let warmCars = true;
   const carMesh = (geometry, material) => {
     const mesh = new THREE.InstancedMesh(geometry, material, carRoom);
     mesh.frustumCulled = false; // the renderer can't cull them: drawCars puts the cars in view into them each frame
@@ -794,10 +798,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     for (const car of parked) drawCar(car.kind, car.x, car.z, car.heading, car.paint, rear);
     for (const car of cars) drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
     for (const mesh of carMeshes) {
-      mesh.visible = mesh.count > 0;
+      mesh.visible = warmCars || mesh.count > 0;
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    warmCars = false;
   }
 
   function drawCar(kind, x, z, heading, paint, rear) {
@@ -827,6 +832,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   models.then(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file)))).then(([near, far]) => {
     coveredCar.near = coverMeshes(near);
     coveredCar.far = coverMeshes(far);
+    warmCars = true;
   }).catch(console.error);
 
   // The covered car's meshes as car meshes, scaled into the car footprint and set on the ground (it is modelled
