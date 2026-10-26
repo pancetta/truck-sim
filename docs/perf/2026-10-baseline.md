@@ -470,6 +470,15 @@ Roads get a PBR asphalt mesh, and the ground gets PBR cobbles. All kit materials
 
 The adaptive ratio stayed at 2 throughout: no 3 s window had a mean frame interval over 18 ms. Safari's intervals spread more (p95 about 18 against 16.8 ms), but the mean stays at 60 fps.
 
+**After the review fixes** (`69a2ed4`: the shadow map renders once per frame, kit normals dropped, the asphalt draws first): two alternating before/after pairs in Chrome, cab and chase, vsync. The load average was 6.5–11.6, so these are noisy.
+
+| | before | after |
+|---|---|---|
+| GPU at vsync, cab | 2.88, 1.57 | 5.47, 4.68 |
+| GPU at vsync, chase | 1.31, 3.34 | 6.30, 5.69 |
+| Render CPU, median | 1.10–1.25 | 1.93–2.66 |
+| Frames over 20 ms in 10 s | 0 | 0 |
+
 **Load:**
 - *Download:* JS +6.5 KB (+2.5 KB gzip). The new assets in `public/textures/` add 9.2 MB:
   - the 2k HDRI, 5.4 MB (3.6 MB gzipped);
