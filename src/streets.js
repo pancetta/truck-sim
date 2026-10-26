@@ -149,20 +149,29 @@ export function createStreets(scene, map, tables, { pavers, loadTexture, loader,
 
   // Instanced sets drawn by distance (update()): each { places: [{ x, y, z, angle }], levels: [{ upTo, meshes }],
   // height }. A place is drawn with the meshes of the first level it is within `upTo` m of the camera of, if it is in
-  // view; past the last level, not at all. A mesh's userData.base goes between the place and its geometry.
+  // view; past the last level, not at all. A mesh's userData.base goes between the place and its geometry. Places are
+  // kept by `CELL` m square, so a frame looks only at those within reach.
+  const CELL = 32;
+  const cellKey = (c, r) => c * 4096 + r; // a number, not a string, so update() allocates nothing per cell
   const sets = [];
   const propMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4 });
   function addSet(places, levels, height) {
+    const cells = new Map(); // cell -> place indices
+    places.forEach(({ x, z }, i) => {
+      const key = cellKey(Math.floor(x / CELL), Math.floor(z / CELL));
+      cells.set(key, [...(cells.get(key) ?? []), i]);
+    });
     for (const { meshes } of levels) {
       for (const mesh of meshes) {
         mesh.count = 0;
         mesh.frustumCulled = false; // update() picks the places in view
-        mesh.userData.base ??= new THREE.Matrix4();
+        const base = mesh.userData.base ?? new THREE.Matrix4();
+        // Each place's matrix for this mesh, as update() copies it into the instance buffer.
+        mesh.userData.matrices = places.map(({ x, y = 0, z, angle = 0 }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, y, z).multiply(base).elements);
         scene.add(mesh);
       }
     }
-    const matrices = places.map(({ x, y = 0, z, angle = 0 }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, y, z));
-    sets.push({ places, matrices, levels, height });
+    sets.push({ places, cells, levels, height });
   }
   // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past `upTo` m, casting shadows.
   const prop = (places, parts, height, upTo = propCull) => {
@@ -276,19 +285,24 @@ export function createStreets(scene, map, tables, { pavers, loadTexture, loader,
 
   // Fills the sets' meshes with the places in view (`inView`, a test on a bounding sphere), by their distance from `eye`.
   const bounds = new THREE.Sphere();
-  const placeMatrix = new THREE.Matrix4();
   function update(eye, inView) {
-    for (const { places, matrices, levels, height } of sets) {
+    for (const { places, cells, levels, height } of sets) {
       for (const { meshes } of levels) for (const mesh of meshes) mesh.count = 0;
       const reach = levels.at(-1).upTo;
-      places.forEach(({ x, y = 0, z }, i) => {
-        const d = Math.hypot(x - eye.x, z - eye.z);
-        if (d > reach) return;
-        bounds.center.set(x, y + height / 2, z);
-        bounds.radius = height / 2 + 0.6;
-        if (!inView(bounds)) return;
-        for (const mesh of levels.find((l) => d <= l.upTo).meshes) mesh.setMatrixAt(mesh.count++, placeMatrix.multiplyMatrices(matrices[i], mesh.userData.base));
-      });
+      const [c0, c1, r0, r1] = [eye.x - reach, eye.x + reach, eye.z - reach, eye.z + reach].map((v) => Math.floor(v / CELL));
+      bounds.radius = height / 2 + 0.6;
+      for (let c = c0; c <= c1; c++) {
+        for (let r = r0; r <= r1; r++) {
+          for (const i of cells.get(cellKey(c, r)) ?? []) {
+            const { x, y = 0, z } = places[i];
+            const d = Math.hypot(x - eye.x, z - eye.z);
+            if (d > reach) continue;
+            bounds.center.set(x, y + height / 2, z);
+            if (!inView(bounds)) continue;
+            for (const mesh of levels.find((l) => d <= l.upTo).meshes) mesh.instanceMatrix.array.set(mesh.userData.matrices[i], 16 * mesh.count++);
+          }
+        }
+      }
       for (const { meshes } of levels) for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
     }
   }
