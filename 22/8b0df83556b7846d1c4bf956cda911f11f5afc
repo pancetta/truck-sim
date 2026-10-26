@@ -1,0 +1,25 @@
+src/streets.js
+  s_36efe775d24de1::t_c6afce6df63fdd 83-85,94-95,97-98,109,111-113
+src/tables.js
+  s_36efe775d24de1::t_c6afce6df63fdd 393
+src/streets.test.js
+  s_36efe775d24de1::t_fc01d222d67019 145-146
+  s_36efe775d24de1::t_e5d5a1e078c0aa 81-87,89,126,135
+  s_36efe775d24de1::t_c6afce6df63fdd 131-132,143-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "228b0df83556b7846d1c4bf956cda911f11f5afc",
+  "prompts": {},
+  "sessions": {
+    "s_36efe775d24de1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bea614df-45f4-43a5-a823-27b568ac5f61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
