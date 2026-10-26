@@ -114,18 +114,20 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const loadTexture = (file) => gpu.then(() => ktx2Loader.loadAsync(TEXTURES + file));
 
   // Sky and sun, all from tables.lighting. The sky is the background and lights the scene from all around. The first
-  // frame waits only for the small first sky, which stays the light; the full sky replaces it as background and haze
-  // once it arrives. The encoder scaled a sky down into half-float range; its `scale` brings it back.
+  // frame waits only for the small first sky, which stays the light; the full sky loads after everything the first
+  // frame waits for and replaces it as background and haze. The encoder scaled a sky down into half-float range; its
+  // `scale` brings it back.
   const loadSky = (file) => loadTexture(file).then((loaded) => {
     // shortcut: three r186's WebGPURenderer can't upload KTX2Loader's uncompressed half-float fallback for GPUs with
     // neither BC6H nor HDR ASTC (iPad), so it's rewrapped as a DataTexture; drop this when three handles it.
     const sky = loaded.isCompressedTexture && loaded.format === THREE.RGBAFormat
-      ? Object.assign(new THREE.DataTexture(loaded.mipmaps[0].data, loaded.image.width, loaded.image.height, THREE.RGBAFormat, THREE.HalfFloatType), { needsUpdate: true })
+      ? Object.assign(new THREE.DataTexture(loaded.mipmaps[0].data, loaded.image.width, loaded.image.height, THREE.RGBAFormat, THREE.HalfFloatType), { magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter, needsUpdate: true })
       : loaded;
     sky.mapping = THREE.EquirectangularReflectionMapping;
     sky.userData.scale = assetInfo[`textures/${file}`]?.scale ?? 1;
     return sky;
   });
+  let showFullSky;
   loads.push(loadSky(lighting.skyFirst).then((sky) => {
     scene.environment = sky;
     scene.environmentIntensity = lighting.skyLight * sky.userData.scale;
@@ -141,10 +143,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.backgroundNode = skyAt(normalWorldGeometry);
     const clear = densityFogFactor(float(lighting.haze)).oneMinus().mul(rangeFogFactor(float(cam.fog[0]), float(cam.fog[1])).oneMinus());
     scene.fogNode = fog(skyAt(positionWorld.sub(cameraPosition)), clear.oneMinus());
-    loadSky(lighting.sky).then((full) => {
+    showFullSky = (full) => {
       skyScale.value = full.userData.scale;
       for (const map of skyMaps) map.value = full;
-    }, console.error);
+    };
   }));
   const sun = new THREE.DirectionalLight(lighting.sunColour, lighting.sun);
   const { shadow } = lighting;
@@ -760,6 +762,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let loaded = 0;
   const models = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
   const ready = Promise.all([renderer.init(), models]);
+  models.then(() => showFullSky && loadSky(lighting.sky).then(showFullSky)).catch(console.error);
 
   return { render, toggleCamera, ready, renderer };
 }

@@ -17,9 +17,9 @@ writes this list from `scripts/assets.config.js` and Poly Haven's own records; d
 <!-- assets:start -->
 | Asset | Files | Source | Licence |
 |---|---|---|---|
-| Kloofendal 48d Partly Cloudy (Pure Sky) (hdri, 2k) by Greg Zaal, Jarod Guest |  | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | CC0 1.0 |
-| Asphalt 02 (texture, 1k) by Rob Tuytel | `public/textures/asphalt_02_Diffuse.ktx2`, `public/textures/asphalt_02_nor_gl.ktx2`, `public/textures/asphalt_02_arm.ktx2` | https://polyhaven.com/a/asphalt_02 | CC0 1.0 |
-| Cobblestone Square (texture, 1k) by Rob Tuytel | `public/textures/cobblestone_square_Diffuse.ktx2`, `public/textures/cobblestone_square_nor_gl.ktx2`, `public/textures/cobblestone_square_arm.ktx2` | https://polyhaven.com/a/cobblestone_square | CC0 1.0 |
+| Kloofendal 48d Partly Cloudy (Pure Sky) (hdri) by Greg Zaal, Jarod Guest | `public/textures/kloofendal_48d_partly_cloudy_puresky_1k.ktx2`, `public/textures/kloofendal_48d_partly_cloudy_puresky_2k.ktx2` | https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky | CC0 1.0 |
+| Asphalt 02 (texture) by Rob Tuytel | `public/textures/asphalt_02_Diffuse.ktx2`, `public/textures/asphalt_02_nor_gl.ktx2`, `public/textures/asphalt_02_arm.ktx2` | https://polyhaven.com/a/asphalt_02 | CC0 1.0 |
+| Cobblestone Square (texture) by Rob Tuytel | `public/textures/cobblestone_square_Diffuse.ktx2`, `public/textures/cobblestone_square_nor_gl.ktx2`, `public/textures/cobblestone_square_arm.ktx2` | https://polyhaven.com/a/cobblestone_square | CC0 1.0 |
 <!-- assets:end -->
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. Each kit's own `License.txt`

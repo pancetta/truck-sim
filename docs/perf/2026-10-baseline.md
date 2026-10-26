@@ -495,7 +495,12 @@ Cutting both the download and the decode time is #38's job (asset pipeline and d
 
 ## Asset pipeline and download budget (#38)
 
-The sky and ground textures now come from `npm run assets` (README, "Assets") as KTX2. The ground maps are ETC1S at quality 128; UASTC came out larger than the JPGs (0.9–1.4 MB per map). The sky is UASTC HDR. The first frame waits only for a 1k copy of the sky, which also stays the scene's light. The 2k sky replaces it as background and haze once it's loaded. The pipeline's model stage (meshopt far copies) and tree stage (pictures baked in headless Chrome) were run on `street_lamp_02` and `jacaranda_tree`, then left out of the asset list until #40 uses them. The lamp went from 20,338 to 1,228 triangles in its far copy, 508 KB near and 58 KB far, from 1.6 MB of sources. The tree picture came out at a 24.4 m span and its trunk at 0.53 across, against the prototype's 24.2 m and 0.54.
+The sky and ground textures now come from `npm run assets` (README, "Assets") as KTX2. The pipeline's dev dependencies were vetted before install:
+- `@gltf-transform/core`, `extensions`, `functions`, `meshoptimizer` and `ktx2-encoder`: each upstream repository's README publishes that exact `npm install` command (donmccurdy/glTF-Transform, zeux/meshoptimizer, gz65555/ktx2-encoder).
+- `sharp` comes in through `@gltf-transform/functions` and is the decoder ktx2-encoder's README names.
+- `npm audit signatures`: 24 packages have verified attestations.
+
+None of them is used by `npm test` or `npm run build`. The ground maps are ETC1S at quality 128; UASTC came out larger than the JPGs (0.9–1.4 MB per map). The sky is UASTC HDR. The first frame waits only for a 1k copy of the sky, which also stays the scene's light. The 2k sky starts loading once everything the first frame waits for is in, and then replaces the 1k sky as background and haze. The pipeline's model stage (meshopt far copies) and tree stage (pictures baked in headless Chrome) were run on `street_lamp_02` and `jacaranda_tree`, then left out of the asset list until #40 uses them. The lamp went from 20,338 to 1,228 triangles in its far copy, 508 KB near and 58 KB far, from 1.6 MB of sources. The tree picture came out at a 24.4 m span and its trunk at 0.53 across, against the prototype's 24.2 m and 0.54.
 
 **How measured:** production builds of main at `cd90b9c` (*before*) and this change (*after*), served the way GitHub Pages serves them. The server gzipped everything except images and KTX2, as Pages does for the `.hdr`. Chrome 155 headless on the M2, 1180×820 at DPR 2, load average 3–8.
 
@@ -514,6 +519,8 @@ The sky and ground textures now come from `npm run assets` (README, "Assets") as
 
 Without the 1k first sky, the after build took 3.75 s (3.90 MB). The sky alone was 46% of what the first frame waited for.
 
+After the review, the 2k sky waits until the first frame's loads are done. Re-measured with other sessions loading the machine (load average 7–10), in alternating runs: main took 8.36, 8.44 and 8.82 s, this change 3.45, 4.56 and 3.80 s. Under load, the CPU work of transcoding and compiling shaders grows along with the download.
+
 **Texture memory** (from the formats the transcoder picked; checked by logging them on each backend):
 - *Chrome on the M2*, both backends: ETC2 for the ground maps (0.5 B per pixel), BC6H for the skies (1 B per pixel).
 - *iPad (A16) simulator* (WebGL 2): ETC2 for the ground, and half-float RGBA for the skies. WebGL 2 there has no HDR ASTC, and WebGPU has neither BC6H nor HDR ASTC on iPad.
@@ -531,6 +538,7 @@ The JS heap in the overlay fell from 41–52 MB to 23–37 MB: the decoded JPEGs
 | | before | after |
 |---|---|---|
 | Chrome frame, median / p95 / mean | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Chrome draw calls / triangles | 472–476 / 63–64k | 472 / 63k |
 | Chrome render CPU, median / p95 / mean | 2.38–2.50 / 3.06–3.18 / 2.23–2.34 | 2.41–2.43 / 3.13–3.27 / 2.23–2.29 |
 | Chrome GPU at vsync, alternating runs | 5.10, 5.23, 6.50, 6.52 | 6.00, 6.35, 6.37, 6.39 (one outlier at 10.55) |
 | iPad simulator frame, mean (Safari's timer is 1 ms coarse) | 16.66 | 16.84 |
@@ -546,7 +554,7 @@ Both simulator runs settled at a ratio of 1.75 (`dpr`). The frame cost doesn't c
 
 **Verdict:**
 - *Budget:* 5.0 MB of the 12 MB under `public/`, checked in `npm test`. 7 MB is left for #39–#42.
-- *First playable frame:* 2.7–2.8 s at 10 Mbit/s, under the 3 s target, with about 0.25 s to spare. Later assets the first frame needn't wait for (props, far copies, tree pictures) should load after it, as the 2k sky does.
+- *First playable frame:* 2.7–2.8 s at 10 Mbit/s on a quiet machine, under the 3 s target, with about 0.25 s to spare. On a loaded machine it took 3.4–4.6 s, while main took 8.4–8.8 s. Later assets the first frame needn't wait for (props, far copies, tree pictures) should load after it, as the 2k sky does.
 - *60 fps:* holds in Chrome and in the simulator, at the same frame cost as before. The real iPad's numbers, including the sky's 21 MB of half-float texture there, remain for the owner's run.
 
 ## Files

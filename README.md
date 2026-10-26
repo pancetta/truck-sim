@@ -39,7 +39,7 @@ The sky, ground textures and (later) props come from [Poly Haven](https://polyha
   - Trees are drawn side-on into a picture for crossed quads. This runs `scripts/bake-tree.html` in headless Google Chrome (set `CHROME` to its binary if it isn't in `/Applications`).
 - **Records** data the game needs at runtime in `src/assetInfo.json` (a sky's HDR scale, a tree picture's span and trunk position), and the asset list in `CREDITS.md`.
 
-To add an asset, list it in `scripts/assets.config.js`, run `npm run assets`, and commit what changed. A run takes about 20 s plus downloads.
+To add an asset, list it in `scripts/assets.config.js`, run `npm run assets`, and commit what changed. A run takes about 20 s on an unloaded M2 Mac, plus downloads.
 
 **Budget**, checked by `npm test` (`scripts/assets.test.js`):
 - Everything under `public/` stays at or under 12 MB.

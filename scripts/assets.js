@@ -6,14 +6,14 @@ import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { encodeToKTX2 } from 'ktx2-encoder';
 import { ktx2 } from 'ktx2-encoder/gltf-transform';
 import sharp from 'sharp';
 import { NodeIO, getBounds } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { cloneDocument, dedup, meshopt, simplify, textureCompress, weld } from '@gltf-transform/functions';
-import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
+import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import { createServer } from 'vite';
 import { assets, encoding, MAPS, outputs } from './assets.config.js';
 
@@ -52,7 +52,11 @@ async function download({ url, md5: sum }, path) {
 async function downloadModel(files, id, res) {
   const { gltf } = files.gltf[res];
   const dir = join(SRC, id);
-  await Promise.all(Object.entries(gltf.include).map(([path, file]) => download(file, join(dir, path))));
+  await Promise.all(Object.entries(gltf.include).map(([path, file]) => {
+    // The paths come from the API response: keep them inside the asset's folder.
+    if (!resolve(dir, path).startsWith(resolve(dir) + sep)) throw new Error(`${id}: file path outside its folder: ${path}`);
+    return download(file, join(dir, path));
+  }));
   return download(gltf, join(dir, `${id}_${res}.gltf`));
 }
 
@@ -126,8 +130,8 @@ const steps = {
 async function writeCredits(entries) {
   const [start, end] = ['<!-- assets:start -->', '<!-- assets:end -->'];
   const credits = await readFile('CREDITS.md', 'utf8');
-  const rows = entries.map(({ asset: { id, type, res }, meta }) =>
-    `| ${meta.name} (${type}, ${res}) by ${Object.keys(meta.authors).join(', ')} | ${outputs({ id, type }).map((f) => `\`public/${f}\``).join(', ')} | https://polyhaven.com/a/${id} | CC0 1.0 |`);
+  const rows = entries.map(({ asset, meta }) =>
+    `| ${meta.name} (${asset.type}) by ${Object.keys(meta.authors).join(', ')} | ${outputs(asset).map((f) => `\`public/${f}\``).join(', ')} | https://polyhaven.com/a/${asset.id} | CC0 1.0 |`);
   const table = ['| Asset | Files | Source | Licence |', '|---|---|---|---|', ...rows].join('\n');
   const [before, rest] = credits.split(start);
   if (rest === undefined || !rest.includes(end)) throw new Error(`CREDITS.md needs the markers ${start} and ${end}`);
@@ -135,7 +139,6 @@ async function writeCredits(entries) {
 }
 
 await MeshoptEncoder.ready;
-await MeshoptDecoder.ready;
 await MeshoptSimplifier.ready;
 const info = {};
 const entries = [];

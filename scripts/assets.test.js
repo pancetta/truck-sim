@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { assets, budget, outputs } from './assets.config.js';
+import { assets, budget, MAPS, outputs } from './assets.config.js';
+import { ground, lighting } from '../src/tables.js';
 
-// Every file under `dir`, relative to it.
-const files = (dir) => readdirSync(dir, { recursive: true }).filter((f) => statSync(join(dir, f)).isFile());
+// Every file under `dir`, relative to it, leaving out dotfiles such as Finder's .DS_Store (gitignored, never served).
+const files = (dir) => readdirSync(dir, { recursive: true }).filter((f) => !/(^|\/)\./.test(f) && statSync(join(dir, f)).isFile());
 
 describe('asset budget', () => {
   it('keeps everything under public/ within the download budget', () => {
@@ -14,10 +15,19 @@ describe('asset budget', () => {
 
   // Catches an asset listed but not run through npm run assets, a texture dropped in by hand, or one left behind
   // when its asset left the list. public/models also holds the kit models, so only the listed ones are checked there.
-  it('serves what npm run assets made from the asset list, and no other textures', () => {
+  it('serves what npm run assets made from the asset list, credited, and no other textures', () => {
     const made = assets.flatMap(outputs);
     expect(made.filter((f) => !existsSync(join('public', f)))).toEqual([]);
     expect(files('public/textures').map((f) => `textures/${f}`).sort()).toEqual(made.filter((f) => f.startsWith('textures/')).sort());
+    const credits = readFileSync('CREDITS.md', 'utf8');
+    expect(made.filter((f) => !credits.includes(`public/${f}`))).toEqual([]);
+  });
+
+  // The renderer builds these names itself (renderer.js loadSky and groundMaterial); a missing one loads as a 404.
+  it('makes every texture the renderer loads', () => {
+    const made = assets.flatMap(outputs);
+    const loaded = [lighting.sky, lighting.skyFirst, ...Object.values(ground).flatMap(({ texture }) => Object.keys(MAPS).map((map) => `${texture}_${map}.ktx2`))];
+    expect(loaded.filter((f) => !made.includes(`textures/${f}`))).toEqual([]);
   });
 
   it('serves the Basis transcoder of the installed three, which its KTX2Loader expects', () => {
