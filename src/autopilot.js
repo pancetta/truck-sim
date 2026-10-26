@@ -1,8 +1,9 @@
 // Dev-only (?perf&auto): drives the truck round a fixed loop of streets (tables.perf.route) so every perf run
-// sees the same route. Pure pursuit on the right half of the road; resets to the road when stuck.
-// Ported unchanged in behaviour from the investigation's scratch autopilot, so its numbers stay comparable.
+// sees the same route. Pure pursuit on the right half of the road; resets to the road when stuck. Ported from
+// the investigation's scratch autopilot; since #33 it also waits behind an AI car in its path, as it ignores
+// right of way and otherwise rammed one car over and over at 50 km/h traffic.
 export function createAutopilot(sim, map, tables) {
-  const { route, lane, cruiseSpeed, turnSpeed, steerGain, stuckTime } = tables.perf;
+  const { route, lane, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
   const ts = map.tileSize;
   const path = [];
   route.forEach((c, i) => path.push(...map.route(c, route[(i + 1) % route.length]).slice(0, -1)));
@@ -55,15 +56,31 @@ export function createAutopilot(sim, map, tables) {
       return b.col - a.col !== c.col - b.col || b.row - a.row !== c.row - b.row;
     });
     const target = turning || Math.abs(err) > 0.3 ? turnSpeed : cruiseSpeed;
+    const waiting = carAhead(t);
     input.steer = Math.max(-1, Math.min(1, -err * steerGain));
-    input.gas = t.speed < target ? 1 : 0;
-    input.brake = t.speed > target + 1 ? 0.6 : 0;
+    input.gas = !waiting && t.speed < target ? 1 : 0;
+    // Brakes off once stopped: holding the brake at a standstill engages reverse.
+    input.brake = (waiting && t.speed > tables.vehicle.stopSpeed) || t.speed > target + 1 ? 0.6 : 0;
     stuck = Math.abs(t.speed) < 0.3 ? stuck + dt : 0;
-    if (stuck > stuckTime) {
+    if (stuck > (waiting ? waitTime : stuckTime)) {
       stuck = 0;
       sim.resetToRoad();
     }
     return input;
+  }
+
+  // Whether an AI car going its way (within 60°) has its centre in the truck's path within its braking distance
+  // (at 3 m/s²) plus the two half lengths and 3 m. Cars crossing or coming the other way may wait for the truck,
+  // so waiting for them could hold both for good.
+  function carAhead(t) {
+    const [fx, fz] = [Math.sin(t.heading), Math.cos(t.heading)];
+    const reach = Math.max(0, t.speed) ** 2 / 6 + (tables.vehicle.length + tables.city.obstacles.car.length) / 2 + 3;
+    const side = (tables.vehicle.width + tables.city.obstacles.car.width) / 2 + 0.5;
+    return sim.state.traffic.some((c) => {
+      const along = (c.x - t.x) * fx + (c.z - t.z) * fz;
+      const ways = Math.sin(c.heading) * fx + Math.cos(c.heading) * fz > 0.5;
+      return ways && along > 0 && along < reach && Math.abs(-(c.x - t.x) * fz + (c.z - t.z) * fx) < side;
+    });
   }
 
   return { update, place };

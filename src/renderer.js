@@ -255,7 +255,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
 
   // A speed limit sign as one flat-coloured geometry like the kit's, its post at the origin and its face towards
-  // +z: a round plate, a red ring round a white disc with the limit in dark seven-segment bars.
+  // +z: a round plate, grey at the back, its face a red ring round a white disc with the limit in dark
+  // seven-segment bars.
   function speedSign() {
     const { height, radius, ring, post } = tables.signs;
     const parts = [];
@@ -269,7 +270,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const disc = (r, depth, front) => new THREE.CylinderGeometry(r, r, depth, 20).rotateX(Math.PI / 2).translate(0, height, front - depth / 2);
     add(new THREE.BoxGeometry(post, height, post).translate(0, height / 2, 0), palette.signal);
     const face = post / 2 + 0.03; // each layer stands 1.5 cm proud of the one behind, against depth fighting
-    add(disc(radius, 0.03, face), palette.red);
+    add(disc(radius, 0.015, face - 0.015), palette.signal);
+    add(disc(radius, 0.015, face), palette.red);
     add(disc(radius - ring, 0.015, face + 0.015), palette.stopLine);
     // Segments a–g of a digit w × h, bars t thick: top, upper right, lower right, bottom, lower left, upper left, middle.
     const [w, h, t] = [0.16, 0.32, 0.045];

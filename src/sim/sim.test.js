@@ -1997,81 +1997,89 @@ describe('Sim: collider broad phase', () => {
 });
 
 describe('Sim: traffic soak', () => {
-  // The city at the busiest rank tier over several seeds, with the truck parked in awkward spots, at random
-  // anywhere on the road, driving the ?perf&auto loop and reversing back and forth. A car driving into the
-  // truck shows as a car's footprint newly overlapping the truck's after a step: the truck's own move into a car
-  // is undone, so it never leaves them overlapping.
-  const map = parseMap(city, tables);
+  // The city with 40 cars near the truck, over several seeds. The parked truck tours awkward spots, 20 s each so the queues it
+  // causes clear, then random poses anywhere on the road; besides, the truck drives the ?perf&auto loop and
+  // reverses back and forth. A car driving into the truck shows as a car's footprint newly overlapping the
+  // truck's after a step: the truck's own move into a car is undone, so it never leaves them overlapping.
+  const busy = {
+    ...tables,
+    rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 40 })) },
+    traffic: { ...tables.traffic, spawnDistance: [45, 120], despawnDistance: 140 }, // the cars kept around the truck
+  };
+  const map = parseMap(city, busy);
   const [NORTH, EAST] = [0, 1].map((d) => Math.atan2(DIRS[d][0], DIRS[d][1]));
   const CAR = tables.city.obstacles.car;
+  // Within 6 m of the truck's footprint, as a car waiting at the crossing the truck stands in.
+  const CLOSE = { length: tables.vehicle.length + 12, width: tables.vehicle.width + 12 };
   const { laneOffset } = tables.traffic;
   const at = (col, row, heading, dx = 0, dz = 0) => ({ x: (col + 0.5) * TILE + dx, z: (row + 0.5) * TILE + dz, heading, speed: 0 });
-  const parked = (pose) => (sim) => {
-    Object.assign(sim.state.truck, pose);
-    return () => IDLE;
-  };
-  const scenarios = {
-    'in a crossing': parked(at(8, 8, EAST)),
-    'turned in a crossing': parked(at(8, 8, EAST - 0.6, 2, -1)),
-    'in a light junction': parked(at(15, 15, NORTH)),
-    'across both lanes': parked(at(11, 8, NORTH)),
-    'at an angle': parked(at(11, 8, EAST + Math.PI / 4, 0, 1)),
-    'half on the pavement': parked(at(4, 1, EAST, 0, 4.5)),
-    'the wrong way in a lane': parked(at(11, 8, EAST, 0, -laneOffset)),
-    'just past a crossing': parked(at(9, 8, EAST, 0, laneOffset)),
-    'driving the autopilot loop': (sim) => {
-      const autopilot = createAutopilot(sim, map, tables);
-      autopilot.place();
-      return () => autopilot.update(DT);
-    },
-    'reversing back and forth': (sim) => {
-      Object.assign(sim.state.truck, at(20, 8, EAST, 0, laneOffset));
-      return (i) => (i % 600 < 200 ? GAS : BRAKE);
-    },
+  const spots = {
+    'in a crossing': at(8, 8, EAST),
+    'turned in a crossing': at(36, 22, EAST - 0.6, 2, -1),
+    'in a light junction': at(15, 15, NORTH),
+    'half in a light junction': at(43, 29, EAST, -7),
+    'across both lanes': at(11, 8, NORTH),
+    'at an angle': at(32, 36, EAST + Math.PI / 4, 0, 1),
+    'half on the pavement': at(18, 43, EAST, 0, 4.5),
+    'the wrong way in a lane': at(25, 22, EAST, 0, -laneOffset),
+    'just past a crossing': at(9, 15, EAST, 0, laneOffset),
   };
 
-  // Car-made contacts in `minutes` of Sim time, and how many cars came within 10 m of the truck's centre.
-  function soak(seed, minutes, setup) {
-    const sim = createSim(tables, map, seeded(seed), { ...freshProfile(), rankPoints: tables.rank.tiers.at(-1).points });
-    const input = setup(sim);
+  // Steps `seconds` with the truck driven by `drive(sim)` (returns step i → input), or parked at each of `poses`
+  // in turn for an equal share of the time. Returns the car-made contacts and, per pose, the cars that came close.
+  function soak(seed, seconds, drive, poses = []) {
+    const sim = createSim(busy, map, seeded(seed));
+    const input = drive?.(sim);
+    const steps = seconds * 60;
+    const near = poses.map(() => new Set());
     let touching = new Set();
     let contacts = 0;
-    const near = new Set();
-    for (let i = 0; i < minutes * 60 * 60; i++) {
-      sim.step(DT, input(i));
+    for (let i = 0; i < steps; i++) {
+      const k = Math.floor((i * poses.length) / steps);
+      if (poses.length && i === Math.ceil((k * steps) / poses.length)) Object.assign(sim.state.truck, poses[k]);
+      sim.step(DT, input ? input(i) : IDLE);
       const { truck } = sim.state;
       const now = new Set();
       for (const car of sim.state.traffic) {
-        if (Math.hypot(car.x - truck.x, car.z - truck.z) < 10) near.add(car.id);
+        if (poses.length && vehiclesOverlap(car, CAR, truck, CLOSE)) near[k].add(car.id);
         if (vehiclesOverlap(car, CAR, truck, tables.vehicle)) now.add(car.id);
       }
       for (const id of now) if (!touching.has(id)) contacts++;
       touching = now;
     }
-    return { contacts, near: near.size };
+    return { contacts, near: near.map((n) => n.size) };
   }
 
   test('AI cars never drive into the truck', () => {
+    const names = Object.keys(spots);
+    const near = names.map(() => 0);
     let contacts = 0;
-    let near = 0;
     for (const seed of [1, 2, 3]) {
-      for (const setup of Object.values(scenarios)) {
-        const run = soak(seed, 2, setup);
-        contacts += run.contacts;
-        near += run.near;
-      }
+      const tour = soak(seed, 30 * names.length, null, Object.values(spots));
+      contacts += tour.contacts;
+      tour.near.forEach((n, i) => (near[i] += n));
       // Anywhere across a road tile, any heading.
       const random = seeded(seed + 100);
-      for (let k = 0; k < 10; k++) {
+      const poses = Array.from({ length: 10 }, () => {
         const { col, row } = map.roads[Math.floor(random() * map.roads.length)];
-        const pose = at(col, row, random() * 2 * Math.PI, (random() - 0.5) * 0.6 * TILE, (random() - 0.5) * 0.6 * TILE);
-        const run = soak(seed * 100 + k, 1, parked(pose));
-        contacts += run.contacts;
-        near += run.near;
-      }
+        return at(col, row, random() * 2 * Math.PI, (random() - 0.5) * 0.6 * TILE, (random() - 0.5) * 0.6 * TILE);
+      });
+      contacts += soak(seed, 20 * poses.length, null, poses).contacts;
+      const autopilot = (sim) => {
+        const pilot = createAutopilot(sim, map, busy);
+        pilot.place();
+        return () => pilot.update(DT);
+      };
+      contacts += soak(seed, 120, autopilot).contacts;
+      const reversing = (sim) => {
+        Object.assign(sim.state.truck, at(20, 8, EAST, 0, laneOffset));
+        return (i) => (i % 600 < 200 ? GAS : BRAKE);
+      };
+      contacts += soak(seed, 120, reversing).contacts;
     }
 
     expect(contacts).toBe(0);
-    expect(near).toBeGreaterThan(100); // the cars did come close
-  }, 60_000);
+    // Cars came close at every spot.
+    for (const [i, name] of names.entries()) expect([name, near[i]]).not.toEqual([name, 0]);
+  }, 120_000);
 });

@@ -251,6 +251,7 @@ export const perf = {
   turnSpeed: 4.5, // m/s near corners and while off line
   steerGain: 2.5, // steering input per rad of heading error
   stuckTime: 2, // s at a standstill before the autopilot resets the truck to the road
+  waitTime: 40, // s, the same while waiting behind an AI car (a light cycle is 38 s)
 };
 
 export const camera = {

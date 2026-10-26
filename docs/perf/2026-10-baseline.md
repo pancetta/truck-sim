@@ -401,6 +401,26 @@ Chase: 34 calls / 316k triangles before, 355 / 48k after. On WebGPU three issues
 - *Order marker:* the zone column now fades out with distance like everything else, and isn't drawn past 350 m. The HUD arrow and the minimap still lead to it.
 - *Real iPad:* not measured. Its tile-based GPU bins every vertex, so the triangle cut may matter more there than on the M2; the owner's `?perf&auto` run will tell.
 
+## Traffic at 50 km/h and speed signs (#33)
+
+**How measured:** `?perf&auto` A/B runs of production builds, as for #28. *Before* is main at `bb92b79`, *after* is the same plus #33's feature commit, run alternately twice per view. Chrome headless, `apple metal-3` (WebGPU), 1180×820, adaptive ratio settled at 1.25; Chrome capped this run at 30 Hz, so frame time says nothing and busy time is the comparison. Load average 2.8–4.3. The 20 s overlay window ends 25 s after load, while the autopilot is still driving the first straight.
+
+| ms, median (two runs) | before | after |
+|---|---|---|
+| Busy, cab | 0.97, 1.10 | 0.89, 0.92 |
+| Render, cab | 0.78, 0.90 | 0.70, 0.73 |
+| Sim, cab | 0.11, 0.12 | 0.12, 0.11 |
+| Busy, chase | 0.98, 1.10 | 1.19, 0.99 |
+| Render, chase | 0.77, 0.88 | 0.95, 0.80 |
+| Draw calls / triangles, cab | 357 / 46k | 366 / 49k |
+| Draw calls / triangles, chase | 372–373 / 52k | 382–383 / 55k |
+
+The traffic step at 100 cars (`traffic.bench.test.js`): 88 µs and 18 KB allocated per step, against about 90 µs and 15 KB before.
+
+**Verdict:** no frame-time cost beyond run-to-run noise (about ±0.2 ms). The 53 signs add 9–10 draws and 3k triangles; they share the city batch's one pipeline.
+
+**Autopilot change:** QA found that from about 90 s in on the perf seed, the autopilot (which ignores right of way) rammed one car over and over. Since #33 it waits behind an AI car going its way, so a lap now takes about 235 s instead of 190 s. Overlay windows taken after the first 90 s are only comparable with runs from #33 on.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

@@ -154,10 +154,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
+    checkRedLight(frontBefore, frontTile()); // before touchCars, which may stop the truck
     if (traffic) touchCars(met, before);
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
-    checkRedLight(frontBefore, frontTile());
     updateTraffic(dt);
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
