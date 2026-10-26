@@ -40,6 +40,14 @@ src/assetInfo.json
   "base_commit_sha": "2124f1d2e89944f604d6168c33025c601f12c9f4",
   "prompts": {},
   "sessions": {
+    "s_285a69b7e02104": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca2b46f6-0041-466b-8f15-5613727c2de2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    },
     "s_36efe775d24de1": {
       "agent_id": {
         "tool": "claude",
