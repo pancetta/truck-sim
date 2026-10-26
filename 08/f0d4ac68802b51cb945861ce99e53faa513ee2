@@ -1,0 +1,27 @@
+src/prototype-monti/main.js
+  s_c34b2924f7d147::t_1ec097ee0fe95b 51,53,56-57
+  s_c34b2924f7d147::t_cc07d5f7b24215 441-442,456-457,568,579,603,607-609,616-617
+  s_c34b2924f7d147::t_b098164289365b 11,386-395,401-410,412-434,438-440
+  s_c34b2924f7d147::t_16e22a0b2d0b3d 27-36
+  s_c34b2924f7d147::t_9d7f2a3b6fdf18 296,298
+  s_c34b2924f7d147::t_78c890389f9a4a 89
+  s_c34b2924f7d147::t_3836c5cdb0ed1f 110-116,120-124,129,131-136
+  s_c34b2924f7d147::t_780427214c06f7 319-320
+  s_c34b2924f7d147::t_52ce1b1264421e 182-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "08f0d4ac68802b51cb945861ce99e53faa513ee2",
+  "prompts": {},
+  "sessions": {
+    "s_c34b2924f7d147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a56e64-1812-43df-b206-48bdde1707db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
