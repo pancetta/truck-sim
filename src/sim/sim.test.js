@@ -335,7 +335,7 @@ describe('Sim: city', () => {
     expect(sim.state.truck.z).toBeGreaterThan(2 * TILE);
   });
 
-  test('resetToRoad() from off-road puts the truck on the nearest road, along it, stopped in first gear', () => {
+  test('resetToRoad() from off-road puts the truck in the right-hand lane of the nearest road, along it, stopped in first gear', () => {
     // A north–south road with open ground to the east.
     const grid = `
       .,,,,
@@ -351,8 +351,11 @@ describe('Sim: city', () => {
     sim.resetToRoad();
 
     expect(tileUnder(grid, sim)).toBe('.');
-    expect(sim.state.truck.x).toBeCloseTo(TILE / 2);
-    expect(Math.sin(sim.state.truck.heading)).toBeCloseTo(0); // facing north or south
+    const { x, heading } = sim.state.truck;
+    expect(Math.sin(heading)).toBeCloseTo(0); // facing north or south
+    // #43: where the AI cars drive, right of the centre line (right is -cos heading in x), leaving the other lane free.
+    expect(x - TILE / 2).toBeCloseTo(-Math.cos(heading) * tables.traffic.laneOffset);
+    expect(Math.abs(x - TILE / 2)).toBeGreaterThan(tables.vehicle.width / 2);
     expect(sim.state.truck.speed).toBe(0);
     expect(sim.state.truck.gear).toBe(1);
   });
@@ -1030,19 +1033,34 @@ describe('Sim: docking', () => {
   };
   const lineOf = (sim, label) => sim.state.lastPayment.lines.find((l) => l.label === label);
 
-  // Picks up at B, driving into its dead end, then reverses north into A's zone, stops short of the wall (a
-  // hit would harm fragile cargo) and unloads. With `steer`, it swings the rear round on the way, so the truck
-  // ends up crooked. Returns the offer.
-  function reverseIntoA(sim, steer = 0) {
+  // How far the middle of the truck's rear is from A's dock edge, the building face at z = TILE, facing south.
+  const rearGap = (sim) => sim.state.truck.z - tables.vehicle.length / 2 - TILE;
+
+  // Reverses north until rearGap() is at most `gap`: at full speed while far, then in short bursts at a crawl,
+  // braked out of at once (each waits out the reverse delay again), so it never hits the wall, which would harm
+  // fragile cargo.
+  function backUpToA(sim, gap) {
+    timeUntil(sim, BRAKE, () => rearGap(sim) < gap + 4, 30);
+    while (rearGap(sim) > gap) {
+      timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10); // releasing the pedal in reverse brakes
+      timeUntil(sim, BRAKE, () => sim.state.truck.speed < -0.5 || rearGap(sim) <= gap, 10);
+    }
+    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10);
+  }
+
+  // Picks up at B, driving into its dead end, moves across onto the bay's centre line (shortcut: set directly,
+  // as steering there isn't under test), then reverses north into A's zone to within `gap` of the dock edge and
+  // unloads. With `steer`, it swings the rear round on the way, so the truck ends up crooked. Returns the offer.
+  function reverseIntoA(sim, steer = 0, gap = 0.5) {
     const offer = acceptFrom(sim, 'B');
     parkAt(sim, 'B');
     drive(sim, loadTime + 0.1, IDLE);
+    sim.state.truck.x = 1.5 * TILE;
     if (steer) {
       timeUntil(sim, BRAKE, () => sim.state.truck.z < 2.3 * TILE, 30);
       timeUntil(sim, { ...BRAKE, steer }, () => Math.abs(sim.state.truck.heading) > 1.5 * dockHeading, 10);
     }
-    timeUntil(sim, BRAKE, () => sim.state.truck.z < 1.7 * TILE, 30);
-    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10); // releasing the pedal in reverse brakes
+    backUpToA(sim, gap);
     expect(sim.state.collision).toBe(false);
     expect(sim.state.order).toMatchObject({ phase: 'dropoff' });
     drive(sim, loadTime + 0.1, IDLE);
@@ -1078,9 +1096,21 @@ describe('Sim: docking', () => {
     const offer = reverseIntoA(sim);
 
     expect(offer.type).toBe('dock');
+    expect(rearGap(sim)).toBeLessThanOrEqual(tables.orders.dockDepth);
     expect(lineOf(sim, 'base').amount).toBe(100);
     expect(lineOf(sim, 'dock').amount).toBe(25);
     expect(sim.state.lastPayment.amount).toBe(125 + lineOf(sim, 'time').amount);
+  });
+
+  test('stopping 2–3 m short of the dock edge delivers at normal pay, with no dock line', () => {
+    const sim = dockSim();
+
+    reverseIntoA(sim, 0, 3);
+
+    expect(rearGap(sim)).toBeGreaterThan(tables.orders.dockDepth + 1);
+    expect(rearGap(sim)).toBeLessThanOrEqual(3);
+    expect(lineOf(sim, 'base').amount).toBe(100);
+    expect(lineOf(sim, 'dock')).toBeUndefined();
   });
 
   test('driving into the bay forwards delivers at normal pay, with no dock line', () => {
@@ -1109,11 +1139,11 @@ describe('Sim: docking', () => {
     acceptFrom(sim, 'B');
     parkAt(sim, 'B');
     drive(sim, loadTime + 0.1, IDLE);
+    sim.state.truck.x = 1.5 * TILE;
     // An S-bend in reverse shifts the truck sideways and leaves it straight again.
     timeUntil(sim, { ...BRAKE, steer: 1 }, () => sim.state.truck.heading > 0.6, 10);
     timeUntil(sim, { ...BRAKE, steer: -1 }, () => sim.state.truck.heading <= 0, 10);
-    timeUntil(sim, BRAKE, () => sim.state.truck.z < 1.7 * TILE, 30);
-    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10);
+    backUpToA(sim, 0.5);
     expect(Math.abs(sim.state.truck.heading)).toBeLessThan(dockHeading);
     expect(Math.abs(sim.state.truck.x - 1.5 * TILE)).toBeGreaterThan(tables.orders.dockCentre);
 
@@ -1301,7 +1331,7 @@ describe('Sim: traffic lights', () => {
     expect(map.signs.map(at).sort()).toEqual([[2, 3, 3], [3, 1, 2], [3, 2, 0], [3, 4, 2], [4, 3, 1]].sort());
     // Southbound: `along` m into the street, on the west (right-hand) pavement.
     expect(map.signs.find((s) => at(s)[1] === 1)).toMatchObject({ x: 3 * TILE + inset, z: TILE + along });
-    expect(map.colliders.filter((c) => c.kind === 'sign')).toHaveLength(5);
+    expect(map.colliders.filter((c) => c.kind === 'sign')).toEqual([]); // #43: not solid, so wide turns don't catch on them
   });
 
   test('each axis cycles green, amber, red with the table timings, never green together, offset per junction', () => {
@@ -1896,6 +1926,33 @@ describe('Sim: right of way and collisions', () => {
     expect(contact(Math.PI / 2)).toEqual({ fine: null, stopped: false });
   });
 
+  test('pushing on into a car that drove into the truck is the truck’s move: it stops and is fined once', () => {
+    // The truck stands the wrong way in the northbound lane of the south arm, its front 0.5 m into a car
+    // whose lane starts there: the car drove into it, which costs nothing and holds the car.
+    const sim = crossSim({ ...freshProfile(), money: 500 });
+    const car = addCar(sim, 1, through[NORTH]);
+    const { truck } = sim.state;
+    Object.assign(truck, { x: car.x, z: car.z - CAR.length / 2 - tables.vehicle.length / 2 + 0.5, heading: SOUTH });
+    sim.step(DT, IDLE);
+    expect(sim.state.lastFine).toBe(null);
+    const start = { x: truck.x, z: truck.z };
+
+    const fines = new Set();
+    for (let t = 0; t < 2; t += DT) {
+      sim.step(DT, GAS); // into the car, then pushing on against it
+      if (sim.state.lastFine) fines.add(sim.state.lastFine);
+    }
+
+    expect([...fines]).toEqual([{ reason: 'collision', amount: tables.fines.collision }]);
+    expect(Math.hypot(truck.x - start.x, truck.z - start.z)).toBeLessThan(0.01);
+    expect(car.speed).toBe(0);
+
+    // Backing away is free.
+    drive(sim, 1.5, BRAKE);
+    expect(truck.z).toBeLessThan(start.z - 0.5);
+    expect(sim.state.lastFine).toBe([...fines][0]);
+  });
+
   describe('the truck standing in a crossing or a light junction', () => {
     const LIGHT = CROSS.replace('.......', '...+...');
     // From two tiles out on every approach, turning right, going straight and turning left.
@@ -1911,33 +1968,59 @@ describe('Sim: right of way and collisions', () => {
       [[3, 5], [3, 4], [3, 3], [2, 3], [1, 3]],
       [[1, 3], [2, 3], [3, 3], [3, 2], [3, 1]],
     ];
-    // Middle, turned, and half in it on the southbound lane.
+    // Middle (in every car's way), turned, and half in it on the southbound lane.
     const poses = [
       { x: 3.5 * TILE, z: 3.5 * TILE, heading: EAST },
       { x: 3.5 * TILE + 1, z: 3.5 * TILE - 1, heading: EAST - 0.6 },
       { x: 3.5 * TILE - laneOffset, z: 3 * TILE, heading: SOUTH },
     ];
 
-    test.each([['an unsignalled crossing', CROSS], ['a light junction', LIGHT]])('in %s is never driven into: the cars wait', (_, grid) => {
-      for (const pose of poses) {
-        // One car per approach at a time, each run cycling through the routes.
-        for (let first = 0; first < routes.length; first += 4) {
-          const sim = createSim(quiet, parseMap(grid, quiet), seeded(1));
-          Object.assign(sim.state.truck, pose);
-          const cars = routes.slice(first, first + 4).map((r, i) => addCar(sim, i + 1, r));
-          let into = 0;
-          let entered = 0;
-          for (let t = 0; t < 40; t += DT) {
-            sim.step(DT, IDLE);
-            into += cars.filter((c) => sim.state.traffic.includes(c) && vehiclesOverlap(c, CAR, sim.state.truck, tables.vehicle)).length;
-            entered += cars.filter((c) => sim.state.traffic.includes(c) && inCrossing(c)).length;
-          }
+    // #43: the truck holds only the ways through that it blocks, so some cars pass it where it stands half in.
+    test.each([['an unsignalled crossing', CROSS], ['a light junction', LIGHT]])(
+      'in %s is never driven into: the cars it is in the way of wait outside, the others pass',
+      (_, grid) => {
+        const passed = poses.map(() => 0);
+        for (const [k, pose] of poses.entries()) {
+          // One car per approach at a time, each run cycling through the routes.
+          for (let first = 0; first < routes.length; first += 4) {
+            const sim = createSim(quiet, parseMap(grid, quiet), seeded(1));
+            Object.assign(sim.state.truck, pose);
+            const cars = routes.slice(first, first + 4).map((r, i) => addCar(sim, i + 1, r));
+            let into = 0;
+            let entered = 0;
+            for (let t = 0; t < 40; t += DT) {
+              sim.step(DT, IDLE);
+              into += cars.filter((c) => sim.state.traffic.includes(c) && vehiclesOverlap(c, CAR, sim.state.truck, tables.vehicle)).length;
+              entered += cars.filter((c) => sim.state.traffic.includes(c) && inCrossing(c)).length;
+            }
+            const left = cars.filter((c) => sim.state.traffic.includes(c));
 
-          expect(into).toBe(0);
-          expect(entered).toBe(0);
-          expect(cars.every((c) => c.speed === 0)).toBe(true);
+            expect(into).toBe(0);
+            if (k === 0) expect(entered).toBe(0);
+            expect(left.filter(inCrossing)).toEqual([]); // nobody waits inside
+            expect(left.every((c) => c.speed === 0)).toBe(true);
+            passed[k] += cars.length - left.length;
+          }
         }
-      }
+        expect(passed[0]).toBe(0);
+        expect(passed[2]).toBeGreaterThan(0);
+      },
+    );
+
+    test('with its nose just past the stop line it holds only the lane it blocks', () => {
+      // On the east arm facing west, standing at red with its front bumper `into` m past the stop line; the
+      // north–south axis is green. 1 m in blocks no way through, 5 m in the northbound lane.
+      const standing = (into) => {
+        const sim = createSim(quiet, parseMap(LIGHT, quiet), seeded(1));
+        Object.assign(sim.state.truck, { x: 4 * TILE + tables.vehicle.length / 2 - into, z: 3.5 * TILE - laneOffset, heading: WEST });
+        const cars = [NORTH, SOUTH].map((h, i) => addCar(sim, i + 1, through[h]));
+        const { entered } = watch(sim, cars, 12);
+        expect(sim.state.lights.find((l) => l.dir === 3).phase).toBe('red');
+        return cars.map((c) => entered.has(c));
+      };
+
+      expect(standing(1)).toEqual([true, true]);
+      expect(standing(5)).toEqual([false, true]);
     });
   });
 });
@@ -2000,7 +2083,8 @@ describe('Sim: traffic soak', () => {
   // The city with 40 cars near the truck, over several seeds. The parked truck tours awkward spots, 20 s each so the queues it
   // causes clear, then random poses anywhere on the road; besides, the truck drives the ?perf&auto loop and
   // reverses back and forth. A car driving into the truck shows as a car's footprint newly overlapping the
-  // truck's after a step: the truck's own move into a car is undone, so it never leaves them overlapping.
+  // truck's after a step: the truck's own move into a car is undone, so it never leaves them overlapping. Cars
+  // driving into each other show the same way (#43).
   const busy = {
     ...tables,
     rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 40 })) },
@@ -2026,37 +2110,48 @@ describe('Sim: traffic soak', () => {
   };
 
   // Steps `seconds` with the truck driven by `drive(sim)` (returns step i → input), or parked at each of `poses`
-  // in turn for an equal share of the time. Returns the car-made contacts and, per pose, the cars that came close.
+  // in turn for an equal share of the time. Returns the car-made contacts with the truck and between cars and, per
+  // pose, the cars that came close.
   function soak(seed, seconds, drive, poses = []) {
     const sim = createSim(busy, map, seeded(seed));
     const input = drive?.(sim);
     const steps = seconds * 60;
     const near = poses.map(() => new Set());
-    let touching = new Set();
+    let touching = new Set(); // ids of the cars touching the truck, and 'id,id' of pairs of cars touching
     let contacts = 0;
+    let crashes = 0;
     for (let i = 0; i < steps; i++) {
       const k = Math.floor((i * poses.length) / steps);
       if (poses.length && i === Math.ceil((k * steps) / poses.length)) Object.assign(sim.state.truck, poses[k]);
       sim.step(DT, input ? input(i) : IDLE);
-      const { truck } = sim.state;
+      const { truck, traffic } = sim.state;
       const now = new Set();
-      for (const car of sim.state.traffic) {
+      for (const [a, car] of traffic.entries()) {
         if (poses.length && vehiclesOverlap(car, CAR, truck, CLOSE)) near[k].add(car.id);
         if (vehiclesOverlap(car, CAR, truck, tables.vehicle)) now.add(car.id);
+        for (const other of traffic.slice(a + 1)) {
+          const pair = `${Math.min(car.id, other.id)},${Math.max(car.id, other.id)}`;
+          if ((car.x - other.x) ** 2 + (car.z - other.z) ** 2 < CAR.length ** 2 && vehiclesOverlap(car, CAR, other, CAR)) now.add(pair);
+        }
       }
-      for (const id of now) if (!touching.has(id)) contacts++;
+      for (const id of now) if (!touching.has(id)) typeof id === 'number' ? contacts++ : crashes++;
       touching = now;
     }
-    return { contacts, near: near.map((n) => n.size) };
+    return { contacts, crashes, near: near.map((n) => n.size) };
   }
 
-  test('AI cars never drive into the truck', () => {
+  test('AI cars never drive into the truck or into each other', () => {
     const names = Object.keys(spots);
     const near = names.map(() => 0);
     let contacts = 0;
+    let crashes = 0;
+    const add = (run) => {
+      contacts += run.contacts;
+      crashes += run.crashes;
+      return run;
+    };
     for (const seed of [1, 2, 3]) {
-      const tour = soak(seed, 30 * names.length, null, Object.values(spots));
-      contacts += tour.contacts;
+      const tour = add(soak(seed, 30 * names.length, null, Object.values(spots)));
       tour.near.forEach((n, i) => (near[i] += n));
       // Anywhere across a road tile, any heading.
       const random = seeded(seed + 100);
@@ -2064,21 +2159,22 @@ describe('Sim: traffic soak', () => {
         const { col, row } = map.roads[Math.floor(random() * map.roads.length)];
         return at(col, row, random() * 2 * Math.PI, (random() - 0.5) * 0.6 * TILE, (random() - 0.5) * 0.6 * TILE);
       });
-      contacts += soak(seed, 20 * poses.length, null, poses).contacts;
+      add(soak(seed, 20 * poses.length, null, poses));
       const autopilot = (sim) => {
         const pilot = createAutopilot(sim, map, busy);
         pilot.place();
         return () => pilot.update(DT);
       };
-      contacts += soak(seed, 120, autopilot).contacts;
+      add(soak(seed, 120, autopilot));
       const reversing = (sim) => {
         Object.assign(sim.state.truck, at(20, 8, EAST, 0, laneOffset));
         return (i) => (i % 600 < 200 ? GAS : BRAKE);
       };
-      contacts += soak(seed, 120, reversing).contacts;
+      add(soak(seed, 120, reversing));
     }
 
     expect(contacts).toBe(0);
+    expect(crashes).toBe(0);
     // Cars came close at every spot.
     for (const [i, name] of names.entries()) expect([name, near[i]]).not.toEqual([name, 0]);
   }, 120_000);

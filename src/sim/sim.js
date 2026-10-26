@@ -62,7 +62,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let offersTile = ''; // tile the current offers were made on; their expected times count from there
   const tileKey = () => `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)}`;
   const traffic = map && createTraffic(tables, map, random);
-  let contacts = new Set(); // ids of the AI cars the truck is in contact with
+  let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
   // The map tile (clamped to the map) holding coordinate v along an axis of n tiles.
   const tileOf = (v, n) => Math.min(n - 1, Math.max(0, Math.floor(v / map.tileSize)));
@@ -146,16 +146,19 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
 
     // Solid stop, no damage to the truck: undo the move that hit something, a wall or a car it wasn't
-    // already touching. Reverse backs a stuck truck off.
+    // already touching, or that pushed into a car it was (one that drove into it): the move brought their
+    // centres closer. Reverse backs a stuck truck off.
     const shed = speedBefore - Math.abs(truck.speed);
     const met = traffic ? traffic.touching(corners(truck)) : [];
     const before = met.length ? traffic.touching(corners({ x, z, heading })) : [];
-    const blocked = !fits(truck) || met.some((c) => !before.includes(c));
+    const closer = (c) => Math.hypot(c.x - truck.x, c.z - truck.z) < Math.hypot(c.x - x, c.z - z);
+    const pushed = before.filter((c) => met.includes(c) && closer(c));
+    const blocked = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0;
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
     checkRedLight(frontBefore, frontTile()); // before touchCars, which may stop the truck
-    if (traffic) touchCars(met, before);
+    if (traffic) touchCars(met, before, pushed);
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     updateTraffic(dt);
@@ -202,17 +205,24 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // A new contact with an AI car (`met`: the cars the truck touches after its move) costs a fine when the
   // truck's move made it; a car that drove into the truck (`before`: touching before the move) costs nothing
-  // and stops the truck. A contact lasts until the truck is `contactGap` clear of the car, so pushing on or
-  // nudging it again isn't a new one.
-  function touchCars(met, before) {
+  // and stops the truck, until the truck pushes into it (`pushed`), which is the truck's move too. A contact
+  // lasts until the truck is `contactGap` clear of the car, so pushing on or nudging it again isn't a new one.
+  function touchCars(met, before, pushed) {
     const near = contacts.size ? traffic.touching(corners(truck, tables.traffic.contactGap)) : [];
     const now = state.traffic.filter((c) => met.includes(c) || (contacts.has(c.id) && near.includes(c)));
+    const next = new Map();
     for (const c of now) {
-      if (contacts.has(c.id)) continue;
-      if (before.includes(c)) truck.speed = 0;
-      else fine('collision');
+      let by = contacts.get(c.id);
+      if (!by && before.includes(c)) {
+        truck.speed = 0;
+        by = 'car';
+      } else if (!by || (by === 'car' && pushed.includes(c))) {
+        fine('collision');
+        by = 'truck';
+      }
+      next.set(c.id, by);
     }
-    contacts = new Set(now.map((c) => c.id));
+    contacts = next;
   }
 
   // Tile under the middle of the truck's front bumper.
@@ -297,12 +307,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // Whether the truck stands reversed into a dock's bay: facing out of it, along the zone side, and on its centre line.
+  // Whether the truck stands reversed into a dock's bay: facing out of it, along the zone side, on its centre line,
+  // and with the middle of its rear at the dock edge (the building face, half a tile back from the zone's centre).
   function reversedInto({ dir, zone }) {
     const [dc, dr] = DIRS[dir];
     const turn = truck.heading - Math.atan2(dc, dr);
     const [dx, dz] = [truck.x - (zone.minX + zone.maxX) / 2, truck.z - (zone.minZ + zone.maxZ) / 2];
-    return Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) <= o.dockHeading && Math.abs(dx * dr - dz * dc) <= o.dockCentre;
+    const rear = (dx - (Math.sin(truck.heading) * v.length) / 2) * dc + (dz - (Math.cos(truck.heading) * v.length) / 2) * dr;
+    return (
+      Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) <= o.dockHeading &&
+      Math.abs(dx * dr - dz * dc) <= o.dockCentre &&
+      rear + map.tileSize / 2 <= o.dockDepth
+    );
   }
 
   function updateRank() {
@@ -416,8 +432,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // Puts the truck on the nearest free road tile, facing along the road, at a standstill in first gear. A
-  // crossing (three or more road sides), where AI cars would wait for it, only when no other tile is free.
+  // Puts the truck in the right-hand lane of the nearest free road tile, facing along it, at a standstill in first
+  // gear. A crossing (three or more road sides), where AI cars would wait for it, only when no other tile is free.
   function resetToRoad() {
     const crossing = ({ col, row }) => DIRS.filter(([dc, dr]) => map.isRoad(col + dc, row + dr)).length >= 3;
     const poses = map.roads.map((tile) => ({ pose: roadPose(tile), crossing: crossing(tile) }));
@@ -430,7 +446,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // Tile centre, heading towards the road neighbour that needs the smallest turn.
+  // In the tile's right-hand lane, where the AI cars drive (`laneOffset` right of the centre line), heading
+  // towards the road neighbour that needs the smallest turn.
   function roadPose({ col, row }) {
     const pose = { x: (col + 0.5) * map.tileSize, z: (row + 0.5) * map.tileSize, heading: truck.heading };
     let smallest = Infinity;
@@ -440,6 +457,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const turn = Math.abs(Math.atan2(Math.sin(heading - truck.heading), Math.cos(heading - truck.heading)));
       if (turn < smallest) [pose.heading, smallest] = [heading, turn];
     }
+    pose.x -= Math.cos(pose.heading) * tables.traffic.laneOffset; // right is (-cos heading, sin heading)
+    pose.z += Math.sin(pose.heading) * tables.traffic.laneOffset;
     return pose;
   }
 

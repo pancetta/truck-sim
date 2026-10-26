@@ -116,10 +116,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Only buildings that face a drivable tile are drawn; the solid block behind them stays empty.
   const [low, high] = city.buildingHeight;
   const blocks = map.colliders.filter((b) => b.kind === 'building' || b.kind === 'spot');
-  const solid = new Set(blocks.map((b) => `${Math.floor(b.minX / ts)},${Math.floor(b.minZ / ts)}`));
+  const blockAt = new Map(blocks.map((b) => [`${Math.floor(b.minX / ts)},${Math.floor(b.minZ / ts)}`, b]));
   for (const b of blocks) {
     const [col, row] = [Math.floor(b.minX / ts), Math.floor(b.minZ / ts)];
-    if (DIRS.every(([dc, dr]) => solid.has(`${col + dc},${row + dr}`))) continue;
+    if (DIRS.every(([dc, dr]) => blockAt.has(`${col + dc},${row + dr}`))) continue;
     const { x, z } = centre(b);
     place(pick(BUILDINGS, x, z), {
       x,
@@ -435,6 +435,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let cabView = true;
   let orbit = 0; // rad, showroom camera angle round the truck
   let arm = 0; // m, showroom camera distance from the truck
+  let chaseArm = cam.chaseDistance; // m, chase camera distance behind the truck
   let shifted = false; // whether the picture is moved aside for the Werkstatt panel
 
   function resize() {
@@ -518,16 +519,27 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye)));
       camera.lookAt(truck.localToWorld(lookAt.fromArray(showroom ? cam.gimmickLook : cam.cabLook)));
     } else {
-      // Basic chase camera: fixed offset behind and above the truck.
-      camera.position.set(
-        x - Math.sin(heading) * cam.chaseDistance,
-        cam.chaseHeight,
-        z - Math.cos(heading) * cam.chaseDistance,
-      );
+      // Chase camera: behind and above the truck, pulled in before a building in the way (as after reversing
+      // into a dock) and raised as it does so the truck doesn't fill the view; eases back out, as the Werkstatt's
+      // camera does.
+      const [dx, dz] = [-Math.sin(heading), -Math.cos(heading)];
+      chaseArm = Math.min(chaseRoom(x, z, dx, dz), chaseArm + tables.showroom.armSpeed * dt);
+      const height = cam.chaseHeight + (cam.chaseDistance - chaseArm) * cam.chaseRise;
+      camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
     }
     drawTraffic(state.traffic);
     pipeline.render(scene, camera);
+  }
+
+  // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most chaseDistance. The ray is
+  // walked in 1 m steps through the building tiles, so it can miss a corner it only grazes.
+  function chaseRoom(x, z, dx, dz) {
+    for (let d = 0; d <= cam.chaseDistance + 1; d++) {
+      const b = blockAt.get(`${Math.floor((x + dx * d) / ts)},${Math.floor((z + dz * d) / ts)}`);
+      if (b) return Math.min(cam.chaseDistance, rayToBox(x, z, dx, dz, b) - tables.showroom.wallGap);
+    }
+    return cam.chaseDistance;
   }
 
   const carMatrix = new THREE.Matrix4();

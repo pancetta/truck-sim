@@ -45,6 +45,16 @@ export function createOrders(root, sim, map, tables, strings) {
     timers.set(el, setTimeout(() => (el.hidden = true), tables.orders.paidNoticeTime * 1000));
   }
 
+  // Hides the notices at once: the Werkstatt panel opening over them would cover them (#orders is a stacking
+  // context of its own, under the Werkstatt).
+  function dismissNotices() {
+    for (const el of [paid, fined]) {
+      if (el.hidden) continue;
+      clearTimeout(timers.get(el));
+      el.hidden = true;
+    }
+  }
+
   root.querySelector('.orders-toggle').addEventListener('click', () => {
     panel.hidden = !panel.hidden;
     shown = null;
@@ -134,5 +144,5 @@ export function createOrders(root, sim, map, tables, strings) {
           .join('')}</ul>`;
   }
 
-  return { update };
+  return { update, dismissNotices };
 }

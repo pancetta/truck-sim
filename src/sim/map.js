@@ -80,8 +80,9 @@ export function parseMap(text, tables) {
 
   // Speed limit signs (tables.signs) where a street begins: on every way out of a light junction, and on every
   // way into the city out of a junction on the road round its edge. Each stands on the right-hand pavement of
-  // the street's first tile, facing the traffic that drives in (`dir`, its DIRS index), and is solid; none on a
-  // spot's zone tile, where the truck backs across the pavement into a dock, nor where the right side is road.
+  // the street's first tile, facing the traffic that drives in (`dir`, its DIRS index); none on a spot's zone
+  // tile, where the truck backs across the pavement into a dock, nor where the right side is road. Not solid
+  // (#43): a wide turn sweeps the pavement there, and the plate is too wide to set the post back to the wall.
   const signs = [];
   const junction = (col, row) => DIRS.filter(([dc, dr]) => isRoad(col + dc, row + dr)).length >= 3;
   const cs = roads.map((r) => r.col);
@@ -95,11 +96,10 @@ export function parseMap(text, tables) {
       const [c, r] = [col + dc, row + dr];
       const kerb = !isRoad(c - dr, r + dc); // right of travel (dc, dr) is (-dr, dc)
       if (!isRoad(c, r) || !kerb || junction(c, r) || (!light && onEdge(c, r)) || spots.some((s) => s.zoneTile.col === c && s.zoneTile.row === r)) return;
-      const { along, inset, post } = tables.signs;
+      const { along, inset } = tables.signs;
       const [a, side] = [along - tileSize / 2, tileSize / 2 - inset]; // from the tile's centre, ahead and right
       const [x, z] = [(c + 0.5) * tileSize + dc * a - dr * side, (r + 0.5) * tileSize + dr * a + dc * side];
       signs.push({ x, z, dir });
-      colliders.push({ kind: 'sign', ...box(x, z, post / 2, post / 2) });
     });
   }
 

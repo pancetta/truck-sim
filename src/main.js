@@ -82,6 +82,7 @@ function frame(now) {
   // The open Werkstatt pauses the world; drawing and autosave (after a purchase) go on.
   // After a stall the Sim catches up at most maxSteps steps; the rest of the time is dropped.
   pending = werkstatt.open ? 0 : Math.min(pending + dt, maxSteps * step);
+  if (werkstatt.open) orders.dismissNotices();
   while (pending >= step) {
     sim.step(step, input);
     pending -= step;

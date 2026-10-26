@@ -53,10 +53,11 @@ export const orders = {
   hitSpeed: 1.5, // m/s; slower touches, e.g. while manoeuvring, do no damage
   maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade; heavier is a 'heavy' offer
   // Dock bonus: a share of the pay when unloading at a dock (city.docks) ends with the truck reversed into the
-  // bay, facing out of it within dockHeading and centred on it within dockCentre.
+  // bay, facing out of it within dockHeading, centred on it within dockCentre and its rear within dockDepth.
   dockBonus: 0.25,
   dockHeading: 0.2, // rad (~11°)
   dockCentre: 1, // m either side of the bay's centre line; the painted bay lines show it
+  dockDepth: 1, // m from the middle of the truck's rear to the dock edge (the building face)
   // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
   // the drop-off and the cargo: dock or fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, dock: 2, fragileDock: 3 },
@@ -146,7 +147,7 @@ export const fines = {
 // km/h in town, everywhere: AI cars cruise at it and the speedometer turns red above it. No fine for speeding.
 export const speedLimit = 50;
 
-// Speed limit signs (map.signs, solid like the poles): where a street begins, that is on its first tile out of a
+// Speed limit signs (map.signs, not solid): where a street begins, that is on its first tile out of a
 // light junction or out of the road round the city's edge, on the right-hand pavement, facing the traffic.
 export const signs = {
   along: 3, // m from the tile edge the street begins at
@@ -257,14 +258,16 @@ export const perf = {
 export const camera = {
   chaseDistance: 14, // m behind the truck
   chaseHeight: 6, // m above the ground
+  chaseRise: 0.5, // m the chase camera rises per m it is pulled in before a building (see renderer.js)
   lookHeight: 2, // m above the truck's position the camera aims at
   cabEye: [0.55, 2.05, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the cab roof (2.33 m)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
   gimmickLook: [0.2, 1.9, 2.35], // where it aims in the Werkstatt to show the cab gimmick
-  // Reversing camera on the roof's back edge, inside the footprint so it never ends up in the wall it backs up to,
-  // aimed steeply enough to show the bay right behind the rear doors.
-  rearEye: [0, 3.6, -3.6],
-  rearLook: [0, 0, -10],
+  // Reversing camera above the roof's back edge, inside the footprint so it never ends up in the wall it backs up
+  // to, aimed nearly straight down: it shows ~5 m behind the rear doors, and at the dock the truck's back edge
+  // against the dock edge, with the bay lines either side, above the dashboard.
+  rearEye: [0, 5, -3.95],
+  rearLook: [0, 0, -5.2],
   // m: sky-coloured distance fog starts at the first and is full at the second, where the camera stops drawing
   fog: [150, 350],
 };
