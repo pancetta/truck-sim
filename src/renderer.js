@@ -1,13 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { texture, uv } from 'three/tsl';
+import { texture, uv, equirectUV, normalWorldGeometry, positionWorld, cameraPosition, fog, densityFogFactor, rangeFogFactor, float } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
 import { createTruckParts } from './truckLook.js';
 import { createResolution } from './resolution.js';
 
-// CC0 kit models in public/models/ (see CREDITS.md).
+// CC0 kit models in public/models/, sky and ground textures in public/textures/ (see CREDITS.md).
 const MODELS = `${import.meta.env.BASE_URL}models/`;
+const TEXTURES = `${import.meta.env.BASE_URL}textures/`;
 // Road pieces with the sides they open to, as modelled (DIRS order: north/-z, east/+x, south/+z, west/-x).
 const ROAD_PIECES = [
   ['roads/road-square.glb', []],
@@ -23,8 +25,12 @@ const POLE = 'roads/light-square.glb';
 const TRUCK = 'cars/delivery.glb';
 const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of it
 
+const SUN_DISTANCE = 300; // m from the shadow area's centre to the sun, back along its light
+const SHADOW_ONLY = 1; // layer the sun's shadow camera and the reversing camera see, but not the main camera
+
 const loader = new GLTFLoader();
-const newKitMaterial = () => new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const textureLoader = new THREE.TextureLoader();
+const newKitMaterial = () => new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true });
 // One kit material per mesh variant: shared across variants, the renderer re-derives the program on every draw.
 const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), batched: newKitMaterial() };
 
@@ -49,6 +55,22 @@ function rayToBox(x, z, dx, dz, b) {
   return near <= far ? near : Infinity;
 }
 
+// Where the shadow area is centred for a camera focus: the focus moved to the nearest whole shadow-map texel across
+// the sun's view (light.x and light.y; light.z points to the sun), so each texel keeps covering the same ground as
+// the area follows the camera. Moving it freely made shadow edges shimmer while driving.
+export function shadowCentre(focus, light, texel, out) {
+  const snap = (axis) => Math.round(focus.dot(axis) / texel) * texel;
+  return out.set(0, 0, 0).addScaledVector(light.x, snap(light.x)).addScaledVector(light.y, snap(light.y)).addScaledVector(light.z, focus.dot(light.z));
+}
+
+// UVs from world x and z, `repeat` m per copy of the texture, so a texture runs on across tiles and meshes.
+function worldUVs(geometry, repeat) {
+  const p = geometry.getAttribute('position');
+  const uvs = new Float32Array(p.count * 2);
+  for (let i = 0; i < p.count; i++) [uvs[2 * i], uvs[2 * i + 1]] = [p.getX(i) / repeat, -p.getZ(i) / repeat];
+  return geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+}
+
 // RGBA bytes of a colour-map image, read once per image.
 const pixelCache = new WeakMap();
 function readPixels(image) {
@@ -62,14 +84,17 @@ function readPixels(image) {
   return pixelCache.get(image);
 }
 
-// Draws Sim state; never writes to it. `onProgress` gets the loaded share of the kit models (0..1);
+// Draws Sim state; never writes to it. `onProgress` gets the loaded share of the models and textures (0..1);
 // the returned `ready` resolves once all of them are in the scene.
 export function createRenderer(canvas, tables, map, onProgress) {
-  const { palette, camera: cam, city } = tables;
+  const { palette, camera: cam, city, lighting } = tables;
   const kitColours = Object.entries(tables.kitColours);
   // WebGPU where the browser has it, else its WebGL 2 backend; ?webgl forces the fallback for comparison.
   const forceWebGL = new URLSearchParams(location.search).has('webgl');
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL });
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = lighting.exposure;
+  renderer.shadowMap.enabled = true;
   const resolution = createResolution(tables.resolution, window.devicePixelRatio, matchMedia('(pointer: coarse)').matches);
   renderer.setPixelRatio(resolution.ratio);
   // sRGB output in the material shaders, as WebGLRenderer did: the default pipeline draws into a half-float MSAA
@@ -79,19 +104,52 @@ export function createRenderer(canvas, tables, map, onProgress) {
   renderer.onDeviceLost = () => location.reload();
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(palette.sky);
-  // Fog in the sky's colour, full where the camera stops drawing, so the far city fades out instead of popping.
-  scene.fog = new THREE.Fog(palette.sky, ...cam.fog);
-  scene.add(new THREE.HemisphereLight(palette.light, palette.shade, tables.lighting.ambient));
-  const sun = new THREE.DirectionalLight(palette.light, tables.lighting.sun);
-  sun.position.set(30, 60, 20);
-  scene.add(sun);
+  const loads = []; // every model and texture load, up to being added to the scene
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(2000, 2000),
-    new THREE.MeshLambertMaterial({ color: palette.ground }),
-  );
-  ground.rotation.x = -Math.PI / 2;
+  // Sky and sun, all from tables.lighting. The sky is the background and lights the scene from all around.
+  loads.push(new HDRLoader().loadAsync(TEXTURES + lighting.sky).then((sky) => {
+    sky.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = sky;
+    scene.environmentIntensity = lighting.skyLight;
+    // Background and haze sample the sky alike, so whatever is fully hazed where the camera stops drawing is exactly
+    // the sky behind it, and the far city fades out instead of popping.
+    const skyAt = (direction) => texture(sky, equirectUV(direction.normalize())).rgb;
+    scene.backgroundNode = skyAt(normalWorldGeometry);
+    const clear = densityFogFactor(float(lighting.haze)).oneMinus().mul(rangeFogFactor(float(cam.fog[0]), float(cam.fog[1])).oneMinus());
+    scene.fogNode = fog(skyAt(positionWorld.sub(cameraPosition)), clear.oneMinus());
+  }));
+  const sun = new THREE.DirectionalLight(lighting.sunColour, lighting.sun);
+  const { shadow } = lighting;
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(shadow.mapSize, shadow.mapSize);
+  Object.assign(sun.shadow.camera, { left: -shadow.extent, right: shadow.extent, top: shadow.extent, bottom: -shadow.extent, near: 1, far: 2 * SUN_DISTANCE });
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.shadow.camera.layers.enable(SHADOW_ONLY);
+  Object.assign(sun.shadow, { bias: shadow.bias, normalBias: shadow.normalBias });
+  scene.add(sun, sun.target);
+  // The shadow camera's own axes: it looks along -z, at the ground from the sun, with the world's up as its up.
+  const light = { z: new THREE.Vector3(...lighting.sunDirection).normalize() };
+  light.x = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), light.z).normalize();
+  light.y = new THREE.Vector3().crossVectors(light.z, light.x);
+  const shadowTexel = (2 * shadow.extent) / shadow.mapSize; // m
+  const focus = new THREE.Vector3();
+
+  // A CC0 PBR ground material (tables.ground): its colour, normal, and ambient occlusion / roughness map.
+  function groundMaterial({ texture: name }) {
+    const [map, normalMap, arm] = ['Diffuse', 'nor_gl', 'arm'].map((kind) => {
+      let t;
+      loads.push(new Promise((resolve, reject) => (t = textureLoader.load(`${TEXTURES}${name}_${kind}.jpg`, resolve, undefined, reject))));
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = 8;
+      return t;
+    });
+    map.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.MeshStandardMaterial({ map, normalMap, aoMap: arm, roughnessMap: arm });
+  }
+
+  const ground = new THREE.Mesh(worldUVs(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2), tables.ground.open.repeat), groundMaterial(tables.ground.open));
+  ground.receiveShadow = true;
+  ground.renderOrder = 2; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
   scene.add(ground);
 
   // City from the parsed map, built from kit models.
@@ -101,8 +159,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const centre = (b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 });
   const placements = new Map(); // model file -> [{ x, z, angle, size: [x, y, z], tint }]
   const place = (file, p) => (placements.get(file) ?? placements.set(file, []).get(file)).push(p);
-  const loads = []; // every kit-model load, up to being added to the scene
 
+  // Road tiles: asphalt as one mesh, a square per tile at the kit's road level, under the kit pieces' pavements and
+  // markings; the pieces' own road surfaces are left out (see loadModel). Pushed back a few depth steps, so the
+  // markings at the same height always win; an offset by depth slope sank it under the ground at grazing angles.
+  const asphalt = new THREE.Mesh(
+    worldUVs(mergeGeometries(map.roads.map(({ col, row }) => new THREE.PlaneGeometry(ts, ts).rotateX(-Math.PI / 2).translate((col + 0.5) * ts, roadHeight / 2, (row + 0.5) * ts))), tables.ground.road.repeat),
+    Object.assign(groundMaterial(tables.ground.road), { polygonOffset: true, polygonOffsetUnits: 4 }),
+  );
+  asphalt.receiveShadow = true;
+  asphalt.renderOrder = 1; // after the city, before the ground (see ground)
+  scene.add(asphalt);
   for (const { col, row } of map.roads) {
     const open = DIRS.map(([dc, dr]) => map.isRoad(col + dc, row + dr));
     // Turning a piece a quarter turn moves each open side from direction i to i - 1.
@@ -150,8 +217,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // The kit cars, loaded once for the parked cars and the AI cars.
   const carModels = CARS.map((file) => loadModel(file));
   const cityModels = [...placements].map(([file, list]) => {
-    // Building walls are white so their per-building tint shows as is.
-    const model = CARS.includes(file) ? carModels[CARS.indexOf(file)] : loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette);
+    // Building walls are white so their per-building tint shows as is; road pieces leave out their road surface.
+    const colours = BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
+    const model = CARS.includes(file) ? carModels[CARS.indexOf(file)] : loadModel(file, colours);
     return model.then((geometry) => {
       // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
       if (file === POLE) {
@@ -195,6 +263,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const trafficMeshes = carModels.map((model) => {
     const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), kitMaterials.instanced, maxTraffic);
     mesh.frustumCulled = false; // the cars move, so bounds computed once would go stale
+    mesh.castShadow = mesh.receiveShadow = true;
     loads.push(model.then((geometry) => (mesh.geometry = unitBox(geometry))));
     scene.add(mesh);
     return mesh;
@@ -211,8 +280,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     new THREE.BoxGeometry(city.obstacles.signal.width, 4.6, city.obstacles.signal.width).translate(0, 2.3, 0),
     new THREE.BoxGeometry(0.5, 1.4, 0.35).translate(0, 3.85, 0),
   ]);
-  const signals = new THREE.InstancedMesh(signal, new THREE.MeshLambertMaterial({ color: palette.signal }), map.lights.length);
-  const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial(), map.lights.length * 3);
+  const signals = new THREE.InstancedMesh(signal, new THREE.MeshStandardMaterial({ color: palette.signal }), map.lights.length);
+  signals.castShadow = signals.receiveShadow = true;
+  // Lamps glow in their palette colours, untouched by the tone mapping.
+  const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({ toneMapped: false }), map.lights.length * 3);
   const stopLines = [];
   const m = new THREE.Matrix4();
   map.lights.forEach((l, i) => {
@@ -232,8 +303,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let shownLights = null;
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only
-  // what's on screen within the far plane is drawn. `models` is [geometry, placements] per model.
-  // three warns once that the batch has no normals; flat shading doesn't use them.
+  // what's on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is
+  // [geometry, placements] per model.
   function addCity(models) {
     if (!models.length) return;
     const instances = models.reduce((n, [, list]) => n + list.length, 0);
@@ -252,6 +323,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       }
     }
     batch.sortObjects = false; // depth-sorting the visible placements allocated about 40 KB per frame
+    batch.castShadow = batch.receiveShadow = true;
     scene.add(batch);
   }
 
@@ -262,7 +334,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const { height, radius, ring, post } = tables.signs;
     const parts = [];
     const add = (geometry, colour) => {
-      const part = geometry.toNonIndexed().deleteAttribute('normal').deleteAttribute('uv');
+      const part = geometry.toNonIndexed().deleteAttribute('uv');
       const colours = new Float32Array(part.getAttribute('position').count * 3);
       const c = new THREE.Color(colour);
       for (let i = 0; i < colours.length; i += 3) c.toArray(colours, i);
@@ -294,7 +366,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.
   function addBoxes(color, boxes, height) {
-    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color }), boxes.length);
+    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
+    mesh.receiveShadow = true;
     const m = new THREE.Matrix4();
     boxes.forEach((b, i) => {
       const h = b.height ?? height;
@@ -309,13 +382,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // colour; straight alpha would apply the opacity twice and wash the colour out.
   const marker = new THREE.Mesh(
     new THREE.BoxGeometry(ts, city.markerHeight, ts),
-    new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.35, depthWrite: false, premultipliedAlpha: true }),
+    new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.35, depthWrite: false, premultipliedAlpha: true }),
   );
   marker.position.y = city.markerHeight / 2;
   scene.add(marker);
 
   // A kit model as one flat-coloured geometry: each face takes the palette colour named by the
-  // kit colour nearest to its colour-map sample (tables.kitColours). `colours` overrides palette entries.
+  // kit colour nearest to its colour-map sample (tables.kitColours). `colours` overrides palette entries; a face whose
+  // colour is null is left out. The bounding box is the whole model's, left-out faces included.
   async function loadModel(file, colours = palette) {
     const gltf = await loader.loadAsync(MODELS + file);
     gltf.scene.updateMatrixWorld();
@@ -325,24 +399,32 @@ export function createRenderer(canvas, tables, map, onProgress) {
       if (!mesh.isMesh) return;
       const source = mesh.geometry.toNonIndexed();
       const uv = source.getAttribute('uv');
+      const position = source.getAttribute('position');
       const { data, width, height } = readPixels(mesh.material.map.image);
-      const colour = new Float32Array(uv.count * 3);
+      const positions = [];
+      const colour = [];
       for (let i = 0; i < uv.count; i += 3) {
         const u = (uv.getX(i) + uv.getX(i + 1) + uv.getX(i + 2)) / 3;
         const v = (uv.getY(i) + uv.getY(i + 1) + uv.getY(i + 2)) / 3;
         const p = 4 * (Math.min(height - 1, Math.floor(v * height)) * width + Math.min(width - 1, Math.floor(u * width)));
-        c.setHex(colours[nearestKitColour(data[p], data[p + 1], data[p + 2])]);
-        for (let k = 0; k < 3; k++) c.toArray(colour, (i + k) * 3);
+        const hex = colours[nearestKitColour(data[p], data[p + 1], data[p + 2])];
+        if (hex === null) continue;
+        c.setHex(hex);
+        for (let k = 0; k < 3; k++) {
+          positions.push(position.getX(i + k), position.getY(i + k), position.getZ(i + k));
+          colour.push(c.r, c.g, c.b);
+        }
       }
       const part = new THREE.BufferGeometry();
-      part.setAttribute('position', source.getAttribute('position'));
-      part.setAttribute('color', new THREE.BufferAttribute(colour, 3));
+      part.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      part.setAttribute('color', new THREE.Float32BufferAttribute(colour, 3));
       parts.push(part.applyMatrix4(mesh.matrixWorld));
     });
     // Free the decoded colour maps now; they are never drawn.
     gltf.scene.traverse((mesh) => mesh.material?.map?.image.close?.());
     const geometry = mergeGeometries(parts);
-    geometry.computeBoundingBox();
+    geometry.computeVertexNormals(); // per face, the faces being unshared; the sun's shadow offsets along them
+    geometry.boundingBox = new THREE.Box3().setFromObject(gltf.scene, true);
     return geometry;
   }
 
@@ -405,9 +487,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view. The dashboard
   // sits under the windscreen, the wheel in front of the driver's eye (camera.cabEye).
-  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshLambertMaterial({ color: palette.dashboard }));
+  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshStandardMaterial({ color: palette.dashboard }));
   dashboard.position.set(0, 1.45, 2.45);
-  const wheelMaterial = new THREE.MeshLambertMaterial({ color: palette.steeringWheel });
+  const wheelMaterial = new THREE.MeshStandardMaterial({ color: palette.steeringWheel });
   // The column tilts the wheel towards the driver; the wheel spins about the column's axis (local +z).
   const column = new THREE.Group();
   column.position.set(cam.cabEye[0], 1.68, 2.12);
@@ -444,6 +526,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // mirrored like a real one. The rectangle is the inside of the `.rear-inset` frame (style.css), measured when it
   // shows and on resize.
   const rearCamera = new THREE.PerspectiveCamera(cam.rearFov, 1, 0.1, cam.rearFar);
+  rearCamera.layers.enable(SHADOW_ONLY);
   const rearTarget = new THREE.RenderTarget(1, 1);
   const insetScene = new THREE.Scene();
   const insetCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -533,7 +616,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
       if (rearTime) measureInset();
     }
     const inCab = showroom ? showroom === 'cab' : cabView;
-    exterior.visible = parts.exterior.visible = !inCab;
+    // From the seat the outside of the truck isn't drawn, but it still casts its shadow. Visual items' parts are
+    // built on first show, so they are set up here too.
+    for (const outside of [exterior, parts.exterior]) {
+      outside.traverse((mesh) => {
+        mesh.layers.set(inCab ? SHADOW_ONLY : 0);
+        mesh.castShadow = mesh.receiveShadow = true;
+      });
+    }
     interior.visible = inCab;
     shift(!!showroom);
     if (!showroom) [orbit, arm] = [0, tables.showroom.radius];
@@ -565,17 +655,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
       rearCamera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
       rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     }
+    // The sun's shadow covers the ground around a point ahead of the camera.
+    camera.getWorldDirection(focus).setY(0).normalize().multiplyScalar(lighting.shadow.ahead).add(camera.position);
+    shadowCentre(focus, light, shadowTexel, sun.target.position);
+    sun.position.copy(sun.target.position).addScaledVector(light.z, SUN_DISTANCE);
     drawTraffic(state.traffic, !!rearTime);
     pipeline.render(scene, camera);
     if (rearTime) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
-      // The truck from outside, also from the cab, so its back edge shows at the bottom as a guide.
-      exterior.visible = parts.exterior.visible = true;
+      // The truck from outside (SHADOW_ONLY in the cab), so its back edge shows at the bottom as a guide.
       interior.visible = false;
       renderer.setRenderTarget(rearTarget);
       renderer.render(scene, rearCamera);
       renderer.setRenderTarget(null);
-      exterior.visible = parts.exterior.visible = !inCab;
       interior.visible = inCab;
       const autoClear = renderer.autoClear;
       renderer.autoClear = false;

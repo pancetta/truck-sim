@@ -271,7 +271,8 @@ export const camera = {
   rearFov: 70, // degrees, vertical; wide, as reversing cameras are
   rearFar: 60, // m it draws to: it looks down, and the short far plane leaves most of the city out of its draw
   rearHold: 1.5, // s
-  // m: sky-coloured distance fog starts at the first and is full at the second, where the camera stops drawing
+  // m: on top of the haze (lighting.haze), the view fades to the sky from the first to the second, where the
+  // camera stops drawing, so the far city fades out instead of popping
   fog: [150, 350],
 };
 
@@ -293,16 +294,36 @@ export const gimmickSway = {
   damping: 0.12, // share of critical damping
 };
 
+// Sun and sky (renderer.js). The sky is a CC0 HDRI in public/textures/ (CREDITS.md): the background, and the light
+// from all around. The sun stands where the HDRI's sun is, so shadows fall away from it.
 export const lighting = {
-  ambient: 1.2, // hemisphere light intensity
-  sun: 1.5, // directional light intensity
+  sky: 'kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+  skyLight: 0.35, // intensity of the sky's light
+  exposure: 1, // ACES filmic tone mapping
+  sun: 3.2, // directional light intensity
+  sunColour: 0xfff3e0,
+  sunDirection: [0.555, 0.742, 0.377], // towards the sun: 48° up, as in the HDRI
+  // Sky-coloured haze, exponential squared, per m; camera.fog fades the rest to the sky at the far plane.
+  haze: 0.0022,
+  shadow: {
+    mapSize: 2048, // texels square
+    extent: 60, // m from the shadow area's centre to its sides, across the sun's view
+    ahead: 30, // m ahead of the camera, along its view on the ground, where the shadow area is centred
+    bias: -0.0004,
+    normalBias: 0.05, // m
+  },
+};
+
+// Ground materials: CC0 PBR textures in public/textures/ (CREDITS.md), <texture>_Diffuse, _nor_gl and _arm.jpg,
+// laid out in world space, `repeat` m per copy of the texture.
+export const ground = {
+  road: { texture: 'asphalt_02', repeat: 4 }, // road tiles
+  open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level: open tiles and round the city
 };
 
 export const palette = {
-  light: 0xffffff,
-  sky: 0x9fd3e6,
-  ground: 0x7fb069,
-  shade: 0x9a948a, // light from below, on faces turned away from the sky
+  light: 0xffffff, // minimap
+  ground: 0x7fb069, // minimap
   spot: 0x4f86c6, // tint of the pickup and drop-off buildings
   zone: 0x8fc1f0,
   pickup: 0x6cc551, // active order's zone marker

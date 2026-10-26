@@ -11,8 +11,8 @@ const BUMPER = { front: [3.92, 0.46], back: [-3.94, 0.56] }; // z, y
 const PIVOT = { dice: [0.2, 2.4, 2.35], figure: [0.15, 1.7, 2.25] }; // gimmicks sway about these; see camera.gimmickLook
 
 const materials = new Map();
-const lambert = (color) => materials.get(color) ?? materials.set(color, new THREE.MeshLambertMaterial({ color, flatShading: true })).get(color);
-const glow = (color) => new THREE.MeshBasicMaterial({ color });
+const matte = (color) => materials.get(color) ?? materials.set(color, new THREE.MeshStandardMaterial({ color, flatShading: true })).get(color);
+const glow = (color) => new THREE.MeshBasicMaterial({ color, toneMapped: false });
 
 // A thin bar on a side wall from (u0, v0) to (u1, v1); u runs forward along z, v is the height.
 function bar(u0, v0, u1, v1, width) {
@@ -75,7 +75,7 @@ const BUILDERS = {
   livery({ design, colours }, palette) {
     const perColour = DESIGNS[design]();
     const sides = (list) => [BOX.side, -BOX.side].flatMap((x) => list.map((g) => g.clone().translate(x, 0, 0)));
-    return meshes(perColour.map((list, i) => [lambert(palette[colours[i]]), sides(list)]));
+    return meshes(perColour.map((list, i) => [matte(palette[colours[i]]), sides(list)]));
   },
   lightBar({ lamp }, palette) {
     const base = new THREE.BoxGeometry(1.7, 0.08, 0.3).translate(0, ROOF.y + 0.04, ROOF.z);
@@ -83,7 +83,7 @@ const BUILDERS = {
       lamp === 'lampAmber'
         ? [0.65, -0.65].map((x) => new THREE.CylinderGeometry(0.1, 0.12, 0.18, 10).translate(x, ROOF.y + 0.17, ROOF.z))
         : [-0.6, -0.2, 0.2, 0.6].map((x) => new THREE.BoxGeometry(0.24, 0.16, 0.12).translate(x, ROOF.y + 0.16, ROOF.z + 0.08));
-    return meshes([[lambert(palette.trim), [base]], [glow(palette[lamp]), lamps]]);
+    return meshes([[matte(palette.trim), [base]], [glow(palette[lamp]), lamps]]);
   },
   gimmick({ kind, colour }, palette) {
     const size = 0.065;
@@ -92,14 +92,14 @@ const BUILDERS = {
     const pivot =
       kind === 'dice'
         ? meshes([
-            [lambert(palette.trim), [new THREE.BoxGeometry(0.008, 0.46, 0.008).translate(0, -0.23, 0)]], // dark, so it doesn't read as a pole outside
-            [lambert(palette.wall), [0, 1].flatMap((i) => place(pips(size), i))],
-            [lambert(palette[colour]), [0, 1].flatMap((i) => place([new THREE.BoxGeometry(size, size, size)], i))],
+            [matte(palette.trim), [new THREE.BoxGeometry(0.008, 0.46, 0.008).translate(0, -0.23, 0)]], // dark, so it doesn't read as a pole outside
+            [matte(palette.wall), [0, 1].flatMap((i) => place(pips(size), i))],
+            [matte(palette[colour]), [0, 1].flatMap((i) => place([new THREE.BoxGeometry(size, size, size)], i))],
           ])
         : meshes([
-            [lambert(palette.trim), [new THREE.CylinderGeometry(0.02, 0.02, 0.07, 6).translate(0, 0.035, 0)]],
-            [lambert(palette[colour]), [new THREE.BoxGeometry(0.1, 0.13, 0.07).translate(0, 0.13, 0)]],
-            [lambert(palette.pavement), [new THREE.IcosahedronGeometry(0.065, 0).translate(0, 0.26, 0)]],
+            [matte(palette.trim), [new THREE.CylinderGeometry(0.02, 0.02, 0.07, 6).translate(0, 0.035, 0)]],
+            [matte(palette[colour]), [new THREE.BoxGeometry(0.1, 0.13, 0.07).translate(0, 0.13, 0)]],
+            [matte(palette.pavement), [new THREE.IcosahedronGeometry(0.065, 0).translate(0, 0.26, 0)]],
           ]);
     pivot.position.fromArray(PIVOT[kind]);
     return pivot;
@@ -120,7 +120,7 @@ const BUILDERS = {
       }
     }
     const disc = spokes ? palette.trim : palette[colour];
-    return meshes([[lambert(disc), discs], [lambert(palette.chrome), hubs], ...(spokes ? [[lambert(palette[colour]), arms]] : [])]);
+    return meshes([[matte(disc), discs], [matte(palette.chrome), hubs], ...(spokes ? [[matte(palette[colour]), arms]] : [])]);
   },
   chrome({ bullBar }, palette) {
     const parts = Object.values(BUMPER).map(([z, y]) => new THREE.BoxGeometry(2.4, 0.33, 0.2).translate(0, y, z));
@@ -131,7 +131,7 @@ const BUILDERS = {
         ...[1.65, 1.15].map((y) => new THREE.CylinderGeometry(0.05, 0.05, 1.6, 8).rotateZ(Math.PI / 2).translate(0, y, z)),
       );
     }
-    return meshes([[lambert(palette.chrome), parts]]);
+    return meshes([[matte(palette.chrome), parts]]);
   },
 };
 
