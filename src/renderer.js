@@ -840,11 +840,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     for (const load of laterLoads) load().catch(console.error);
     return showFullSky && loadSky(lighting.sky).then(showFullSky);
   }).catch(console.error);
-  models.then(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file)))).then(([near, far]) => {
+  laterLoads.push(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
     coveredCar.near = coverMeshes(near, true);
     coveredCar.far = coverMeshes(far, false);
     warmCars = true;
-  }).catch(console.error);
+  }));
 
   // The covered car's meshes (cover and wheels, all one material) merged into one car mesh, scaled into the car
   // footprint and set on the ground (it is modelled lengthwise along z).
