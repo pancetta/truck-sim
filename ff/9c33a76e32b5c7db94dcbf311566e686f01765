@@ -1,0 +1,23 @@
+src/prototype-monti/main.js
+  s_c34b2924f7d147::t_6a560f99a9ea46 180,182-184
+  s_c34b2924f7d147::t_e7ff3f8ec55b88 455-458
+  s_c34b2924f7d147::t_602ee20a108fb3 237-239
+  s_c34b2924f7d147::t_e80d4f9907b9b4 632
+  s_c34b2924f7d147::t_37bbb7f000d28b 604-605,607-608
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff9c33a76e32b5c7db94dcbf311566e686f01765",
+  "prompts": {},
+  "sessions": {
+    "s_c34b2924f7d147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a56e64-1812-43df-b206-48bdde1707db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
