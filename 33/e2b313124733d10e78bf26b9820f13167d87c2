@@ -1,0 +1,19 @@
+src/streets.js
+  s_36efe775d24de1::t_6a11ffcd6a28df 99-104,126,258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "33e2b313124733d10e78bf26b9820f13167d87c2",
+  "prompts": {},
+  "sessions": {
+    "s_36efe775d24de1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bea614df-45f4-43a5-a823-27b568ac5f61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
