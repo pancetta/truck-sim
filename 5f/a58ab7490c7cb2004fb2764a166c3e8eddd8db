@@ -1,0 +1,47 @@
+public/prototype-monti/ring.json
+  s_c34b2924f7d147::t_f6a752bf7a4c0a 1
+prototype-monti-bake.html
+  s_c34b2924f7d147::t_76e10dd96fe92c 2-6,17,24,40-41
+src/prototype-monti/ring.js
+  s_c34b2924f7d147::t_598858ba9b06dd 1-3,5,9-10,12-13,15-20,23-29,31
+  s_c34b2924f7d147::t_47e57c48763a24 6-8,11,14,21-22
+  s_c34b2924f7d147::t_672ef9f15cbe4f 30
+  s_c34b2924f7d147::t_d2862b4eb4848b 4
+prototype-monti-ring.py
+  s_c34b2924f7d147::t_5020541797a0d5 1-78
+src/prototype-monti/geometry.js
+  s_c34b2924f7d147::t_15b47df38850b3 1-55
+src/prototype-monti/vehicles.js
+  s_c34b2924f7d147::t_f47d01d792fba4 1-112
+public/prototype-monti/models/planter_box_01/planter_box_01_1k.gltf
+  s_c34b2924f7d147::t_d06c17c92ad835 1-159
+public/prototype-monti/models/potted_plant_02/potted_plant_02_1k.gltf
+  s_c34b2924f7d147::t_d06c17c92ad835 1-357
+src/prototype-monti/textures.js
+  s_c34b2924f7d147::t_424c2ab65099a6 1-133,156-170
+  s_c34b2924f7d147::t_79fc30161ab397 134-155
+src/prototype-monti/main.js
+  s_c34b2924f7d147::t_7fe50ae4661df8 12-15,43-45,71-75,102-104,132-139,141,146-153,158-161,163-164,166,225
+  s_c34b2924f7d147::t_1d83ff7ce78ad2 279-284,287-342,357-380,383-415,442,446-447,450,470,473,476-479,483,485-489,492,511,517-519,521-523,525-550,552-576,637-638
+  s_c34b2924f7d147::t_efba6edf27a8f3 469,471-472,474-475
+  s_c34b2924f7d147::t_e04787abd5d173 154,583
+  s_c34b2924f7d147::t_4ddf4576243a6b 349
+  s_c34b2924f7d147::t_44058b693ca27a 55,285-286,343-348,350-356,381-382,434
+  s_c34b2924f7d147::t_03b68e6a41e8f3 577-578,585,590,610-611,623,626,639-640,730-731,739,830
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5fa58ab7490c7cb2004fb2764a166c3e8eddd8db",
+  "prompts": {},
+  "sessions": {
+    "s_c34b2924f7d147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a56e64-1812-43df-b206-48bdde1707db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
