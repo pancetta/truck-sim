@@ -1,0 +1,23 @@
+src/buildings.js
+  s_3ef6b943e3bd9f::t_0d3a49b1f7d1d7 238,240,302-303
+  s_3ef6b943e3bd9f::t_ded5cd5a9ef1fc 248-251
+  s_3ef6b943e3bd9f::t_5ed367c995ffbe 6,230,247,252
+src/facadePictures.js
+  s_3ef6b943e3bd9f::t_5ed367c995ffbe 7,24,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "de900ac2bee9ed325c93fa1167bcf7bc24f03b26",
+  "prompts": {},
+  "sessions": {
+    "s_3ef6b943e3bd9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "81a77973-76e2-4e36-9d86-5a2a771e0af4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
