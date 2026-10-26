@@ -353,6 +353,54 @@ The pixel ratio now follows the GPU load (`src/resolution.js`, tunables in `tabl
 
 The plain scene is too light for the ratio to show: the uncapped frame is CPU-bound at about 0.6 ms. Under fill load, frame time falls with the pixel count. At 1.25 it costs 38% of ratio 2. That is in line with the phase-3 stress table above: 5.66 ms of GPU at DPR 2 and 3.30 ms at 1.5. Frame time on the real iPad remains for the owner's `?perf&auto` run. Watch the `dpr` value there.
 
+## City culling and fog (#30)
+
+The static kit city (roads, buildings, parked cars, lamp poles) is now one `BatchedMesh` with three's per-instance frustum culling, instead of one city-wide `InstancedMesh` per model. Sky-coloured fog starts at 150 m and is full at 350 m, which is also the camera's far plane (`tables.camera.fog`). Fog and far plane both use view depth, so geometry is fully fogged where it gets clipped and nothing pops. AI cars outside the view are skipped when their instances are written. The small box meshes (zones, dock edges, lines, signals, lamps) stay city-wide; they are a few thousand triangles.
+
+**Why not sector instancing:** a first version split each model's `InstancedMesh` into 8×8-tile sectors. Triangles fell to 67k, but programs rose from 39 to 384 and render CPU from 0.52 to 1.34 ms. three r186 names each `InstancedMesh`'s uniform buffer after the mesh, so no two meshes share a shader, and each sector compiled its own pipeline when it first came into view. Padding every sector to one buffer size didn't help. The `BatchedMesh` has one shader and needs 18–20 programs in all.
+
+**Sorting:** `sortObjects` is off. Depth-sorting the visible placements every frame raised allocations from 57 to 100 KB per frame without a measurable render-time gain.
+
+**How measured:** `?perf&auto` A/B runs of production builds, as for #28. *Before* is main at `1c03c07`, *after* is the same plus this change, both before #29 landed, so at a fixed pixel ratio of 2. Chrome 155 headless, `apple metal-3` (WebGPU), 1180×820 at DPR 2. The machine was shared with other sessions; the load average is given per row.
+
+**Chrome, cab, vsync, two alternating pairs at load 3.7–5.0** (ms, median / p95 / mean):
+
+| | before | after |
+|---|---|---|
+| Frame | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Render CPU, pair 1 | 0.56 / 1.22 / 0.63 | 0.84 / 1.42 / 0.88 |
+| Render CPU, pair 2 | 0.84 / 1.28 / 0.82 | 1.07 / 1.56 / 1.07 |
+| Draw calls / triangles | 38 / 314k | 357 / 46k |
+| Programs | 39 | 18 |
+| Allocated per frame | 32–33 KB | 57 KB |
+
+Chase: 34 calls / 316k triangles before, 355 / 48k after. On WebGPU three issues one draw per visible placement of the batch, so the call count is high, but they share one pipeline and bindings.
+
+**Where the extra render CPU goes:** a CPU profile (8 s, cab) puts JavaScript at 0.58–0.60 ms per frame before and 0.65–0.67 ms after, of which `BatchedMesh.onBeforeRender` (testing all 2,314 placements against the view) is about 0.17 ms. The rest of the overlay's difference is native time for the ~350 draw commands and the per-frame upload of the batch's index texture.
+
+**Uncapped** (chase, `--disable-frame-rate-limit --disable-gpu-vsync`, load 26–30, so noisy): median frame 0.63 and 0.71 ms before, 0.97 ms after. On the M2 this scene is CPU-bound uncapped, so the extra culling CPU shows and the triangle savings don't.
+
+**iPad (A16) simulator**, iPadOS 27.0 Safari, WebGL 2 backend (no WebGPU adapter in the simulator), landscape at DPR 2 (buffer 2360×1376), load average about 6–10. Safari's WebGL 2 has `WEBGL_multi_draw`, so the batch is one call there.
+
+| ms, median / p95 / mean | before | after |
+|---|---|---|
+| Frame, cab | 16.66 / 17.50 / 16.72 | 16.66 / 16.74 / 16.67 |
+| Render, cab | 0.40 / 0.58 / 0.41 | 0.92 / 1.08 / 0.92 |
+| Busy, cab | 0.54 / 0.80 / 0.55 | 1.04 / 1.24 / 1.04 |
+| Draw calls / triangles, cab | 38 / 314k | 14 / 56k |
+| Frame, chase | – / – / 16.67¹ | 16.66 / 17.06 / 16.75 |
+| Render, chase | – | 0.56 / 0.70 / 0.56 |
+| Draw calls / triangles, chase | 32 / 316k | 11 / 59k |
+
+¹ That tab ran with Safari's coarse 1 ms timer, so only the mean is usable.
+
+**Verdict:**
+- *Triangles:* cut by 82–85% in both views (about 314k to 46–59k), above the "about half" asked for. Every later per-triangle cost (richer models, a shadow pass) scales with this.
+- *Render CPU:* up by about 0.3 ms per frame in Chrome and 0.5 ms on the simulator's WebGL 2 backend. 60 fps holds everywhere measured. A cheaper cull (precomputed bounds, or a few sector batches tested first) could win most of that back if CPU ever gets tight.
+- *Visuals:* a QA pass rendered each frame twice, with culling on and with every frustum test forced true. Cab, chase, rear, Werkstatt orbit and AI cars entering from the screen edge were pixel-identical on both backends. The fully fogged horizon is exactly the sky colour, so there is no seam.
+- *Order marker:* the zone column now fades out with distance like everything else, and isn't drawn past 350 m. The HUD arrow and the minimap still lead to it.
+- *Real iPad:* not measured. Its tile-based GPU bins every vertex, so the triangle cut may matter more there than on the M2; the owner's `?perf&auto` run will tell.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
