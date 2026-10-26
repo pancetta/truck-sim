@@ -87,8 +87,10 @@ export function planBuildings(map, tables) {
       ...box,
       floors,
       height: t.groundFloor + (floors - 1) * t.floor + t.parapet,
-      wall,
-      tint: t.walls[wall].tinted ? pick(t.tints) : 0xffffff,
+      // A spot's building is plastered (the first, tinted wall material) in a light shade of the spot colour, so it
+      // shows from down the street.
+      wall: spot ? 0 : wall,
+      tint: spot ? new THREE.Color(tables.palette.spot).lerp(new THREE.Color(0xffffff), t.spotTint).getHex() : t.walls[wall].tinted ? pick(t.tints) : 0xffffff,
       brightness: between(t.brightness),
       offset: [random() * 20, random() * 20],
       seed: Math.floor(random() * 2 ** 32),
@@ -150,7 +152,8 @@ export function facadeParts(building, side, tables, spotColour) {
   const door = pick(t.doors);
   const fancy = random() < 0.4; // a cornice over the first floor's windows
 
-  put('plain', L / 2, building.height - 0.3, 0.2, [L + 0.5, 0.6, 0.6], t.stone);
+  // Half a metre past each end, so two cornices meet in full at a corner.
+  put('plain', L / 2, building.height - 0.3, 0.2, [L + 1, 0.6, 0.6], t.stone);
   // Its front behind the ground floor's leaves (0.08 m out): coplanar faces flickered in the prototype.
   if (hole) {
     for (const [a, b] of [[0, hole.from], [hole.to, L]]) put('plain', (a + b) / 2, 0.35, 0.03, [b - a, 0.7, 0.06], t.plinth, { skip: 'b' });
@@ -192,7 +195,7 @@ export function facadeParts(building, side, tables, spotColour) {
   if (spot) {
     // The ground floor clad in the spot colour above the plinth, a band across the top of it (over a dock's opening
     // and its frame) with the letter in the middle, and a blade sign at each end, seen from along the street.
-    const signY = hole ? hole.height + 0.65 : t.groundFloor - 0.45;
+    const signY = hole ? hole.height + 0.6 : t.groundFloor - 0.45;
     for (const [a0, a1] of hole ? [[0, hole.from - 0.2], [hole.to + 0.2, L]] : [[0, L]]) {
       put('plain', (a0 + a1) / 2, (0.7 + t.groundFloor) / 2, 0.01, [a1 - a0, t.groundFloor - 0.7, 0.02], spotColour, { front: true });
     }

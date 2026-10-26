@@ -221,6 +221,7 @@ export const buildings = {
   ],
   roof: { texture: 'clay_roof_tiles_02', repeat: 3 },
   brightness: [0.85, 1.05], // each building's walls, times its tint
+  spotTint: 0.15, // a spot's building is plastered in palette.spot, this share of the way to white
   tints: [0xd9a35b, 0xc8744a, 0xe3c58f, 0xe8d9b8, 0xb8573a, 0xd8a48c, 0xcf9a6a],
   stone: 0xe6dcc6, // window surrounds, sills, cornices
   plinth: 0xa39a8a,
