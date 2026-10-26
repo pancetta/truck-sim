@@ -706,6 +706,44 @@ Load average 2–10, alternating runs:
   - the flower boxes (`tables.streets.flowers`: 1,207 boxes in the city, about 100 triangles each).
 - *Budget:* the download budget check passes at 8.0 of 12 MB, and the first playable frame is unchanged. Render CPU is up about 0.5 ms in the simulator, from about 15 more objects.
 
+## Skyline ring (#42)
+
+A generated ring of background buildings now stands round the grid city (`src/skyline.js`, numbers in `tables.skyline`). It starts 14 m outside the map's edge and reaches 300 m beyond that. It has 2,536 plain blocks with a painted window picture and hipped roofs in #39's roof texture, plus three domes, three bell towers and two roof arcades. Each landmark stands at the end of a street that runs out to the edge, so it shows down that street. The ring is two meshes, walls and roofs, with no colliders and no shadows either way. It draws after the city (`renderOrder` 0.5), so the depth test skips what the city hides. The haze fades it like everything else. The far plane is unchanged at 350 m, which is about the ring's far side seen from the edge road, so nothing had to grow. The ground plane is now centred on the map so it reaches under the ring. The ring adds nothing to download: its picture is a 64 px canvas, and the JS grows by 2 KB.
+
+**How measured:** as for #39 and #41. Production builds of main `2444973` (*before*) and this change (*after*), with the timestamp patch. `?perf&auto` on Chrome 155 headless on the M2 (WebGPU, 1180×820 at DPR 2, vsync), in three alternating rounds of cab and chase, gated on load average under 15. The first round still ran at 13–17 and is the noisiest. The iPad (A16) simulator ran Safari on WebGL 2 in the cab view, two alternating rounds, each window read about 150 s after load. Other sessions' headless Chrome runs overlapped some simulator windows, so its numbers move by about ±1.5 ms.
+
+**Chrome** (render CPU median ms; GPU is the mean of the timestamp queries at vsync, ms):
+
+| | before | after |
+|---|---|---|
+| Render CPU, cab | 2.13, 1.92, 1.94 | 3.08, 1.47, 1.80 |
+| Render CPU, chase | 2.31, 1.80, 1.68 | 2.45, 2.38, 1.70 |
+| GPU, cab | 7.53, 9.08, 6.11 | 7.70, 8.16, 7.79 |
+| GPU, chase | 12.59, 7.65, 8.61 | 7.14, 6.70, 6.21 |
+| Draw calls / triangles, cab | 266–271 / 172–181k | 266–271 / 214–222k |
+| Draw calls / triangles, chase | 266–267 / 151–155k | 267–271 / 193–198k |
+| First playable frame at 10 Mbit/s | 3.82, 3.25 s | 3.43, 3.44 s |
+| On the wire | 2.27 MB | 2.27 MB |
+
+**iPad (A16) simulator** (ms, median / p95 / mean):
+
+| | frame | render | ratio |
+|---|---|---|---|
+| before, round 1 | 17.92 / 20.58 / 18.05 | 1.68 / 2.24 / 1.73 | 1.25 |
+| after, round 1 | 16.72 / 19.30 / 17.39 | 1.46 / 2.04 / 1.54 | 1.75 |
+| before, round 2 | 18.60 / 21.42 / 18.70 | 1.80 / 2.38 / 1.85 | 1.25 |
+| after, round 2 | 16.66 / 18.06 / 16.76 | 1.60 / 2.26 / 1.68 | 1.5 |
+
+- *Cost:* +42k triangles, drawn whole every frame. Each mesh's bounds span the whole ring, so it is never culled, even from the city centre, where all of it lies past the far plane. It adds two draw calls and one program (the walls' material; the roofs share #39's). Render CPU, GPU and the simulator's frame times show no cost above the noise. Both simulator rounds of *after* came out ahead of *before*, which is noise from the overlapping runs, not a gain.
+- *Build:* 40–55 ms on the M2 (`planSkyline` plus `skylineMeshes`), in the macrotask after #39's buildings, before the first frame. The first playable frame stayed within its noise.
+- *Left in:* the walls between back-to-back buildings, which are never seen, and the zero-area triangles where hipped roofs meet a single ridge point. About a quarter of the roof triangles are zero-area. Cheap to remove if the real iPad shows vertex cost.
+**On top of #40** (#40 landed while this was measured; one Chrome round in the cab view, main `4b03a4f` against this change, load average 4–5): render CPU 2.31, 2.84 → 2.70, 2.32 ms; GPU 6.84, 7.76 → 9.35, 7.37 ms; draw calls / triangles 277 / 219k → 279 / 260k. Frames held 16.67 ms throughout. The simulator wasn't re-run on top of #40.
+
+**Verdict:**
+- *60 fps:* no measurable cost on top of main in Chrome or in the simulator. In these simulator runs main itself sat at ratio 1.25 and 18 ms, as in #41's notes.
+- *Budget:* the download budget check passes, with nothing added to `public/`.
+- *Real iPad:* still unmeasured.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
