@@ -177,10 +177,11 @@ const upward = (a, b, c) => ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[
 function ribbon(d, pts, w, y, tile, kerb) {
   const v = (x, z) => [x, y, z, x / tile, z / tile];
   // Vertical face from a to b, facing left of a→b (the walls' winding).
+  // UVs from world position, so kerb faces of overlapping ways show the same texels where they coincide.
   const side = (a, b) => {
-    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) / 3;
-    tri(walls[0], [a[0], 0, a[1], 0, 0], [b[0], 0, b[1], L, 0], [b[0], y, b[1], L, y / 3], kerb);
-    tri(walls[0], [a[0], 0, a[1], 0, 0], [b[0], y, b[1], L, y / 3], [a[0], y, a[1], 0, y / 3], kerb);
+    const [ua, ub] = [(a[0] + a[1]) / 3, (b[0] + b[1]) / 3];
+    tri(walls[0], [a[0], 0, a[1], ua, 0], [b[0], 0, b[1], ub, 0], [b[0], y, b[1], ub, y / 3], kerb);
+    tri(walls[0], [a[0], 0, a[1], ua, 0], [b[0], y, b[1], ub, y / 3], [a[0], y, a[1], ua, y / 3], kerb);
   };
   pts.forEach(([x, z], i) => {
     const ring = Array.from({ length: 12 }, (_, s) => [x + Math.cos((s * Math.PI) / 6) * w, z + Math.sin((s * Math.PI) / 6) * w]);
@@ -233,8 +234,9 @@ const nodesOf = (tag, value) => furniture.filter((e) => e.type === 'node' && e.t
 for (const el of furniture) {
   if (el.type !== 'way') continue;
   const s = el.tags.surface;
-  const [kind, tile] = s === 'asphalt' ? ['asphalt', 4] : s === 'sett' ? ['cobble', 1.4] : ['pavers', 1.5];
-  ribbon(pavement[kind], el.geometry.map(toXZ), (parseFloat(el.tags.width) || 2) / 2, KERB, tile, kerbTint);
+  // Each surface sits 5 mm above the last: where pavements of two surfaces meet, coplanar tops flickered.
+  const [kind, tile, lift] = s === 'asphalt' ? ['asphalt', 4, 0.005] : s === 'sett' ? ['cobble', 1.4, 0.01] : ['pavers', 1.5, 0];
+  ribbon(pavement[kind], el.geometry.map(toXZ), (parseFloat(el.tags.width) || 2) / 2, KERB + lift, tile, kerbTint);
 }
 const iron = linear('#3b443c');
 for (const { xz: [x, z] } of nodesOf('barrier', 'bollard')) {
@@ -450,6 +452,10 @@ Object.assign(sun.shadow.camera, { left: -110, right: 110, top: 110, bottom: -11
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.05;
 scene.add(hemi, sun, sun.target);
+// The shadow camera's own axes (it looks down -sunDir with world up), and how much ground one texel covers.
+const lightX = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), sunDir).normalize();
+const lightY = new THREE.Vector3().crossVectors(sunDir, lightX);
+const shadowTexel = (sun.shadow.camera.right - sun.shadow.camera.left) / sun.shadow.mapSize.x;
 
 const canvas = document.getElementById('scene');
 const forceWebGL = new URLSearchParams(location.search).has('webgl');
@@ -595,9 +601,11 @@ renderer.setAnimationLoop(() => {
     camera.lookAt(along(driveS + driveDir * 20).setY(2.0));
   } else controls.update();
 
-  // The shadow box follows what the camera looks at, snapped to whole metres so shadows don't swim.
+  // The shadow box follows what the camera looks at, moved only in whole shadow-map texels across the light's
+  // view so each texel keeps covering the same ground; whole metres in world space shimmered as you drove.
   const focus = view === 'drive' ? camera.position : controls.target;
-  sun.target.position.set(Math.round(focus.x), 0, Math.round(focus.z));
+  const snap = (axis) => Math.round(focus.dot(axis) / shadowTexel) * shadowTexel;
+  sun.target.position.set(0, 0, 0).addScaledVector(lightX, snap(lightX)).addScaledVector(lightY, snap(lightY)).addScaledVector(sunDir, focus.dot(sunDir));
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 300);
 
   if (frames % 10 === 0) updateLods(camera.position);
@@ -621,4 +629,4 @@ renderer.setAnimationLoop(() => {
   }
 });
 document.getElementById('loading').remove();
-window.proto = { camera, controls, drive, driveLen, renderer, wallLamps, trees: trees.map(toXZ), nasoni: nodesOf('amenity', 'drinking_water') }; // console poking only
+window.proto = { camera, controls, sun, lightX, lightY, drive, driveLen, renderer, wallLamps, trees: trees.map(toXZ), nasoni: nodesOf('amenity', 'drinking_water') }; // console poking only
