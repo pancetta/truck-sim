@@ -383,7 +383,7 @@ export const vehicles = {
     },
   },
   paints: [0xf2f2f0, 0xc9ccce, 0x8d9196, 0x2b2d31, 0x1f2f4a, 0x7a1f24, 0x3f4a3a, 0xd8cfb8, 0xb8402e, 0xe2c547],
-  near: 25, // m from the camera within which a car is drawn in full detail; the far geometry beyond
+  near: 25, // m from the truck within which a car is drawn in full detail; the far geometry beyond
   covered: 0.25, // share of the parked cars under a cover (Poly Haven's covered_car, CREDITS.md)
 };
 

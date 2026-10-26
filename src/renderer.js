@@ -321,10 +321,12 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // the view and the shadow, even with no instances to draw. Else the first car of a kind to come into view
   // stalled that frame (by 130–180 ms for the covered car).
   let warmCars = true;
-  const carMesh = (geometry, material) => {
+  // Only the near meshes cast shadows: on the iPad simulator with 100 cars, the far ones' shadows took the frame
+  // from 16.7 to 20–23 ms.
+  const carMesh = (geometry, material, castShadow) => {
     const mesh = new THREE.InstancedMesh(geometry, material, carRoom);
     mesh.frustumCulled = false; // the renderer can't cull them: drawCars puts the cars in view into them each frame
-    mesh.castShadow = mesh.receiveShadow = true;
+    Object.assign(mesh, { castShadow, receiveShadow: true });
     scene.add(mesh);
     carMeshes.push(mesh);
     return mesh;
@@ -334,16 +336,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const carKinds = carTypes.map((type) => {
     const { fitted, near, far } = generated[type];
     const paint = new THREE.MeshStandardMaterial({ map: skinTexture(fitted), roughness: 0.35, metalness: 0.5 });
-    const lod = ({ body, details }) => {
-      const bodyMesh = carMesh(body, paint);
+    const lod = ({ body, details }, shadow) => {
+      const bodyMesh = carMesh(body, paint, shadow);
       bodyMesh.setColorAt(0, paints[0]); // allocates the paint colours
-      return [bodyMesh, carMesh(details, detailMaterial)];
+      return [bodyMesh, carMesh(details, detailMaterial, shadow)];
     };
-    return { near: lod(near), far: lod(far), painted: true };
+    return { near: lod(near, true), far: lod(far, false), painted: true };
   });
   const coveredCar = { near: [], far: [], painted: false };
   carKinds.push(coveredCar);
-  const carSize = new THREE.Vector3(city.obstacles.car.width, city.obstacles.car.height, city.obstacles.car.length);
+  // The box every car fits, for culling: the footprint, as tall as the tallest body type (the van).
+  const carSize = new THREE.Vector3(city.obstacles.car.width, Math.max(...Object.values(generated).map((g) => g.fitted.height)), city.obstacles.car.length);
 
   // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
   // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road.
@@ -790,7 +793,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return out.setFromProjectionMatrix(viewProjection.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse), c.coordinateSystem);
   };
   // Only the cars in view, or in the inset's while it shows, are drawn, in full detail within vehicles.near of the
-  // camera. An AI car's id picks its body type and paint.
+  // truck: from the chase camera, camera.chaseDistance back, the car just ahead of the truck would lose its lights and plate.
+  // An AI car's id picks its body type and paint.
   function drawCars(cars, rear) {
     frustumOf(camera, frustum);
     if (rear) frustumOf(rearCamera, rearFrustum);
@@ -809,7 +813,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     carBounds.center.set(x, carSize.y / 2, z);
     if (!frustum.intersectsSphere(carBounds) && !(rear && rearFrustum.intersectsSphere(carBounds))) return;
     const { near, far, painted } = carKinds[kind];
-    const meshes = Math.hypot(x - camera.position.x, z - camera.position.z) < tables.vehicles.near ? near : far;
+    const meshes = Math.hypot(x - truck.position.x, z - truck.position.z) < tables.vehicles.near ? near : far;
     carMatrix.compose(carPosition.set(x, 0, z), carTurn.setFromAxisAngle(up, heading), one);
     for (const mesh of meshes) mesh.setMatrixAt(mesh.count, carMatrix);
     if (painted) meshes[0].setColorAt(meshes[0].count, paint);
@@ -830,14 +834,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return showFullSky && loadSky(lighting.sky).then(showFullSky);
   }).catch(console.error);
   models.then(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file)))).then(([near, far]) => {
-    coveredCar.near = coverMeshes(near);
-    coveredCar.far = coverMeshes(far);
+    coveredCar.near = coverMeshes(near, true);
+    coveredCar.far = coverMeshes(far, false);
     warmCars = true;
   }).catch(console.error);
 
   // The covered car's meshes as car meshes, scaled into the car footprint and set on the ground (it is modelled
   // lengthwise along z).
-  function coverMeshes(gltf) {
+  function coverMeshes(gltf, shadow) {
     gltf.scene.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(gltf.scene);
     const size = bounds.getSize(new THREE.Vector3());
@@ -854,7 +858,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
         for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) floats[i * a.itemSize + k] = a.getComponent(i, k);
         geometry.setAttribute(name, new THREE.BufferAttribute(floats, a.itemSize));
       }
-      meshes.push(carMesh(geometry.applyMatrix4(fit.clone().multiply(o.matrixWorld)), o.material));
+      meshes.push(carMesh(geometry.applyMatrix4(fit.clone().multiply(o.matrixWorld)), o.material, shadow));
     });
     return meshes;
   }
