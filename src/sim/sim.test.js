@@ -1861,6 +1861,19 @@ describe('Sim: right of way and collisions', () => {
       expect([a, b, c].map((car) => entered.has(car))).toEqual([true, true, true]);
     });
 
+    test('two cars turning left from opposite sides, each with a car going straight queued behind it, all go', () => {
+      // #46: each turner waited for the oncoming car going straight, which can't go before the other turner.
+      const sim = lightSim();
+      const a = addCar(sim, 1, northThenWest.slice(1));
+      const b = addCar(sim, 2, through[NORTH]);
+      const c = addCar(sim, 3, [[3, 2], [3, 3], [4, 3], [5, 3]]);
+      const d = addCar(sim, 4, through[SOUTH]);
+
+      const { entered } = watch(sim, [a, b, c, d], 14);
+
+      expect([a, b, c, d].map((car) => entered.has(car))).toEqual([true, true, true, true]);
+    });
+
     test('two cars turning left from opposite sides both go', () => {
       const sim = lightSim();
       const a = addCar(sim, 1, northThenWest);

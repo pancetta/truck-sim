@@ -58,11 +58,12 @@ export function createTraffic(tables, map, random) {
   const groupOf = (p) => p && groupAt(p.col, p.row);
   // Light junction tiles: who is there this step (see atJunctions), as DIRS bits in `inside` (in it), `seen`
   // (going straight or right), `left` (turning left, still able to stop) and `leftIn` (turning left, past
-  // stopping), and `truck === now` while the truck stands in one (crossing groups have it too).
+  // stopping), and `truck === now` while the truck stands in one (crossing groups have it too). `first` holds,
+  // per DIRS index of travel into it, the m to it of the first car arriving that way (see atJunctions).
   const junctionAt = [];
   const junctions = [];
   for (const { col, row } of map.lights) {
-    if (!junctionAt[tileAt(col, row)]) junctions.push((junctionAt[tileAt(col, row)] = { col, row, box: tileBox({ col, row }), stamp: -1, inside: 0, seen: 0, left: 0, leftIn: 0, truck: -1 }));
+    if (!junctionAt[tileAt(col, row)]) junctions.push((junctionAt[tileAt(col, row)] = { col, row, box: tileBox({ col, row }), stamp: -1, inside: 0, seen: 0, left: 0, leftIn: 0, first: new Float64Array(4), truck: -1 }));
   }
   // The box a lane piece is in, if any: its crossing's group (touching crossings share one) or its light junction.
   const boxOf = (p) => groupOf(p) ?? (p && junctionAt[tileAt(p.col, p.row)]);
@@ -383,20 +384,26 @@ export function createTraffic(tables, map, random) {
   }
 
   // Who is at each light junction: sets the junction's bits (see junctionAt) to the DIRS indices of travel
-  // into it of the cars in it (`inside`) or arriving within `giveWay`, and of the truck driving in. A car
-  // turning left there waits for those coming towards it, and they wait for it once it is past stopping.
-  // Two turning left from opposite sides would meet in the middle, so they take turns: the one past stopping
-  // goes, and of two that can stop, the one travelling north or east, unless it waits for traffic coming the
-  // other way itself (queued behind the other turner, say, which would then wait for good). No car drives in
-  // while one of the other axis is still in it (stuck behind the truck when the lights changed, say).
-  function see(col, row, dir, bits) {
+  // into it of the cars in it (`inside`) or arriving within `giveWay`, and of the truck driving in. Of the cars
+  // arriving, only the first of each approach counts: the ones queued behind it can't go before it (#46: two
+  // opposite left turners each waited for a car going straight behind the other). A car turning left there
+  // waits for those coming towards it, and they wait for it once it is past stopping. Two turning left from
+  // opposite sides would meet in the middle, so they take turns: the one past stopping goes, and of two that
+  // can stop, the one travelling north or east, unless it waits for traffic coming the other way itself (the
+  // truck queued behind the other turner, say, which would then wait for good). No car drives in while one of
+  // the other axis is still in it (stuck behind the truck when the lights changed, say).
+  function junction(col, row) {
     const j = junctionAt[tileAt(col, row)];
-    if (!j) return;
-    if (j.stamp !== now) {
+    if (j && j.stamp !== now) {
       j.stamp = now;
       j.seen = j.left = j.leftIn = j.inside = 0;
+      j.first.fill(Infinity);
     }
-    j[bits] |= 1 << dir;
+    return j;
+  }
+  function see(col, row, dir, bits) {
+    const j = junction(col, row);
+    if (j) j[bits] |= 1 << dir;
   }
   // Whether a car driving into the light junction on piece `p` must let the others there go first.
   const yields = (p) => {
@@ -409,13 +416,22 @@ export function createTraffic(tables, map, random) {
   };
   function atJunctions(truck) {
     for (const car of cars) {
+      let dist = -car.s; // centre to the start of the piece
+      for (const p of car.route) {
+        const short = dist - size.length / 2;
+        const j = short <= t.giveWay && junction(p.col, p.row);
+        if (j) j.first[p.from] = Math.min(j.first[p.from], short);
+        dist += laneLength(p);
+      }
+    }
+    for (const car of cars) {
       if (car.prev && car.s < size.length / 2) see(car.prev.col, car.prev.row, car.prev.from, 'inside'); // its rear
       see(car.lane.col, car.lane.row, car.lane.from, 'inside');
       let dist = -car.s; // centre to the start of the piece
       for (const p of car.route) {
         const short = dist - size.length / 2;
         const bits = p.to !== (p.from + 3) % 4 ? 'seen' : stoppable(car, short) ? 'left' : 'leftIn';
-        if (short <= t.giveWay) see(p.col, p.row, p.from, bits);
+        if (short <= t.giveWay && junction(p.col, p.row)?.first[p.from] === short) see(p.col, p.row, p.from, bits);
         dist += laneLength(p);
       }
     }
