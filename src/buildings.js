@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { DIRS } from './sim/map.js';
 import { seeded } from './autopilot.js';
+import { ATLAS } from './facadePictures.js';
 
 // Half the width of a dock's opening in its building's face: the bay the docking check allows, and 0.5 m each side.
 export const dockHalf = (tables) => tables.vehicle.width / 2 + tables.orders.dockCentre + 0.5;
@@ -226,7 +227,7 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
   const t = tables.buildings;
   const uvOf = Object.fromEntries(Object.entries(cells).map(([name, [x, y, w, h]]) => {
     // A pixel in from the cell's edges, so mipmaps don't blend in the neighbours; the canvas is flipped in v.
-    const [u0, u1, v0, v1] = [(x + 1) / 1024, (x + w - 1) / 1024, 1 - (y + h - 1) / 1024, 1 - (y + 1) / 1024];
+    const [u0, u1, v0, v1] = [(x + 1) / ATLAS, (x + w - 1) / ATLAS, 1 - (y + h - 1) / ATLAS, 1 - (y + 1) / ATLAS];
     return [name, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]];
   }));
   const plainUV = [(uvOf.plain[0][0] + uvOf.plain[1][0]) / 2, (uvOf.plain[0][1] + uvOf.plain[2][1]) / 2];
@@ -234,16 +235,21 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
   const grimy = new THREE.Color();
   const lit = new THREE.Color();
 
-  const mesh = (data, material) => {
+  const mesh = (data, material, castShadow = true) => {
     const m = new THREE.Mesh(toGeometry(data), material);
-    m.castShadow = m.receiveShadow = true;
+    Object.assign(m, { castShadow, receiveShadow: true });
     return m;
   };
   const meshes = [];
   const nearMeshes = [];
   // Chunk by chunk, so only one chunk's arrays are filled at a time.
   const chunkOf = (b) => `${Math.floor((b.minX + b.maxX) / 2 / t.chunk)},${Math.floor((b.minZ + b.maxZ) / 2 / t.chunk)}`;
-  for (const list of Map.groupBy(buildings, chunkOf).values()) {
+  const byChunk = new Map();
+  for (const b of buildings) {
+    const key = chunkOf(b);
+    (byChunk.get(key) ?? byChunk.set(key, []).get(key)).push(b);
+  }
+  for (const list of byChunk.values()) {
     const walls = t.walls.map(() => newData());
     const roofs = newData();
     const base = newData();
@@ -293,7 +299,8 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
     walls.forEach((d, i) => d.position.length && meshes.push(mesh(d, materials.walls[i])));
     meshes.push(mesh(roofs, materials.roof));
     if (base.position.length) meshes.push(mesh(base, materials.parts));
-    near.forEach((d, dir) => d.position.length && nearMeshes.push({ mesh: mesh(d, materials.parts), dir }));
+    // The near parts cast no shadow: in the shadow map they held the iPad simulator under 60 fps at any resolution.
+    near.forEach((d, dir) => d.position.length && nearMeshes.push({ mesh: mesh(d, materials.parts, false), dir }));
   }
   return { meshes: [...meshes, ...nearMeshes.map((n) => n.mesh)], near: nearMeshes };
 

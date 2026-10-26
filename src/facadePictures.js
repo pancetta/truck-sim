@@ -4,7 +4,7 @@
 // colour multiplies (shutter green, door wood).
 import * as THREE from 'three/webgpu';
 
-const SIZE = 1024; // px, the canvas is square
+export const ATLAS = 1024; // px, the canvas is square
 const ROUGH = 16; // the roughness canvas is this many times smaller
 const PICTURES = ['glass0', 'glass1', 'glass2', 'glass3', 'louvre', 'door', 'roller', 'shop'];
 // Roughness per picture; the rest (plain patch, letters) is ROUGHNESS.plain.
@@ -21,10 +21,10 @@ export function atlasCells(spotIds) {
 // The colour texture and a roughness map on the same layout, for a MeshStandardMaterial with vertex colours.
 export function paintFacadePictures(cells, spotColour) {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = SIZE;
+  canvas.width = canvas.height = ATLAS;
   const g = canvas.getContext('2d');
   const rough = document.createElement('canvas');
-  rough.width = rough.height = SIZE / ROUGH;
+  rough.width = rough.height = ATLAS / ROUGH;
   const r = rough.getContext('2d');
   const spot = `#${new THREE.Color(spotColour).getHexString(THREE.SRGBColorSpace)}`;
   for (const [name, [x, y, w, h]] of Object.entries(cells)) {
