@@ -421,6 +421,69 @@ The traffic step at 100 cars (`traffic.bench.test.js`): 88 µs and 18 KB allocat
 
 **Autopilot change:** QA found that from about 90 s in on the perf seed, the autopilot (which ignores right of way) rammed one car over and over. Since #33 it waits behind an AI car going its way, so a lap now takes about 235 s instead of 190 s. Overlay windows taken after the first 90 s are only comparable with runs from #33 on.
 
+## Lighting and ground materials (#37)
+
+The flat look's hemisphere light, sun without shadows, sky colour and linear fog are replaced by:
+- the Poly Haven HDRI as background and as the light from all around (`scene.environment`);
+- ACES filmic tone mapping;
+- a sun with a 2048 PCF shadow map over ±60 m, centred 30 m ahead of the camera;
+- sky-coloured haze that is still full at the far plane.
+
+Roads get a PBR asphalt mesh, and the ground gets PBR cobbles. All kit materials move from Lambert to Standard. Numbers are in `tables.lighting` and `tables.ground`.
+
+**How measured:** `?perf&auto` A/B runs of production builds, as for #28. *Before* is main at `d13eb2e`, *after* is the same plus this change.
+- *Chrome:* 155 headless on the M2, `apple metal-3` (WebGPU), 1180×820 at DPR 2 (the ratio settles at 2), load average 3–5. GPU time comes from a scratch build with `trackTimestamp`: the mean of the render pass's timestamp queries over 10 s, at vsync. At vsync the GPU clocks down, so read these as relative.
+- *Uncapped runs:* came out too noisy to use. Each frame's timestamp spans overlapped, and the medians swung 2× between variants.
+- *iPad (A16) simulator:* iPadOS 27.0 Safari, WebGL 2 backend, landscape (buffer 2360×1376). It uses the Mac's GPU. The window is the overlay's last 20 s, read 30 s and 55 s after load.
+
+**Chrome** (ms, median; GPU is the mean):
+
+| | before | after | after, 1024 map | after, no shadow |
+|---|---|---|---|---|
+| Render CPU, cab | 0.75 | 1.76 | 1.69 | 0.81 |
+| Render CPU, chase | 0.92 | 1.65 | 1.72 | 1.01 |
+| GPU at vsync, cab | 1.58 | 6.63 | 6.42 | 6.80 |
+| GPU at vsync, chase | 2.12 | 8.25 | 7.30 | 6.66 |
+| Draw calls / triangles, cab | 366 / 50k | 473 / 63k | 472 / 63k | 385 / 51k |
+| Programs | 18–20 | 34–36 | 34–36 | 24–26 |
+| Frames over 20 ms in 10 s | 0 | 0 | 0 | 0 |
+
+- *Where the GPU time goes:* single-feature variants in chase (one run each, ±1 ms noise) put the cost about evenly on the shading, not on the shadow map:
+  - the ground and asphalt meshes, about 2 ms;
+  - the sky's light (image-based lighting), about 1.7 ms;
+  - sampling the sky for the haze colour, about 0.6 ms.
+- *Anisotropic filtering:* 8 against 4 or 1 made no difference in alternating pairs (7.3–7.4 ms each).
+- *Shadow map size:* 1024 against 2048 saved at most 1 ms, within the noise, so the map stays at 2048 (5.9 cm per texel).
+- *Draw order:* the ground draws last and the asphalt just before it, so the depth test skips their texturing under buildings.
+
+**Shadow CPU:** the shadow pass costs about 0.9 ms of render CPU. It is a second draw of the city batch, which three culls per placement against the sun's view, plus about 90 draws.
+
+**iPad (A16) simulator** (ms, median / p95 / mean):
+
+| | before | after |
+|---|---|---|
+| Frame, cab | 16.66 / 16.76 / 16.81 | 16.66 / 18.02 / 16.68; 16.66 / 17.82 / 16.67 later |
+| Frame, chase | 16.66 / 16.74 / 16.67 | 16.66 / 17.88 / 16.69 |
+| Render, cab | 0.92 / 1.08 / 1.02 | 2.04 / 2.38 / 2.06; 2.16 / 2.44 / 2.13 later |
+| Render, chase | 0.86 / 1.02 / 0.86 | 2.16 / 2.50 / 2.15 |
+| Draw calls / triangles, cab | 14 / 53k | 16–18 / 33–70k |
+
+The adaptive ratio stayed at 2 throughout: no 3 s window had a mean frame interval over 18 ms. Safari's intervals spread more (p95 about 18 against 16.8 ms), but the mean stays at 60 fps.
+
+**Load:**
+- *Download:* JS +6.5 KB (+2.5 KB gzip). The new assets in `public/textures/` add 9.2 MB:
+  - the 2k HDRI, 5.4 MB (3.6 MB gzipped);
+  - six 1k JPEGs, 3.7 MB.
+- *First playable frame* (local, Chrome headless): 600–790 ms against 290–355 ms. The extra time goes to decoding the HDRI and filtering it for the sky's light.
+
+Cutting both the download and the decode time is #38's job (asset pipeline and download budget).
+
+**Verdict:**
+- *60 fps:* holds in the cab and chase views in Chrome and in the simulator, both backends.
+- *Render CPU:* +1–1.2 ms per frame, mostly the shadow pass.
+- *GPU:* on the M2 at DPR 2, up from about 2 to 6.5–8 ms at vsync clocks. By the baseline's estimate, an A16-class GPU has 40–50% of the M2's throughput. That would put the cab view near 13–16 ms at DPR 2, and about 7–9 ms at the touch start ratio of 1.5. The adaptive ratio (#29) is the safety net: it steps down to 1.25 before frames drop.
+- *Real iPad:* still unmeasured. The simulator says nothing about iPad GPU speed. The owner's `?perf&auto` run on the iPad decides, so watch `dpr` there. If it sits at 1.25 and still misses 60 fps, the first costs to cut are the sky's light on the kit models (a cheaper diffuse-only material) and the haze's sky sample (a constant colour beyond the fog start).
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
