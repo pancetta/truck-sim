@@ -115,7 +115,8 @@ for (const el of buildingEls) {
       parts[part].push({ x: e.px + ux * along + e.nx * out, y, z: e.pz + uz * along + e.nz * out, rot: e.rot, sx, sy, sz, color });
 
     put('cornice', L / 2, height - 0.3, 0.2, L + 0.5, 0.6, 0.6, stone);
-    put('plinth', L / 2, 0.35, 0.05, L + 0.1, 0.7, 0.1, linear('#a39a8a'));
+    // Front at 0.06 m, behind the door frames (0.08) and glass (0.10): coplanar faces flickered.
+    put('plinth', L / 2, 0.35, 0.03, L + 0.1, 0.7, 0.06, linear('#a39a8a'));
     const n = Math.floor((L - 1) / 3.2);
     for (let k = 0; k < n; k++) {
       const along = ((k + 0.5) * L) / n;
