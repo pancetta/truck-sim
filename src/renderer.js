@@ -2,12 +2,14 @@ import * as THREE from 'three/webgpu';
 import { texture, uniform, uv, equirectUV, normalWorldGeometry, positionWorld, cameraPosition, fog, densityFogFactor, rangeFogFactor, float } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
 import { createTruckParts } from './truckLook.js';
 import { createResolution } from './resolution.js';
 import { planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
+import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import assetInfo from './assetInfo.json';
 
 // CC0 kit models in public/models/, sky, ground and building textures in public/textures/ (see CREDITS.md); the textures are
@@ -24,7 +26,7 @@ const ROAD_PIECES = [
   ['roads/road-intersection.glb', [1, 2, 3]],
   ['roads/road-crossroad.glb', [0, 1, 2, 3]],
 ];
-const CARS = ['cars/sedan.glb', 'cars/suv.glb', 'cars/van.glb'];
+const COVERED = ['covered_car.glb', 'covered_car_far.glb']; // near and far, from `npm run assets`
 const POLE = 'roads/light-square.glb';
 const TRUCK = 'cars/delivery.glb';
 const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of it
@@ -41,7 +43,7 @@ const STAND_INS = { map: standIn([255, 255, 255, 255], THREE.SRGBColorSpace), no
 const loader = new GLTFLoader();
 const newKitMaterial = () => new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true });
 // One kit material per mesh variant: shared across variants, the renderer re-derives the program on every draw.
-const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), batched: newKitMaterial() };
+const kitMaterials = { mesh: newKitMaterial(), batched: newKitMaterial() };
 
 // Stretches a geometry into the unit box: x and z in [-0.5, 0.5], y in [0, 1].
 // The box is read once: translate() recomputes it from the vertices, which may not span the model's own box (loadModel).
@@ -119,6 +121,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const ktx2Loader = new KTX2Loader().setTranscoderPath(TRANSCODER);
   const gpu = renderer.init().then(() => ktx2Loader.detectSupport(renderer));
   const loadTexture = (file) => gpu.then(() => ktx2Loader.loadAsync(TEXTURES + file));
+  loader.setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder); // for the pipeline's models
 
   // Sky and sun, all from tables.lighting. The sky is the background and lights the scene from all around. The first
   // frame waits only for the small first sky, which stays the light; the full sky loads after everything the first
@@ -248,14 +251,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.add(...buildingParts.meshes);
   }));
 
-  for (const b of map.colliders.filter((c) => c.kind === 'car')) {
+  // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
+  // covered car. Drawn with the AI cars (drawCars).
+  const carTypes = Object.keys(tables.vehicles.types);
+  const paints = tables.vehicles.paints.map((hex) => new THREE.Color(hex));
+  const parked = map.colliders.filter((c) => c.kind === 'car').map((b) => {
     const { x, z } = centre(b);
-    const alongX = b.maxX - b.minX > b.maxZ - b.minZ;
-    const [w, l] = alongX ? [b.maxZ - b.minZ, b.maxX - b.minX] : [b.maxX - b.minX, b.maxZ - b.minZ];
-    // Kit cars point along +z; parked either way round.
-    const angle = (alongX ? Math.PI / 2 : 0) + (hash(x, z) > 0.5 ? Math.PI : 0);
-    place(pick(CARS, z, x), { x, z, angle, size: [w, city.obstacles.car.height, l] });
-  }
+    const heading = (b.maxX - b.minX > b.maxZ - b.minZ ? Math.PI / 2 : 0) + (hash(x, z) > 0.5 ? Math.PI : 0);
+    const covered = hash(z, x) * 7 % 1 < tables.vehicles.covered;
+    return { x, z, heading, kind: covered ? carTypes.length : Math.floor(hash(x, z) * 9973) % carTypes.length, paint: pick(paints, z, x) };
+  });
 
   // The lamp's arm points along its -z; turn it out over the road tile it stands on.
   for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
@@ -264,13 +269,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     place(POLE, { x, z, angle, size: [1, 1, 1] });
   }
 
-  // The kit cars, loaded once for the parked cars and the AI cars.
-  const carModels = CARS.map((file) => loadModel(file));
   const cityModels = [...placements].map(([file, list]) => {
     // Road pieces leave out their road surface.
     const colours = file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
-    const model = CARS.includes(file) ? carModels[CARS.indexOf(file)] : loadModel(file, colours);
-    return model.then((geometry) => {
+    return loadModel(file, colours).then((geometry) => {
       // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
       if (file === POLE) {
         const { min, max } = geometry.boundingBox;
@@ -309,16 +311,34 @@ export function createRenderer(canvas, tables, map, onProgress) {
   addBoxes(palette.dark, dockEdges);
   addBoxes(palette.stopLine, bayLines, 0.07);
 
-  // AI cars: one instanced mesh per kit car with room for the busiest rank tier; a car's id picks its model.
-  const maxTraffic = Math.max(...tables.rank.tiers.map((t) => t.traffic));
-  const trafficMeshes = carModels.map((model) => {
-    const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), kitMaterials.instanced, maxTraffic);
-    mesh.frustumCulled = false; // the cars move, so bounds computed once would go stale
+  // Cars, for the parked ones and the AI cars alike: per kind, instanced meshes for the near and for the far detail
+  // level, with room for every parked car and the busiest rank tier. The generated body types come first, each a
+  // painted body (the instance colour is the paint) and a details mesh; then the covered car, its glTF's meshes,
+  // which load after the first frame and stay empty until then.
+  const carRoom = parked.length + Math.max(...tables.rank.tiers.map((t) => t.traffic));
+  const carMeshes = []; // all of them, for drawCars
+  const carMesh = (geometry, material) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, carRoom);
+    mesh.frustumCulled = false; // the renderer can't cull them: drawCars puts the cars in view into them each frame
     mesh.castShadow = mesh.receiveShadow = true;
-    loads.push(model.then((geometry) => (mesh.geometry = unitBox(geometry))));
     scene.add(mesh);
+    carMeshes.push(mesh);
     return mesh;
+  };
+  const generated = carGeometries(tables.vehicles.types, city.obstacles.car);
+  const detailMaterial = new THREE.MeshStandardMaterial({ map: detailAtlas(), vertexColors: true, roughness: 0.45, metalness: 0.1 });
+  const carKinds = carTypes.map((type) => {
+    const { fitted, near, far } = generated[type];
+    const paint = new THREE.MeshStandardMaterial({ map: skinTexture(fitted), roughness: 0.35, metalness: 0.5 });
+    const lod = ({ body, details }) => {
+      const bodyMesh = carMesh(body, paint);
+      bodyMesh.setColorAt(0, paints[0]); // allocates the paint colours
+      return [bodyMesh, carMesh(details, detailMaterial)];
+    };
+    return { near: lod(near), far: lod(far), painted: true };
   });
+  const coveredCar = { near: [], far: [], painted: false };
+  carKinds.push(coveredCar);
   const carSize = new THREE.Vector3(city.obstacles.car.width, city.obstacles.car.height, city.obstacles.car.length);
 
   // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
@@ -717,7 +737,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const { min, max } = mesh.geometry.boundingBox;
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
-    drawTraffic(state.traffic, !!rearTime);
+    drawCars(state.traffic, !!rearTime);
     pipeline.render(scene, camera);
     if (rearTime) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
@@ -756,6 +776,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const carPosition = new THREE.Vector3();
   const carTurn = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
+  const one = new THREE.Vector3(1, 1, 1);
   const frustum = new THREE.Frustum();
   const rearFrustum = new THREE.Frustum();
   const viewProjection = new THREE.Matrix4();
@@ -764,20 +785,30 @@ export function createRenderer(canvas, tables, map, onProgress) {
     c.updateMatrixWorld();
     return out.setFromProjectionMatrix(viewProjection.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse), c.coordinateSystem);
   };
-  // Only the cars in view, or in the inset's while it shows, are drawn: the meshes span the whole spawn ring, so
-  // the renderer can't cull them.
-  function drawTraffic(cars, rear) {
+  // Only the cars in view, or in the inset's while it shows, are drawn, in full detail within vehicles.near of the
+  // camera. An AI car's id picks its body type and paint.
+  function drawCars(cars, rear) {
     frustumOf(camera, frustum);
     if (rear) frustumOf(rearCamera, rearFrustum);
-    for (const mesh of trafficMeshes) mesh.count = 0;
-    for (const car of cars) {
-      carBounds.center.set(car.x, carSize.y / 2, car.z);
-      if (!frustum.intersectsSphere(carBounds) && !(rear && rearFrustum.intersectsSphere(carBounds))) continue;
-      const mesh = trafficMeshes[car.id % trafficMeshes.length];
-      carMatrix.compose(carPosition.set(car.x, 0, car.z), carTurn.setFromAxisAngle(up, car.heading), carSize);
-      mesh.setMatrixAt(mesh.count++, carMatrix);
+    for (const mesh of carMeshes) mesh.count = 0;
+    for (const car of parked) drawCar(car.kind, car.x, car.z, car.heading, car.paint, rear);
+    for (const car of cars) drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
+    for (const mesh of carMeshes) {
+      mesh.visible = mesh.count > 0;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
-    for (const mesh of trafficMeshes) mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  function drawCar(kind, x, z, heading, paint, rear) {
+    carBounds.center.set(x, carSize.y / 2, z);
+    if (!frustum.intersectsSphere(carBounds) && !(rear && rearFrustum.intersectsSphere(carBounds))) return;
+    const { near, far, painted } = carKinds[kind];
+    const meshes = Math.hypot(x - camera.position.x, z - camera.position.z) < tables.vehicles.near ? near : far;
+    carMatrix.compose(carPosition.set(x, 0, z), carTurn.setFromAxisAngle(up, heading), one);
+    for (const mesh of meshes) mesh.setMatrixAt(mesh.count, carMatrix);
+    if (painted) meshes[0].setColorAt(meshes[0].count, paint);
+    for (const mesh of meshes) mesh.count++;
   }
 
   function toggleCamera() {
@@ -793,6 +824,34 @@ export function createRenderer(canvas, tables, map, onProgress) {
     for (const load of laterLoads) load().catch(console.error);
     return showFullSky && loadSky(lighting.sky).then(showFullSky);
   }).catch(console.error);
+  models.then(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file)))).then(([near, far]) => {
+    coveredCar.near = coverMeshes(near);
+    coveredCar.far = coverMeshes(far);
+  }).catch(console.error);
+
+  // The covered car's meshes as car meshes, scaled into the car footprint and set on the ground (it is modelled
+  // lengthwise along z).
+  function coverMeshes(gltf) {
+    gltf.scene.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(gltf.scene);
+    const size = bounds.getSize(new THREE.Vector3());
+    const centre = bounds.getCenter(new THREE.Vector3());
+    const s = Math.min(city.obstacles.car.length / size.z, city.obstacles.car.width / size.x);
+    const fit = new THREE.Matrix4().makeScale(s, s, s).multiply(new THREE.Matrix4().makeTranslation(-centre.x, -bounds.min.y, -centre.z));
+    const meshes = [];
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      // The pipeline quantizes the attributes into normalized integers, which can't hold metres: floats first.
+      const geometry = new THREE.BufferGeometry().setIndex(o.geometry.index);
+      for (const [name, a] of Object.entries(o.geometry.attributes)) {
+        const floats = new Float32Array(a.count * a.itemSize);
+        for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) floats[i * a.itemSize + k] = a.getComponent(i, k);
+        geometry.setAttribute(name, new THREE.BufferAttribute(floats, a.itemSize));
+      }
+      meshes.push(carMesh(geometry.applyMatrix4(fit.clone().multiply(o.matrixWorld)), o.material));
+    });
+    return meshes;
+  }
 
   return { render, toggleCamera, ready, renderer };
 }

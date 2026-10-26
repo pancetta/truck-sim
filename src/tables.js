@@ -360,6 +360,33 @@ export const ground = {
   open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level: open tiles and round the city
 };
 
+// Generated cars (src/vehicles.js) for the AI cars and the parked cars, all at city.obstacles.car's footprint. Per
+// body type: the side profile [x, y] in m from the rear (x = 0) to the front, the side window outline, the axles,
+// the wheel radius, the B-pillar and the door spans (rear edge, front edge) for the painted panel gaps. Lengths
+// are stretched to the footprint's; the body is as wide as the footprint less the mirrors.
+export const vehicles = {
+  types: {
+    hatch: {
+      body: [[0, 0.3], [0, 0.9], [0.1, 1.0], [0.45, 1.42], [1.2, 1.47], [2.4, 1.44], [3.0, 1.0], [3.85, 0.85], [4.0, 0.6], [3.95, 0.3]],
+      glass: [[0.45, 1.02], [0.58, 1.37], [1.2, 1.41], [2.36, 1.39], [2.9, 1.02]],
+      axles: [0.7, 3.25], wheel: 0.3, pillar: 1.85, doors: [[0.95, 1.85], [1.85, 2.85]],
+    },
+    sedan: {
+      body: [[0, 0.35], [0, 0.85], [0.05, 0.95], [0.75, 1.0], [1.25, 1.4], [2.75, 1.44], [3.4, 1.0], [4.45, 0.85], [4.6, 0.6], [4.55, 0.33]],
+      glass: [[1.24, 1.03], [1.45, 1.36], [2.72, 1.39], [3.32, 1.03]],
+      axles: [0.85, 3.6], wheel: 0.31, pillar: 2.3, doors: [[1.3, 2.3], [2.3, 3.3]],
+    },
+    van: {
+      body: [[0, 0.35], [0, 2.1], [0.1, 2.2], [3.9, 2.2], [4.35, 1.4], [4.95, 1.05], [5.0, 0.4]],
+      glass: [[3.5, 1.4], [3.5, 1.95], [4.06, 1.95], [4.39, 1.4]],
+      axles: [0.85, 4.1], wheel: 0.34, pillar: null, doors: [[2.2, 3.4], [3.45, 4.3]],
+    },
+  },
+  paints: [0xf2f2f0, 0xc9ccce, 0x8d9196, 0x2b2d31, 0x1f2f4a, 0x7a1f24, 0x3f4a3a, 0xd8cfb8, 0xb8402e, 0xe2c547],
+  near: 25, // m from the camera within which a car is drawn in full detail; the far geometry beyond
+  covered: 0.25, // share of the parked cars under a cover (Poly Haven's covered_car, CREDITS.md)
+};
+
 export const palette = {
   light: 0xffffff, // minimap
   ground: 0x7fb069, // minimap

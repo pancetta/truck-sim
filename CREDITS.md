@@ -8,7 +8,7 @@ shown as they are (`lighting`, `ground` and `buildings` in `src/tables.js`), com
 | Asset | Files | Source | Licence |
 |---|---|---|---|
 | City Kit (Roads) 2.2 by Kenney | `public/models/roads/` | https://kenney.nl/assets/city-kit-roads | CC0 1.0 |
-| Car Kit 3.1 by Kenney | `public/models/cars/` | https://kenney.nl/assets/car-kit | CC0 1.0 |
+| Car Kit 3.1 by Kenney (the truck only) | `public/models/cars/` | https://kenney.nl/assets/car-kit | CC0 1.0 |
 
 The sky, textures and models below are downloaded and processed by `npm run assets` (`scripts/assets.js`), which
 writes this list from `scripts/assets.config.js` and Poly Haven's own records; don't edit it by hand.
@@ -23,6 +23,7 @@ writes this list from `scripts/assets.config.js` and Poly Haven's own records; d
 | Worn Plaster Wall (texture) by Dimitrios Savva | `public/textures/worn_plaster_wall_Diffuse.ktx2`, `public/textures/worn_plaster_wall_nor_gl.ktx2`, `public/textures/worn_plaster_wall_arm.ktx2` | https://polyhaven.com/a/worn_plaster_wall | CC0 1.0 |
 | Red Brick 03 (texture) by Rob Tuytel | `public/textures/red_brick_03_Diffuse.ktx2`, `public/textures/red_brick_03_nor_gl.ktx2`, `public/textures/red_brick_03_arm.ktx2` | https://polyhaven.com/a/red_brick_03 | CC0 1.0 |
 | Clay Roof Tiles 02 (texture) by Amal Kumar | `public/textures/clay_roof_tiles_02_Diffuse.ktx2`, `public/textures/clay_roof_tiles_02_nor_gl.ktx2`, `public/textures/clay_roof_tiles_02_arm.ktx2` | https://polyhaven.com/a/clay_roof_tiles_02 | CC0 1.0 |
+| Covered Car (model) by MP | `public/models/covered_car.glb`, `public/models/covered_car_far.glb` | https://polyhaven.com/a/covered_car | CC0 1.0 |
 <!-- assets:end -->
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. Each kit's own `License.txt`
@@ -32,5 +33,6 @@ ambient occlusion / roughness / metalness (`_arm`) maps.
 
 `public/basis/` is three.js's copy of the Basis Universal transcoder (Apache 2.0, https://github.com/BinomialLLC/basis_universal), served for its KTX2 loader.
 
-Everything else (code, cab interior, dashboard, the truck's visual items, palette, city map, the procedural buildings
-and their painted window, door, shutter and sign pictures) is the project's own.
+Everything else (code, the generated cars and their number plate, cab interior, dashboard, the truck's visual items,
+palette, city map, the procedural buildings and their painted window, door, shutter and sign pictures) is the
+project's own.
