@@ -1,0 +1,48 @@
+src/prototype-monti/main.js
+  s_c34b2924f7d147::t_10459c5abd65a1 321
+  s_c34b2924f7d147::t_915f7db4d25bcf 381
+  s_c34b2924f7d147::t_82b2d64ee89f43 374-375
+  s_c34b2924f7d147::t_7f339393005c9c 560
+  s_c34b2924f7d147::t_056e9404fa3edb 79-80
+  s_c34b2924f7d147::t_ea02d768be64be 268-270,277-281,284
+  s_c34b2924f7d147::t_882d3adbbb990b 196,201-213,215-226
+  s_c34b2924f7d147::t_73e8a55b9f0262 328,334-354,356-373,376-380,382-386
+  s_c34b2924f7d147::t_e27c7da225d3fe 228-253
+  s_c34b2924f7d147::t_0f7f32b872bdaa 298-300,303-304
+  s_c34b2924f7d147::t_7a9fb63f3d1f9c 116
+  s_c34b2924f7d147::t_302e15346dfe36 214
+  s_c34b2924f7d147::t_cc5f466c7811e1 10
+  s_c34b2924f7d147::t_d3cf9cc8f13382 312-313
+  s_c34b2924f7d147::t_ea2c8d30e2d93d 355
+  s_c34b2924f7d147::t_33e3fb45b9a2a1 556
+  s_c34b2924f7d147::t_7da5a2af55a838 148-180,182
+  s_c34b2924f7d147::t_5b7e5235dd013a 227
+  s_c34b2924f7d147::t_8fbcbcf8bdf395 387
+public/prototype-monti/monti-furniture.json
+  s_c34b2924f7d147::t_3892670a1cc7aa 1-8390
+prototype-monti-bake.html
+  s_c34b2924f7d147::t_4fcb17a1634391 3-5
+  s_c34b2924f7d147::t_695809101376f1 1-2,6-42
+public/prototype-monti/models/metal_trash_can/metal_trash_can_1k.gltf
+  s_c34b2924f7d147::t_337090baef36b5 1-831
+public/prototype-monti/models/street_lamp_01/street_lamp_01_1k.gltf
+  s_c34b2924f7d147::t_32a7136864e48b 1-353
+public/prototype-monti/models/street_lamp_02/street_lamp_02_1k.gltf
+  s_c34b2924f7d147::t_248291e4c21345 1-353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2e4e10a4fb1da8925d8c86a320ec6f85c657f68",
+  "prompts": {},
+  "sessions": {
+    "s_c34b2924f7d147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a56e64-1812-43df-b206-48bdde1707db",
+        "model": "unknown"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
