@@ -660,7 +660,7 @@ The streets get pavements, lanterns, trees and small props (`src/streets.js`, nu
 - *Facade props:* potted plants beside some doors and flower boxes on some sills.
 - *Open ground:* rows of crossed-quad trees (three baked species), with bins, bollards and drinking fountains. They are solid Sim colliders.
 
-The new assets add 1.2 MB, so `public/` is now 7.8 MB of 12 MB, counted as the budget test counts it: the pavement texture 418 KB, the lantern 508 KB plus a 58 KB far copy, and the tree pictures 204 KB. They all load after the first frame, so the first frame waits for about as much as before (2.39 MB).
+The new assets add 1.2 MB, so `public/` is now 8.0 MB of 12 MB with #41's covered car, counted as the budget test counts it: the pavement texture 418 KB, the lantern 508 KB plus a 58 KB far copy, and the tree pictures 204 KB. They all load after the first frame, so the first frame waits for about as much as before (2.39 MB).
 
 **How it is drawn:**
 - *Pavements and kerbs:* two merged meshes, always drawn. The pavement uses the ground material's later-loading maps.
@@ -704,7 +704,7 @@ Load average 2–10, alternating runs:
 - *Real iPad:* still unmeasured. If it misses, these are the first costs to cut:
   - the lantern far copies' distance (`tables.streets.lantern.cull`);
   - the flower boxes (`tables.streets.flowers`: 1,207 boxes in the city, about 100 triangles each).
-- *Budget:* the download budget check passes at 7.8 of 12 MB, and the first playable frame is unchanged. Render CPU is up about 0.5 ms in the simulator, from about 15 more objects.
+- *Budget:* the download budget check passes at 8.0 of 12 MB, and the first playable frame is unchanged. Render CPU is up about 0.5 ms in the simulator, from about 15 more objects.
 
 ## Files
 
