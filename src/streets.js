@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
+import { facadeParts } from './buildings.js';
 import assetInfo from './assetInfo.json';
 
 const tileKey = (col, row) => `${col},${row}`;
@@ -53,13 +54,12 @@ export function pavementLayout(map, width) {
 }
 
 // Where lanterns hang: { x, z, angle, pole }, (x, z) on the wall or the pole's side, turned by `angle` about y so
-// the model's +z points out over the road. One on each pole, on its road side. On walls, at every `spacing` m along
-// each street-facing side of a block tile (counted from the map's edge, so the rhythm runs on from tile to tile),
-// `corner` m clear of where a wall turns, and `clear` m clear of a pole or a speed sign; none over a dock, where a
-// truck backs in under it.
-export function lanternMounts(map, { spacing, post, corner, clear }) {
+// the model's +z points out over the road. One on each pole, on its road side. On the street sides of the planned
+// buildings (buildings.js), halfway between two windows, the one nearest to each point `spacing` m apart along the
+// street (counted from the map's edge, so the rhythm runs on from building to building); `clear` m clear of a pole's
+// lantern or a speed sign; none on a dock's side, where a truck backs in under it.
+export function lanternMounts(map, plan, { spacing, post, clear }, bay) {
   const ts = map.tileSize;
-  const blocks = blockTiles(map);
   const mounts = [];
   for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
     const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
@@ -67,46 +67,65 @@ export function lanternMounts(map, { spacing, post, corner, clear }) {
     mounts.push({ x: x + Math.sin(angle) * post, z: z + Math.cos(angle) * post, angle, pole: true });
   }
   const crowded = [...mounts, ...map.signs];
-  const docks = new Set(map.spots.filter((s) => s.dock).map((s) => `${tileKey(s.zoneTile.col - DIRS[s.dir][0], s.zoneTile.row - DIRS[s.dir][1])},${s.dir}`));
-  for (const key of blocks) {
-    const [col, row] = key.split(',').map(Number);
-    for (const [dc, dr] of DIRS) {
-      if (!map.isRoad(col + dc, row + dr) || docks.has(`${key},${DIRS.findIndex(([a, b]) => a === dc && b === dr)}`)) continue;
-      const alongX = dr !== 0;
-      const wall = alongX ? (row + 0.5 + dr / 2) * ts : (col + 0.5 + dc / 2) * ts;
-      // Whether the wall runs on into the tile `step` along, or turns a corner there.
-      const runsOn = (step) => {
-        const [c, r] = alongX ? [col + step, row] : [col, row + step];
-        return blocks.has(tileKey(c, r)) && map.isRoad(c + dc, r + dr);
-      };
-      const start = (alongX ? col : row) * ts + (runsOn(-1) ? 0 : corner);
-      const end = (alongX ? col + 1 : row + 1) * ts - (runsOn(1) ? 0 : corner);
-      for (let k = Math.ceil(start / spacing - 0.5); (k + 0.5) * spacing < end; k++) {
-        const along = (k + 0.5) * spacing;
-        const [x, z] = alongX ? [along, wall] : [wall, along];
-        if (crowded.some((c) => Math.hypot(c.x - x, c.z - z) < clear)) continue;
-        mounts.push({ x, z, angle: Math.atan2(dc, dr), pole: false });
-      }
+  for (const side of plan.flatMap((b) => b.sides).filter((s) => s.street && !s.hole)) {
+    const { x, z, ux, uz, length, dir } = side;
+    const bays = Math.floor((length - 1) / bay); // as facadeParts lays them out
+    // m along the street (x or z) of each gap between two windows, with its place
+    const gaps = Array.from({ length: bays - 1 }, (_, k) => {
+      const along = ((k + 1) * length) / bays;
+      return [x + ux * along, z + uz * along];
+    }).map(([gx, gz]) => [ux ? gx : gz, gx, gz]);
+    const [lo, hi] = [ux ? Math.min(x, x + ux * length) : Math.min(z, z + uz * length), ux ? Math.max(x, x + ux * length) : Math.max(z, z + uz * length)];
+    for (let k = Math.ceil(lo / spacing - 0.5); (k + 0.5) * spacing < hi; k++) {
+      if (!gaps.length) break;
+      const [, gx, gz] = gaps.reduce((a, g) => (Math.abs(g[0] - (k + 0.5) * spacing) < Math.abs(a[0] - (k + 0.5) * spacing) ? g : a));
+      if (!roadAhead(map, gx, gz, dir) || crowded.some((c) => Math.hypot(c.x - gx, c.z - gz) < clear)) continue;
+      mounts.push({ x: gx, z: gz, angle: Math.atan2(...DIRS[dir]), pole: false });
     }
   }
   return mounts;
 }
 
-// The meshes. `loadTexture` and `loader` are the renderer's KTX2 texture loader and its GLTFLoader (set up for the
-// pipeline's KTX2 textures and meshopt geometry). Pavements, kerbs and props go up at once; `load()` fetches the
-// textures, lantern models and tree pictures, which nothing on the first frame waits for.
-export function createStreets(scene, map, tables, { loadTexture, loader, models }) {
-  const { pavement, lantern } = tables.streets;
+// Potted plants and flower boxes on the planned buildings' street sides: { x, y, z, angle }, standing on the
+// pavement or a sill, turned so their +z points out from the wall. A pair of pots beside a door, for a `pots` share of
+// the doors; a box on the sill of every open window (the ones with glass showing) of a `flowers` share of the
+// buildings. Which ones comes from where they are.
+export function facadeProps(map, plan, tables) {
+  const { pots: potShare, flowers } = tables.streets;
+  const pots = [];
+  const boxes = [];
+  for (const b of plan) {
+    const boxed = hash(b.minX, b.minZ) < flowers;
+    for (const side of b.sides.filter((s) => s.street)) {
+      const [nx, nz] = DIRS[side.dir];
+      const angle = Math.atan2(nx, nz);
+      for (const part of facadeParts(b, side, tables, 0).filter((p) => roadAhead(map, p.x, p.z, side.dir))) {
+        if (part.cell === 'door' && hash(part.x, part.z) < potShare) {
+          // The door's leaf stands 8 cm out; the pots 0.45 m out, either side of it.
+          for (const s of [-1, 1]) {
+            const along = s * (part.size[0] / 2 + 0.45);
+            pots.push({ x: part.x + side.ux * along + nx * 0.37, y: 0, z: part.z + side.uz * along + nz * 0.37, angle });
+          }
+        } else if (boxed && part.cell.startsWith('glass')) {
+          // On the sill, whose top is 0.95 m under the window's middle; the glass is 1 cm out, the sill 28 cm deep.
+          boxes.push({ x: part.x + nx * 0.14, y: part.y - 0.95, z: part.z + nz * 0.14, angle });
+        }
+      }
+    }
+  }
+  return { pots, boxes };
+}
+
+// The meshes. `pavers` is the pavement's material (the renderer's ground material, maps loaded later), `loadTexture`
+// and `loader` the renderer's KTX2 texture loader and its GLTFLoader (set up for the pipeline's KTX2 textures and
+// meshopt geometry). Pavements, kerbs and the props on poles and open ground go up at once; `dress(plan)` adds what
+// stands on the planned buildings, and `load()` fetches the lantern models and tree pictures, which nothing on the
+// first frame waits for. `update()` picks what to draw each frame.
+export function createStreets(scene, map, tables, { pavers, loadTexture, loader, models }) {
+  const { pavement, lantern, propCull } = tables.streets;
   const { pavements, kerbs } = pavementLayout(map, pavement.width);
 
-  // Pavement tops, a quad per cell with UVs from world x and z so the texture runs on across cells. Until its textures
-  // come, the material shows placeholders sampled alike (wrapping and filters are part of three's shader key), so
-  // swapping them in doesn't rebuild its shader.
-  const pixel = (r, g, b, colour) => Object.assign(new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1), {
-    wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, magFilter: THREE.LinearFilter, minFilter: THREE.LinearMipmapLinearFilter,
-    colorSpace: colour ? THREE.SRGBColorSpace : THREE.NoColorSpace, needsUpdate: true,
-  });
-  const pavers = new THREE.MeshStandardMaterial({ map: pixel(170, 165, 155, true), normalMap: pixel(128, 128, 255), aoMap: pixel(255, 230, 0), roughnessMap: pixel(255, 230, 0) });
+  // Pavement tops, a quad per cell with UVs from world x and z so the texture runs on across cells.
   const y = pavement.height;
   const top = quads(pavements.map((r) => [[[r.minX, y, r.minZ], [r.minX, y, r.maxZ], [r.maxX, y, r.maxZ], [r.maxX, y, r.minZ]], [0, 1, 0]]), pavement.repeat);
   // Kerb stones: a strip along the edge just above the pavement, against depth fighting, and the face down to the road.
@@ -123,57 +142,68 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     scene.add(mesh);
   }
 
-  // Lanterns: the model's parts, one per material (iron, and glass round the bulb), each as a near and a far instanced
-  // mesh, filled every frame with the lanterns in view by distance (update()). The glass part is the one to light up at
-  // night (#52).
-  const mounts = lanternMounts(map, lantern);
-  const lanterns = []; // { near, far } per part: the street lights as one set
-  const lanternBounds = new THREE.Sphere(new THREE.Vector3(), 1.2);
-  const partMatrix = new THREE.Matrix4();
-  const mountMatrices = mounts.map(({ x, z, angle }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, lantern.height, z));
-
-  // Props from the Sim's colliders: the poles' posts, bollards, bins and fountains, as one static mesh. Trees load later.
-  // shortcut: drawn at any distance, not culled past 150 m like the lanterns: the map's ~35 props are a few thousand
-  // triangles, less than a cull pass costs; cull them per prop if a map gets many more.
-  const propParts = [];
-  const prop = (geometry, colour, x, z, angle = 0) => propParts.push(coloured(geometry.applyMatrix4(new THREE.Matrix4().makeRotationY(angle).setPosition(x, 0, z)), colour));
-  const { bollard, bin, fountain } = tables.streets;
-  const centre = (b) => [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
-  const postHeight = lantern.height + 1.7; // up to the top of the lantern's bracket
-  for (const b of map.colliders) {
-    const [x, z] = centre(b);
-    const turn = Math.floor(hash(x, z) * 4) * (Math.PI / 2);
-    if (b.kind === 'pole') {
-      prop(cylinder(lantern.post, postHeight), lantern.postColour, x, z);
-      prop(cylinder(lantern.post * 1.8, 0.5), lantern.postColour, x, z);
-    } else if (b.kind === 'bollard') {
-      prop(cylinder(bollard.radius, bollard.height), bollard.colour, x, z);
-      prop(cylinder(bollard.radius * 1.2, 0.05, bollard.height), bollard.colour, x, z);
-    } else if (b.kind === 'bin') {
-      prop(cylinder(bin.radius, bin.height), bin.colour, x, z);
-      prop(cylinder(bin.radius * 1.08, 0.06, bin.height - 0.06), bin.colour, x, z);
-    } else if (b.kind === 'fountain') {
-      // A nasone: a post with a cap and a spout over a drain grate.
-      prop(cylinder(fountain.radius, fountain.height), fountain.colour, x, z);
-      prop(cylinder(fountain.radius * 1.2, 0.08, fountain.height), fountain.colour, x, z);
-      prop(new THREE.BoxGeometry(0.05, 0.05, 0.26).translate(0, fountain.height * 0.55, fountain.radius + 0.1), fountain.colour, x, z, turn);
-      prop(new THREE.BoxGeometry(0.55, 0.04, 0.45).translate(0, 0.02, fountain.radius + 0.12), fountain.grate, x, z, turn);
+  // Instanced sets drawn by distance (update()): each { places: [{ x, y, z, angle }], levels: [{ upTo, meshes }],
+  // height }. A place is drawn with the meshes of the first level it is within `upTo` m of the camera of, if it is in
+  // view; past the last level, not at all. A mesh's userData.base goes between the place and its geometry.
+  const sets = [];
+  const propMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4 });
+  function addSet(places, levels, height) {
+    for (const { meshes } of levels) {
+      for (const mesh of meshes) {
+        mesh.count = 0;
+        mesh.frustumCulled = false; // update() picks the places in view
+        mesh.userData.base ??= new THREE.Matrix4();
+        scene.add(mesh);
+      }
     }
+    const matrices = places.map(({ x, y = 0, z, angle = 0 }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, y, z));
+    sets.push({ places, matrices, levels, height });
   }
-  if (propParts.length) {
-    const props = new THREE.Mesh(mergeGeometries(propParts), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4 }));
-    props.castShadow = props.receiveShadow = true;
-    scene.add(props);
+  // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past propCull, casting shadows.
+  const prop = (places, parts, height) => {
+    if (!places.length) return;
+    const mesh = new THREE.InstancedMesh(mergeGeometries(parts.map(([g, colour]) => coloured(g, colour))), propMaterial, places.length);
+    mesh.castShadow = mesh.receiveShadow = true;
+    addSet(places, [{ upTo: propCull, meshes: [mesh] }], height);
+  };
+
+  // The props on the Sim's colliders: the poles' posts, and the bollards, bins and fountains on open ground.
+  const { bollard, bin, fountain, pot, box } = tables.streets;
+  const at = (kind) => map.colliders.filter((c) => c.kind === kind).map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }));
+  const postHeight = lantern.height + 1.7; // up to the top of the lantern's bracket
+  prop(at('pole'), [[cylinder(lantern.post, postHeight), lantern.postColour], [cylinder(lantern.post * 1.8, 0.5), lantern.postColour]], postHeight);
+  prop(at('bollard'), [[cylinder(bollard.radius, bollard.height), bollard.colour], [cylinder(bollard.radius * 1.2, 0.05, bollard.height), bollard.colour]], bollard.height);
+  prop(at('bin'), [[cylinder(bin.radius, bin.height), bin.colour], [cylinder(bin.radius * 1.08, 0.06, bin.height - 0.06), bin.colour]], bin.height);
+  // A nasone: a post with a cap and a spout over a drain grate, turned a quarter at random.
+  prop(at('fountain').map((p) => ({ ...p, angle: Math.floor(hash(p.x, p.z) * 4) * (Math.PI / 2) })), [
+    [cylinder(fountain.radius, fountain.height), fountain.colour],
+    [cylinder(fountain.radius * 1.2, 0.08, fountain.height), fountain.colour],
+    [new THREE.BoxGeometry(0.05, 0.05, 0.26).translate(0, fountain.height * 0.55, fountain.radius + 0.1), fountain.colour],
+    [new THREE.BoxGeometry(0.55, 0.04, 0.45).translate(0, 0.02, fountain.radius + 0.12), fountain.grate],
+  ], fountain.height);
+
+  // Lanterns: the model's parts, one per material (iron, and glass round the bulb), each as a near and a far instanced
+  // mesh, set up by load() at the mounts dress() finds. The glass part is the one to light up at night (#52).
+  let mounts = [];
+
+  // What stands on the planned buildings (buildings.js): the wall lanterns' mounts, potted plants and flower boxes.
+  function dress(plan) {
+    mounts = lanternMounts(map, plan, lantern, tables.buildings.bay);
+    const { pots, boxes } = facadeProps(map, plan, tables);
+    prop(pots, [
+      [new THREE.CylinderGeometry(pot.radius, pot.radius * 0.75, pot.height, 10).translate(0, pot.height / 2, 0), pot.colour],
+      [new THREE.IcosahedronGeometry(pot.radius * 1.6, 0).scale(1, 1.3, 1).translate(0, pot.height + pot.radius * 1.3, 0), pot.leaves],
+    ], pot.height + pot.radius * 3);
+    // Its back against the wall, along the sill (x); flowers in a few colours in the leaves.
+    const [w, h, d] = box.size;
+    prop(boxes, [
+      [new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0), box.colour],
+      [new THREE.BoxGeometry(w - 0.06, 0.12, d - 0.04).translate(0, h + 0.06, 0), pot.leaves],
+      ...box.flowers.map((colour, i) => [new THREE.BoxGeometry(0.07, 0.07, 0.07).translate((i - (box.flowers.length - 1) / 2) * (w / box.flowers.length), h + 0.15, ((i % 2) - 0.5) * 0.06), colour]),
+    ], h + 0.2);
   }
 
   function load() {
-    const textures = Promise.all(['Diffuse', 'nor_gl', 'arm'].map((kind) => loadTexture(`${pavement.texture}_${kind}.ktx2`))).then(([map, normalMap, arm]) => {
-      for (const t of [map, normalMap, arm]) {
-        t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        t.anisotropy = 8;
-      }
-      Object.assign(pavers, { map, normalMap, aoMap: arm, roughnessMap: arm });
-    });
     const lamps = Promise.all([lantern.model, `${lantern.model}_far`].map((file) => loader.loadAsync(`${models}${file}.glb`))).then(([near, far]) => {
       const parts = [near, far].map((gltf) => {
         gltf.scene.updateMatrixWorld(true);
@@ -186,24 +216,22 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
       // copy's at every distance, with the full model's materials: the two looked different, so lanterns changed as
       // they passed `near`, and plain panes need no detail.
       const foot = new THREE.Box3().setFromObject(near.scene).min.y;
+      const levels = [{ upTo: lantern.near, meshes: [] }, { upTo: lantern.cull, meshes: [] }];
       parts[0].forEach((part, i) => {
         const glass = part.material.transparent;
         // Premultiplied, as DirectRenderPipeline's output step expects (see the renderer's zone marker).
         if (glass) part.material.premultipliedAlpha = true;
-        const [n, f] = [glass ? parts[1][i] : part, parts[1][i]].map((o) => {
+        [glass ? parts[1][i] : part, parts[1][i]].forEach((o, k) => {
           const mesh = new THREE.InstancedMesh(o.geometry, part.material, mounts.length);
           mesh.userData.base = new THREE.Matrix4().makeTranslation(0, -foot, 0).multiply(o.matrixWorld);
-          mesh.frustumCulled = false; // update() picks the lanterns in view
-          mesh.count = 0;
           mesh.receiveShadow = true; // casting none: their shadows are too small to show, and each is one more draw
-          scene.add(mesh);
-          return mesh;
+          levels[k].meshes.push(mesh);
         });
-        lanterns.push({ near: n, far: f });
       });
+      addSet(mounts.map((m) => ({ ...m, y: lantern.height })), levels, 1.7);
     });
     const trees = Promise.all(tables.streets.trees.map(({ picture }) => loadTexture(`${picture}.ktx2`))).then((pictures) => addTrees(pictures));
-    return Promise.all([textures, lamps, trees]);
+    return Promise.all([lamps, trees]);
   }
 
   // Trees on three crossed quads per species, each face both ways round, lit from above like one canopy; not shadowed,
@@ -211,10 +239,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   function addTrees(pictures) {
     const species = tables.streets.trees;
     const lists = species.map(() => []);
-    for (const b of map.colliders.filter((c) => c.kind === 'tree')) {
-      const [x, z] = centre(b);
-      lists[Math.floor(hash(x, z) * 9973) % species.length].push([x, z]);
-    }
+    for (const { x, z } of at('tree')) lists[Math.floor(hash(x, z) * 9973) % species.length].push([x, z]);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
@@ -243,28 +268,33 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     });
   }
 
-  // Fills the lantern meshes with the lanterns `inView` (a test on a bounding sphere), near or far by their distance
-  // from `eye`; none past lantern.cull.
+  // Fills the sets' meshes with the places in view (`inView`, a test on a bounding sphere), by their distance from `eye`.
+  const bounds = new THREE.Sphere();
+  const placeMatrix = new THREE.Matrix4();
   function update(eye, inView) {
-    if (!lanterns.length) return;
-    const counts = lanterns.map(() => [0, 0]);
-    mounts.forEach(({ x, z }, i) => {
-      const d = Math.hypot(x - eye.x, z - eye.z);
-      lanternBounds.center.set(x, lantern.height + 0.8, z);
-      if (d > lantern.cull || !inView(lanternBounds)) return;
-      const k = d < lantern.near ? 0 : 1;
-      lanterns.forEach(({ near, far }, p) => {
-        const mesh = k ? far : near;
-        mesh.setMatrixAt(counts[p][k]++, partMatrix.multiplyMatrices(mountMatrices[i], mesh.userData.base));
+    for (const { places, matrices, levels, height } of sets) {
+      for (const { meshes } of levels) for (const mesh of meshes) mesh.count = 0;
+      const reach = levels.at(-1).upTo;
+      places.forEach(({ x, y = 0, z }, i) => {
+        const d = Math.hypot(x - eye.x, z - eye.z);
+        if (d > reach) return;
+        bounds.center.set(x, y + height / 2, z);
+        bounds.radius = height / 2 + 0.6;
+        if (!inView(bounds)) return;
+        for (const mesh of levels.find((l) => d <= l.upTo).meshes) mesh.setMatrixAt(mesh.count++, placeMatrix.multiplyMatrices(matrices[i], mesh.userData.base));
       });
-    });
-    lanterns.forEach(({ near, far }, p) => {
-      [near.count, far.count] = counts[p];
-      near.instanceMatrix.needsUpdate = far.instanceMatrix.needsUpdate = true;
-    });
+      for (const { meshes } of levels) for (const mesh of meshes) mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
-  return { load, update };
+  return { dress, load, update };
+}
+
+// Whether a road lies in front of (x, z) on a wall facing DIRS[dir]. Not all of a planned building's street side
+// (buildings.js) does: at the city's edge it faces off the map, and at a block's corner its end faces the next block.
+function roadAhead(map, x, z, dir) {
+  const [nx, nz] = DIRS[dir];
+  return map.isRoad(Math.floor((x + nx) / map.tileSize), Math.floor((z + nz) / map.tileSize));
 }
 
 const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place, as in renderer.js
@@ -295,7 +325,7 @@ function quads(list, repeat) {
 const cylinder = (radius, height, base = 0) => new THREE.CylinderGeometry(radius, radius, height, 12).translate(0, base + height / 2, 0);
 
 function coloured(geometry, colour) {
-  const part = geometry.toNonIndexed().deleteAttribute('uv');
+  const part = (geometry.index ? geometry.toNonIndexed() : geometry).deleteAttribute('uv');
   const c = new THREE.Color(colour);
   return part.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: part.getAttribute('position').count }, () => [c.r, c.g, c.b]).flat(), 3));
 }

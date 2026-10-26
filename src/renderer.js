@@ -246,10 +246,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
     parts: new THREE.MeshStandardMaterial({ ...paintFacadePictures(cells, palette.spot), vertexColors: true, flatShading: true }),
   };
   const buildingParts = { meshes: [], near: [] };
-  // Built once the model and texture requests are out, as building them takes a few hundred ms.
+  // Built once the model and texture requests are out, as building them takes a few hundred ms. What stands on them
+  // (lanterns, pots and flower boxes; streets.js) is placed then too.
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
-    Object.assign(buildingParts, buildingMeshes(planBuildings(map, tables), tables, palette.spot, cells, buildingMaterials));
+    const plan = planBuildings(map, tables);
+    Object.assign(buildingParts, buildingMeshes(plan, tables, palette.spot, cells, buildingMaterials));
     scene.add(...buildingParts.meshes);
+    streets.dress(plan);
   }));
 
   // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
@@ -368,7 +371,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let shownLights = null;
 
   // Pavements, lanterns (also on the poles), and the trees and props on open ground.
-  const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
+  const streets = createStreets(scene, map, tables, { pavers: groundMaterial(tables.streets.pavement, {}, true), loadTexture, loader, models: MODELS });
   laterLoads.push(streets.load);
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only

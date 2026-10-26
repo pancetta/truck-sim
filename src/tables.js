@@ -373,8 +373,8 @@ export const streets = {
   // Lanterns (Poly Haven street_lamp_02) on street-facing walls about every `spacing` m and on the poles, their
   // foot `height` up. Within `near` m of the camera the full model (20k triangles), then its far copy (1.2k) up to
   // `cull`, then none; with near 20 m and cull 150 m the iPad simulator dropped to its lowest resolution.
-  // On walls `corner` m clear of a corner and `clear` m clear of a pole's lantern or a speed sign.
-  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 10, cull: 100, corner: 1, clear: 3, post: 0.09, postColour: 0x2b2d33 },
+  // On walls between two windows, `clear` m clear of a pole's lantern or a speed sign.
+  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 10, cull: 100, clear: 3, post: 0.09, postColour: 0x2b2d33 },
   // Crossed-quad trees from pictures (`npm run assets`): species picked per tree, `size` m across, mirrored at random.
   // The Werkstatt and chase cameras keep `canopy` m from a trunk, so they don't end up inside the leaves.
   canopy: 4,
@@ -383,7 +383,14 @@ export const streets = {
     { picture: 'tree_small_02', size: [6, 8] },
     { picture: 'searsia_lucida', size: [6, 8] },
   ],
-  // Our own small props, cast iron and painted metal.
+  // Our own small props, not drawn past `propCull` m: cast iron and painted metal on posts and open ground; potted
+  // plants in pairs beside a `pots` share of the doors, and flower boxes on the open windows' sills of a `flowers`
+  // share of the buildings.
+  propCull: 150,
+  pots: 0.2,
+  flowers: 0.15,
+  pot: { radius: 0.17, height: 0.38, colour: 0xa8573a, leaves: 0x4f7a3a },
+  box: { size: [1.2, 0.16, 0.2], colour: 0x8a4f34, flowers: [0xd1495b, 0xf4ecdc, 0xe8c547, 0xc0507a, 0xd1495b, 0xf4ecdc] },
   bollard: { radius: 0.11, height: 0.9, colour: 0x4a4844 },
   bin: { radius: 0.3, height: 0.95, colour: 0x2f4a3a },
   fountain: { radius: 0.16, height: 1.15, colour: 0x3b443c, grate: 0x2a2a28 },

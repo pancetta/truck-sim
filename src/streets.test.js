@@ -3,9 +3,11 @@ import * as tables from './tables.js';
 import { parseMap } from './sim/map.js';
 import city from './city.txt?raw';
 import { Group, Mesh, BoxGeometry, MeshStandardMaterial, DataTexture, Scene, Vector3 } from 'three/webgpu';
-import { pavementLayout, lanternMounts, createStreets } from './streets.js';
+import { pavementLayout, lanternMounts, facadeProps, createStreets } from './streets.js';
+import { planBuildings, facadeParts } from './buildings.js';
 
 const map = parseMap(city, tables);
+const plan = planBuildings(map, tables);
 const ts = map.tileSize;
 const { width } = tables.streets.pavement;
 const isBlock = (x, z) => map.colliders.some((b) => (b.kind === 'building' || b.kind === 'spot') && x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ);
@@ -62,7 +64,7 @@ describe('Streets: pavements', () => {
 });
 
 describe('Streets: lanterns', () => {
-  const mounts = lanternMounts(map, tables.streets.lantern);
+  const mounts = lanternMounts(map, plan, tables.streets.lantern, tables.buildings.bay);
   const walls = mounts.filter((s) => !s.pole);
 
   it('hang on walls that face a road, turned out over it', () => {
@@ -74,21 +76,25 @@ describe('Streets: lanterns', () => {
     }
   });
 
-  it('hang over no dock, and keep clear of the poles\' lanterns and the speed signs', () => {
+  it('hang between the windows, over no dock, and clear of the poles\' lanterns and the speed signs', () => {
+    // Every upper-floor window and shop front, as [x, z, half its width] (facadeParts' glass and louvres).
+    const windows = plan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables, 0)))
+      .filter((p) => /^(glass|louvre|shop|door|roller)/.test(p.cell)).map((p) => [p.x, p.z, p.size[0] / 2]);
     for (const { x, z, angle } of walls) {
+      expect(windows.filter(([wx, wz, half]) => Math.hypot(wx - x, wz - z) < half + 0.15), `lantern at ${x}, ${z}`).toEqual([]);
       const [col, row] = tileOf(x - Math.sin(angle) * 0.5, z - Math.cos(angle) * 0.5); // the wall's tile
       expect(docks.some(([c, r]) => c === col && r === row)).toBe(false);
       for (const c of [...mounts.filter((m) => m.pole), ...map.signs]) expect(Math.hypot(c.x - x, c.z - z)).toBeGreaterThanOrEqual(tables.streets.lantern.clear);
     }
   });
 
-  it('run on about every `spacing` m along a straight wall', () => {
+  it('run on about every `spacing` m along a street', () => {
     const { spacing } = tables.streets.lantern;
-    // The east wall of the left column's buildings, rows 2 to 7, faces the road in column 1... from column 2.
-    const x = 2 * ts;
-    const along = walls.filter((s) => Math.abs(s.x - x) < 1e-9 && s.z > 2 * ts && s.z < 8 * ts).map((s) => s.z).sort((a, b) => a - b);
+    // The east walls of the left column's buildings, rows 2 to 7, facing the road in column 1.
+    const along = walls.filter((s) => Math.abs(s.x - ts) < 1e-9 && s.z > 2 * ts && s.z < 8 * ts).map((s) => s.z).sort((a, b) => a - b);
     expect(along.length).toBeGreaterThan(1);
-    for (let i = 1; i < along.length; i++) expect(along[i] - along[i - 1]).toBeCloseTo(spacing);
+    // Each moved to a gap between windows, at most half a bay (up to ~3 m at the widest buildings) off the rhythm.
+    for (let i = 1; i < along.length; i++) expect(Math.abs(along[i] - along[i - 1] - spacing)).toBeLessThan(6);
   });
 
   it('hang one on each pole, on its side towards the middle of the road', () => {
@@ -106,21 +112,48 @@ describe('Streets: lanterns', () => {
   });
 });
 
-describe('Streets: lanterns drawn', () => {
-  it('as the full model near the camera, the far copy further out, and none past the cull distance or out of view', async () => {
+describe('Streets: pots and flower boxes', () => {
+  const { pots, boxes } = facadeProps(map, plan, tables);
+  const parts = plan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables, 0)));
+
+  it('stand in pairs on the pavement beside some doors', () => {
+    const doors = parts.filter((p) => p.cell === 'door');
+    expect(pots.length).toBeGreaterThan(0);
+    expect(pots.length % 2).toBe(0);
+    expect(pots.length / 2).toBeLessThan(doors.length / 2);
+    for (const { x, y, z } of pots) {
+      expect(y).toBe(0);
+      expect(doors.some((d) => Math.hypot(d.x - x, d.z - z) < 1.5)).toBe(true);
+      expect(isBlock(x, z)).toBe(false);
+      expect(pavementLayout(map, tables.streets.pavement.width).pavements.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)).toBe(true);
+    }
+  });
+
+  it('sit on the sills of open windows, on some buildings only', () => {
+    const sills = parts.filter((p) => p.cell === 'plain' && p.size[0] === 1.6 && p.size[2] === 0.28);
+    expect(boxes.length).toBeGreaterThan(0);
+    expect(boxes.length).toBeLessThan(sills.length / 2);
+    for (const { x, y, z } of boxes) expect(sills.some((s) => Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
+  });
+});
+
+describe('Streets: drawn by distance', () => {
+  it('lanterns as the full model near the camera, the far copy further out, none past the cull distance or out of view', async () => {
     const { near, cull } = tables.streets.lantern;
     // shortcut: a one-part box stands in for the lantern model and a pixel for every texture; enough for update().
-    const loader = { loadAsync: async () => ({ scene: new Group().add(new Mesh(new BoxGeometry(), new MeshStandardMaterial())) }) };
+    const lamp = new BoxGeometry();
+    const loader = { loadAsync: async () => ({ scene: new Group().add(new Mesh(lamp, new MeshStandardMaterial())) }) };
     const loadTexture = async () => new DataTexture(new Uint8Array(4), 1, 1);
     const scene = new Scene();
-    const streets = createStreets(scene, map, tables, { loadTexture, loader, models: '' });
+    const streets = createStreets(scene, map, tables, { pavers: new MeshStandardMaterial(), loadTexture, loader, models: '' });
+    streets.dress(plan);
     await streets.load();
-    const [nearMesh, farMesh] = scene.children.filter((o) => o.userData.base);
+    const [nearMesh, farMesh] = scene.children.filter((o) => o.geometry === lamp);
     const eye = new Vector3(14.5 * ts, 2, 8.5 * ts); // a long straight street with walls both sides
-    const distances = lanternMounts(map, tables.streets.lantern).map((m) => Math.hypot(m.x - eye.x, m.z - eye.z));
+    const distances = lanternMounts(map, plan, tables.streets.lantern, tables.buildings.bay).map((m) => Math.hypot(m.x - eye.x, m.z - eye.z));
     streets.update(eye, () => true);
-    expect(nearMesh.count).toBe(distances.filter((d) => d < near).length);
-    expect(farMesh.count).toBe(distances.filter((d) => d >= near && d <= cull).length);
+    expect(nearMesh.count).toBe(distances.filter((d) => d <= near).length);
+    expect(farMesh.count).toBe(distances.filter((d) => d > near && d <= cull).length);
     expect(nearMesh.count).toBeGreaterThan(0);
     expect(farMesh.count).toBeGreaterThan(nearMesh.count);
     streets.update(eye, () => false);
