@@ -9,8 +9,9 @@ import { createAutopilot, seeded } from '../autopilot.js';
 
 // Bench (#31): the traffic step at 100 cars, on the ?perf&auto drive. The spawn ring is widened to 400 m, as
 // in docs/perf/2026-10-baseline.md, so the city holds that many.
-// shortcut: the thresholds are generous so slow CI runners pass; they catch a return to the O(n²), allocating
-// step (1.6 ms and 5.4 MB per step here before #31), not small regressions.
+// shortcut: the thresholds catch a return to the O(n²), allocating step (1.6 ms and 5.4 MB per step on an idle
+// M2 before #31, 0.08 ms and 14 KB after), not small regressions. The time is the fastest of five batches, so a
+// loaded machine or CI runner doesn't fail it.
 // shortcut: total_allocated_bytes is Node 26+; under older Node (CI runs 24) only the time is checked. Drop the
 // guard once CI's Node has it.
 const allocated = () => getHeapStatistics().total_allocated_bytes;
@@ -47,11 +48,14 @@ test('the traffic step at 100 cars is fast and allocates next to nothing', () =>
   expect(traffic.cars.length).toBeGreaterThan(90);
 
   const before = allocated();
-  const t0 = performance.now();
-  for (let i = 600; i < 1400; i++) play(i);
-  const ms = (performance.now() - t0) / 800;
+  let ms = Infinity;
+  for (let i = 600; i < 1400; i += 160) {
+    const t0 = performance.now();
+    for (let k = i; k < i + 160; k++) play(k);
+    ms = Math.min(ms, (performance.now() - t0) / 160);
+  }
   const bytes = (allocated() - before) / 800;
-  console.info(`traffic step, ${traffic.cars.length} cars: ${(ms * 1000).toFixed(1)} µs, ${Math.round(bytes)} B allocated`);
-  expect(ms).toBeLessThan(0.26); // the whole Sim step at 100 cars in the baseline
+  console.info(`traffic step, ${traffic.cars.length} cars: ${(ms * 1000).toFixed(1)} µs (fastest batch), ${Math.round(bytes)} B allocated`);
+  expect(ms).toBeLessThan(1);
   if (before !== undefined) expect(bytes).toBeLessThan(32 * 1024); // 5.4 MB per step before #31
 });
