@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- PROTOTYPE (throwaway, branch prototype/monti-look): how far CC0 materials take an OSM city. Not part of the game build. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>PROTOTYPE · Monti look</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #2b2d33; font: 13px system-ui, sans-serif; }
+      canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+      .panel { position: fixed; background: rgba(20, 22, 28, 0.82); color: #fff; border-radius: 8px; padding: 8px 10px; }
+      #stats { top: 10px; left: 10px; white-space: pre; font-family: ui-monospace, monospace; font-size: 12px; }
+      #views { top: 10px; right: 10px; display: flex; gap: 6px; }
+      #switcher { bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; border-radius: 999px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); }
+      #credit { bottom: 14px; right: 10px; font-size: 11px; opacity: 0.85; padding: 4px 8px; }
+      button { font: inherit; color: #fff; background: #3b4252; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+      button.on { background: #e8c547; color: #2b2d33; }
+      #switcher button { border-radius: 999px; }
+      #label { min-width: 200px; text-align: center; font-weight: 600; }
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; color: #fff; background: #2b2d33; }
+    </style>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+    <div id="loading">Loading Monti…</div>
+    <div id="stats" class="panel"></div>
+    <div id="views" class="panel"><button data-view="orbit">Orbit</button><button data-view="drive">Drive</button></div>
+    <div id="switcher" class="panel"><button id="prev" aria-label="Previous variant">←</button><span id="label"></span><button id="next" aria-label="Next variant">→</button></div>
+    <div id="credit" class="panel">Map data © OpenStreetMap contributors (ODbL) · Textures &amp; sky: Poly Haven (CC0)</div>
+    <script type="module" src="/src/prototype-monti/main.js"></script>
+  </body>
+</html>
