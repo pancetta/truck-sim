@@ -2234,3 +2234,81 @@ describe('Sim: traffic soak', () => {
     for (const [i, name] of names.entries()) expect([name, near[i]]).not.toEqual([name, 0]);
   }, 120_000);
 });
+
+describe('Sim: traffic gridlock soak', () => {
+  // #46: over long runs at the top tier's count and at 40, with the truck parked off the road (cars only meet
+  // cars) or driving the ?perf&auto loop, no car stands for more than `limit` s, not counting the time it waits
+  // at a light that isn't green, near the truck, or queued behind the truck or a car that is moving or itself
+  // waiting so.
+  // s; "about 30" in #46. At 40 cars round the truck's block, right before left can hold a car up to ~36 s behind
+  // a steady stream from its right, which then lets it go; the gridlocks held cars 90–414 s.
+  const limit = 40;
+  const { stopSpeed } = tables.vehicle;
+
+  // shortcut: "queued" is the nearest vehicle centre up to 12 m ahead within 1.5 m of the car's heading, and a
+  // light is "ahead" within 40 m of route, both judged from straight-line poses; good enough for queues in
+  // lanes, which is all the Sim has. Upgrade if turns or longer cars start to fool it.
+  function waiting(car, sim, excused) {
+    if (excused.has(car)) return excused.get(car);
+    excused.set(car, false); // a cycle of cars each queued behind the next is stuck
+    const { traffic, truck, lights } = sim.state;
+    let ok = car.speed >= stopSpeed || Math.hypot(car.x - truck.x, car.z - truck.z) < 30;
+    let dist = -car.s;
+    for (const p of car.route) {
+      if (ok || dist > 40) break;
+      ok = lights.some((l) => l.col === p.col && l.row === p.row && l.dir === p.from && l.phase !== 'green');
+      dist += TILE;
+    }
+    if (!ok) {
+      const [fx, fz] = [Math.sin(car.heading), Math.cos(car.heading)];
+      let ahead = null;
+      let best = 12;
+      for (const o of [...traffic, truck]) {
+        const along = (o.x - car.x) * fx + (o.z - car.z) * fz;
+        const side = -(o.x - car.x) * fz + (o.z - car.z) * fx;
+        if (o !== car && along > 0 && along < best && Math.abs(side) < 1.5) [ahead, best] = [o, along];
+      }
+      ok = ahead === truck || (ahead !== null && waiting(ahead, sim, excused));
+    }
+    excused.set(car, ok);
+    return ok;
+  }
+
+  // The longest any car was stuck, in s, with the truck parked off the road or driven by the autopilot.
+  function longestStuck(cars, seed, auto) {
+    const counted = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: cars })) } };
+    const map = parseMap(city, counted);
+    const sim = createSim(counted, map, seeded(seed));
+    let input = () => IDLE;
+    if (auto) {
+      const pilot = createAutopilot(sim, map, counted);
+      pilot.place();
+      input = () => pilot.update(DT);
+    } else {
+      Object.assign(sim.state.truck, { x: 25.5 * TILE, z: 11.5 * TILE, heading: 0, speed: 0 }); // in a block
+    }
+    const stuck = new Map(); // car → s
+    let longest = 0;
+    for (let i = 0; i < 600 * 60; i++) {
+      sim.step(DT, input());
+      const excused = new Map();
+      for (const car of sim.state.traffic) {
+        // The count pauses while the car waits and starts over once it moves, so a gridlock at a light still adds up.
+        const s = car.speed >= stopSpeed ? 0 : (stuck.get(car) ?? 0) + (waiting(car, sim, excused) ? 0 : DT);
+        stuck.set(car, s);
+        longest = Math.max(longest, s);
+      }
+    }
+    return longest;
+  }
+
+  const top = tables.rank.tiers.at(-1).traffic;
+  for (const cars of [top, 40]) {
+    for (const auto of [false, true]) {
+      test(`${cars} cars, the truck ${auto ? 'on the autopilot loop' : 'parked'}: no car stuck for over ${limit} s`, () => {
+        const longest = [1, 2, 3].map((seed) => Math.round(longestStuck(cars, seed, auto)));
+        expect(longest.filter((s) => s > limit)).toEqual([]);
+      }, 120_000);
+    }
+  }
+});

@@ -1,6 +1,6 @@
 // Dev-only (?perf&auto): drives the truck round a fixed loop of streets (tables.perf.route) so every perf run
-// sees the same route. Pure pursuit on the right half of the road; resets to the road when stuck. Ported from
-// the investigation's scratch autopilot; since #33 it also waits behind an AI car in its path, as it ignores
+// sees the same route. Pure pursuit on the right half of the road; when stuck it jumps on along the loop. Ported
+// from the investigation's scratch autopilot; since #33 it also waits behind an AI car in its path, as it ignores
 // right of way and otherwise rammed one car over and over at 50 km/h traffic.
 export function createAutopilot(sim, map, tables) {
   const { route, lane, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
@@ -19,12 +19,14 @@ export function createAutopilot(sim, map, tables) {
     return [(a.col + 0.5) * ts - dr * lane, (a.row + 0.5) * ts + dc * lane];
   };
 
-  // Puts the truck at the start of the loop, facing along it. Dev-only, so it sets the Sim's state directly.
-  function place() {
-    const [x, z] = point(0);
-    const b = at(1);
-    Object.assign(sim.state.truck, { x, z, heading: Math.atan2(b.col - path[0].col, b.row - path[0].row), speed: 0 });
-    idx = 0;
+  // Puts the truck on the loop at path tile i (the start by default), facing along it. Dev-only, so it sets the
+  // Sim's state directly.
+  function place(i = 0) {
+    const [x, z] = point(i);
+    const a = at(i);
+    const b = at(i + 1);
+    Object.assign(sim.state.truck, { x, z, heading: Math.atan2(b.col - a.col, b.row - a.row), speed: 0 });
+    idx = i;
   }
 
   function update(dt) {
@@ -64,7 +66,12 @@ export function createAutopilot(sim, map, tables) {
     stuck = Math.abs(t.speed) < 0.3 ? stuck + dt : 0;
     if (stuck > (waiting ? waitTime : stuckTime)) {
       stuck = 0;
-      sim.resetToRoad();
+      // On along the loop, to the first tile no AI car is within its look-ahead of. The Sim's resetToRoad could
+      // turn the truck off the loop, where it wedged for good, blocking a lane and the crossing behind (#46).
+      const clear = tables.traffic.lookAhead;
+      let k = idx + 1;
+      while (k < idx + path.length && sim.state.traffic.some((c) => Math.hypot(c.x - point(k)[0], c.z - point(k)[1]) < clear)) k++;
+      place(k);
     }
     return input;
   }
