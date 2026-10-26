@@ -250,6 +250,8 @@ export const camera = {
   // aimed steeply enough to show the bay right behind the rear doors.
   rearEye: [0, 3.6, -3.6],
   rearLook: [0, 0, -10],
+  // m: sky-coloured distance fog starts at the first and is full at the second, where the camera stops drawing
+  fog: [150, 350],
 };
 
 // The Werkstatt's view: the camera circles the standing truck, aimed so the truck shows beside the panel.

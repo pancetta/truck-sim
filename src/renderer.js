@@ -25,7 +25,7 @@ const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of 
 const loader = new GLTFLoader();
 const newKitMaterial = () => new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 // One kit material per mesh variant: shared across variants, the renderer re-derives the program on every draw.
-const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), tinted: newKitMaterial() };
+const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), batched: newKitMaterial() };
 
 // Stretches a geometry into the unit box: x and z in [-0.5, 0.5], y in [0, 1].
 function unitBox(geometry) {
@@ -79,6 +79,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(palette.sky);
+  // Fog in the sky's colour, full where the camera stops drawing, so the far city fades out instead of popping.
+  scene.fog = new THREE.Fog(palette.sky, ...cam.fog);
   scene.add(new THREE.HemisphereLight(palette.light, palette.shade, tables.lighting.ambient));
   const sun = new THREE.DirectionalLight(palette.light, tables.lighting.sun);
   sun.position.set(30, 60, 20);
@@ -91,7 +93,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // City from the parsed map, built from kit models. Each model is one instanced draw call.
+  // City from the parsed map, built from kit models.
   const ts = map.tileSize;
   const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place
   const pick = (list, x, z) => list[Math.floor(hash(x, z) * 9973) % list.length];
@@ -146,19 +148,21 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // The kit cars, loaded once for the parked cars and the AI cars.
   const carModels = CARS.map((file) => loadModel(file));
-  for (const [file, list] of placements) {
+  const cityModels = [...placements].map(([file, list]) => {
     // Building walls are white so their per-building tint shows as is.
     const model = CARS.includes(file) ? carModels[CARS.indexOf(file)] : loadModel(file, BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : palette);
-    loads.push(model.then((geometry) => {
+    return model.then((geometry) => {
       // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
       if (file === POLE) {
         const { min, max } = geometry.boundingBox;
         const s = city.obstacles.pole.height / (max.y - min.y);
         geometry.translate(0, -min.y, 0).scale(s, s, s);
       } else unitBox(geometry);
-      addInstances(geometry, list);
-    }));
-  }
+      return [geometry, list];
+    });
+  });
+  // A model that fails is logged (through `loads`) and left out; the rest of the city still goes up.
+  loads.push(...cityModels, Promise.all(cityModels.map((m) => m.catch(() => null))).then((models) => addCity(models.filter(Boolean))));
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
   // Dock bays, our own boxes: a dock edge (a low dark platform) along the building face, and painted lines on
@@ -224,19 +228,28 @@ export function createRenderer(canvas, tables, map, onProgress) {
   addBoxes(palette.stopLine, stopLines, 0.045);
   let shownLights = null;
 
-  function addInstances(geometry, list) {
-    const tinted = list.some((p) => p.tint !== undefined);
-    const mesh = new THREE.InstancedMesh(geometry, tinted ? kitMaterials.tinted : kitMaterials.instanced, list.length);
+  // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only
+  // what's on screen within the far plane is drawn. `models` is [geometry, placements] per model.
+  // three warns once that the batch has no normals; flat shading doesn't use them.
+  function addCity(models) {
+    if (!models.length) return;
+    const instances = models.reduce((n, [, list]) => n + list.length, 0);
+    const vertices = models.reduce((n, [geometry]) => n + geometry.getAttribute('position').count, 0);
+    const batch = new THREE.BatchedMesh(instances, vertices, 0, kitMaterials.batched);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
     const tint = new THREE.Color();
-    list.forEach((p, i) => {
-      m.compose(new THREE.Vector3(p.x, 0, p.z), q.setFromAxisAngle(up, p.angle), new THREE.Vector3(...p.size));
-      mesh.setMatrixAt(i, m);
-      if (p.tint !== undefined) mesh.setColorAt(i, tint.setHex(p.tint));
-    });
-    scene.add(mesh);
+    for (const [geometry, list] of models) {
+      const id = batch.addGeometry(geometry);
+      for (const p of list) {
+        const i = batch.addInstance(id);
+        batch.setMatrixAt(i, m.compose(new THREE.Vector3(p.x, 0, p.z), q.setFromAxisAngle(up, p.angle), new THREE.Vector3(...p.size)));
+        batch.setColorAt(i, tint.setHex(p.tint ?? 0xffffff));
+      }
+    }
+    batch.sortObjects = false; // depth-sorting the visible placements allocated about 40 KB per frame
+    scene.add(batch);
   }
 
   // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.
@@ -376,7 +389,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   truck.add(interior);
   scene.add(truck);
 
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
   const eye = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
   let lastFrame = performance.now();
@@ -431,8 +444,6 @@ export function createRenderer(canvas, tables, map, onProgress) {
       lamps.instanceColor.needsUpdate = true;
     }
 
-    drawTraffic(state.traffic);
-
     const { order } = state;
     marker.visible = !!order;
     if (order) {
@@ -476,6 +487,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       );
       camera.lookAt(x, cam.lookHeight, z);
     }
+    drawTraffic(state.traffic);
     pipeline.render(scene, camera);
   }
 
@@ -483,9 +495,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const carPosition = new THREE.Vector3();
   const carTurn = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
+  const frustum = new THREE.Frustum();
+  const viewProjection = new THREE.Matrix4();
+  const carBounds = new THREE.Sphere(new THREE.Vector3(), carSize.length() / 2);
+  // Only the cars in view are drawn: the meshes span the whole spawn ring, so the renderer can't cull them.
   function drawTraffic(cars) {
+    camera.updateMatrixWorld();
+    frustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse), camera.coordinateSystem);
     for (const mesh of trafficMeshes) mesh.count = 0;
     for (const car of cars) {
+      carBounds.center.set(car.x, carSize.y / 2, car.z);
+      if (!frustum.intersectsSphere(carBounds)) continue;
       const mesh = trafficMeshes[car.id % trafficMeshes.length];
       carMatrix.compose(carPosition.set(car.x, 0, car.z), carTurn.setFromAxisAngle(up, car.heading), carSize);
       mesh.setMatrixAt(mesh.count++, carMatrix);
