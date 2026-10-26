@@ -1,0 +1,26 @@
+src/buildings.js
+  s_285a69b7e02104::t_60b6241828524b 329,338,345
+src/skyline.js
+  s_285a69b7e02104::t_347f9244043770 1-63,71,73-103,106-123,125-129,135-152,154-212
+  s_285a69b7e02104::t_30c02c88b0fcb9 64-70,72,104-105,124,130-134,153
+src/tables.js
+  s_285a69b7e02104::t_cfcb39fc1b385e 237-267
+src/renderer.js
+  s_285a69b7e02104::t_34c8246eb9f754 13,200-202,256-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "388556d0f5bcd17d175facccda76082b82a51546",
+  "prompts": {},
+  "sessions": {
+    "s_285a69b7e02104": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca2b46f6-0041-466b-8f15-5613727c2de2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
