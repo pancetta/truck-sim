@@ -80,7 +80,9 @@ export function lanternMounts(map, plan, { spacing, post, clear }, bay) {
     for (let k = Math.ceil(lo / spacing - 0.5); (k + 0.5) * spacing < hi; k++) {
       if (!gaps.length) break;
       const [, gx, gz] = gaps.reduce((a, g) => (Math.abs(g[0] - (k + 0.5) * spacing) < Math.abs(a[0] - (k + 0.5) * spacing) ? g : a));
-      if (!roadAhead(map, gx, gz, dir) || crowded.some((c) => Math.hypot(c.x - gx, c.z - gz) < clear)) continue;
+      // Not in the middle of a spot's side either, where the letter is on its sign band.
+      const middle = side.spot && Math.hypot(gx - (x + (ux * length) / 2), gz - (z + (uz * length) / 2)) < 1;
+      if (middle || !roadAhead(map, gx, gz, dir) || crowded.some((c) => Math.hypot(c.x - gx, c.z - gz) < clear)) continue;
       mounts.push({ x: gx, z: gz, angle: Math.atan2(...DIRS[dir]), pole: false });
     }
   }
@@ -89,10 +91,11 @@ export function lanternMounts(map, plan, { spacing, post, clear }, bay) {
 
 // Potted plants and flower boxes on the planned buildings' street sides: { x, y, z, angle }, standing on the
 // pavement or a sill, turned so their +z points out from the wall. A pair of pots beside a door, for a `pots` share of
-// the doors; a box on the sill of every open window (the ones with glass showing) of a `flowers` share of the
-// buildings. Which ones comes from where they are.
+// the doors, unless a speed sign or a pole stands within a metre; a box on the sill of every open window (the ones
+// with glass showing) of a `flowers` share of the buildings. Which ones comes from where they are.
 export function facadeProps(map, plan, tables) {
-  const { pots: potShare, flowers } = tables.streets;
+  const { pots: potShare, flowers, pavement } = tables.streets;
+  const posts = [...map.signs, ...map.colliders.filter((c) => c.kind === 'pole').map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }))];
   const pots = [];
   const boxes = [];
   for (const b of plan) {
@@ -103,10 +106,11 @@ export function facadeProps(map, plan, tables) {
       for (const part of facadeParts(b, side, tables, 0).filter((p) => roadAhead(map, p.x, p.z, side.dir))) {
         if (part.cell === 'door' && hash(part.x, part.z) < potShare) {
           // The door's leaf stands 8 cm out; the pots 0.45 m out, either side of it.
-          for (const s of [-1, 1]) {
+          const pair = [-1, 1].map((s) => {
             const along = s * (part.size[0] / 2 + 0.45);
-            pots.push({ x: part.x + side.ux * along + nx * 0.37, y: 0, z: part.z + side.uz * along + nz * 0.37, angle });
-          }
+            return { x: part.x + side.ux * along + nx * 0.37, y: pavement.height, z: part.z + side.uz * along + nz * 0.37, angle };
+          });
+          if (!pair.some((p) => posts.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1))) pots.push(...pair);
         } else if (boxed && part.cell.startsWith('glass')) {
           // On the sill, whose top is 0.95 m under the window's middle; the glass is 1 cm out, the sill 28 cm deep.
           boxes.push({ x: part.x + nx * 0.14, y: part.y - 0.95, z: part.z + nz * 0.14, angle });

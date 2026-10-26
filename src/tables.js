@@ -390,7 +390,7 @@ export const streets = {
   pots: 0.2,
   flowers: 0.15,
   pot: { radius: 0.17, height: 0.38, colour: 0xa8573a, leaves: 0x4f7a3a },
-  box: { size: [1.2, 0.16, 0.2], colour: 0x8a4f34, flowers: [0xd1495b, 0xf4ecdc, 0xe8c547, 0xc0507a, 0xd1495b, 0xf4ecdc] },
+  box: { size: [1.05, 0.16, 0.2], colour: 0x8a4f34, flowers: [0xd1495b, 0xf4ecdc, 0xe8c547, 0xc0507a, 0xd1495b, 0xf4ecdc] },
   bollard: { radius: 0.11, height: 0.9, colour: 0x4a4844 },
   bin: { radius: 0.3, height: 0.95, colour: 0x2f4a3a },
   fountain: { radius: 0.16, height: 1.15, colour: 0x3b443c, grate: 0x2a2a28 },

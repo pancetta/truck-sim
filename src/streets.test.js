@@ -78,10 +78,15 @@ describe('Streets: lanterns', () => {
 
   it('hang between the windows, over no dock, and clear of the poles\' lanterns and the speed signs', () => {
     // Every upper-floor window and shop front, as [x, z, half its width] (facadeParts' glass and louvres).
-    const windows = plan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables, 0)))
-      .filter((p) => /^(glass|louvre|shop|door|roller)/.test(p.cell)).map((p) => [p.x, p.z, p.size[0] / 2]);
+    const windows = new Map(); // by tile
+    for (const p of plan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables, 0)))) {
+      if (!/^(glass|louvre|shop|door|roller)/.test(p.cell)) continue;
+      const key = tileOf(p.x, p.z).join();
+      windows.set(key, [...(windows.get(key) ?? []), [p.x, p.z, p.size[0] / 2]]);
+    }
+    const near = (x, z) => [-1, 0, 1].flatMap((dc) => [-1, 0, 1].flatMap((dr) => windows.get([tileOf(x, z)[0] + dc, tileOf(x, z)[1] + dr].join()) ?? []));
     for (const { x, z, angle } of walls) {
-      expect(windows.filter(([wx, wz, half]) => Math.hypot(wx - x, wz - z) < half + 0.15), `lantern at ${x}, ${z}`).toEqual([]);
+      expect(near(x, z).filter(([wx, wz, half]) => Math.hypot(wx - x, wz - z) < half + 0.15), `lantern at ${x}, ${z}`).toEqual([]);
       const [col, row] = tileOf(x - Math.sin(angle) * 0.5, z - Math.cos(angle) * 0.5); // the wall's tile
       expect(docks.some(([c, r]) => c === col && r === row)).toBe(false);
       for (const c of [...mounts.filter((m) => m.pole), ...map.signs]) expect(Math.hypot(c.x - x, c.z - z)).toBeGreaterThanOrEqual(tables.streets.lantern.clear);
@@ -118,14 +123,16 @@ describe('Streets: pots and flower boxes', () => {
 
   it('stand in pairs on the pavement beside some doors', () => {
     const doors = parts.filter((p) => p.cell === 'door');
+    const { pavements } = pavementLayout(map, tables.streets.pavement.width);
     expect(pots.length).toBeGreaterThan(0);
     expect(pots.length % 2).toBe(0);
     expect(pots.length / 2).toBeLessThan(doors.length / 2);
     for (const { x, y, z } of pots) {
-      expect(y).toBe(0);
+      expect(y).toBe(tables.streets.pavement.height); // on the pavement, not sunk into it
+      for (const c of map.signs) expect(Math.hypot(c.x - x, c.z - z)).toBeGreaterThanOrEqual(1);
       expect(doors.some((d) => Math.hypot(d.x - x, d.z - z) < 1.5)).toBe(true);
       expect(isBlock(x, z)).toBe(false);
-      expect(pavementLayout(map, tables.streets.pavement.width).pavements.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)).toBe(true);
+      expect(pavements.some((r) => x > r.minX && x < r.maxX && z > r.minZ && z < r.maxZ)).toBe(true);
     }
   });
 
@@ -133,7 +140,10 @@ describe('Streets: pots and flower boxes', () => {
     const sills = parts.filter((p) => p.cell === 'plain' && p.size[0] === 1.6 && p.size[2] === 0.28);
     expect(boxes.length).toBeGreaterThan(0);
     expect(boxes.length).toBeLessThan(sills.length / 2);
-    for (const { x, y, z } of boxes) expect(sills.some((s) => Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
+    // Within the window's surround: its side posts stand 0.55 m either side of the window's middle.
+    expect(tables.streets.box.size[0] / 2).toBeLessThan(0.55);
+    const byTile = Map.groupBy(sills, (s) => tileOf(s.x, s.z).join());
+    for (const { x, y, z } of boxes) expect((byTile.get(tileOf(x, z).join()) ?? []).some((s) => Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
   });
 });
 
