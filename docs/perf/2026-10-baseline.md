@@ -1,4 +1,4 @@
-> **Decision (2026-10-25, owner):** despite the measurements below, the renderer moves to Three's `WebGPURenderer` to prepare for phase 3 graphics. The migration lands after the `?perf` harness so the switch is measured against this baseline; it landed with #28 within budget (see "WebGPURenderer switch (#28)" below). Other decisions: adaptive resolution between DPR 1.25 and 2 (start at 1.5 on touch devices), and sky-tinted distance fog at roughly 300–400 m together with sector culling.
+> **Decision (2026-10-25, owner):** despite the measurements below, the renderer moves to Three's `WebGPURenderer` to prepare for phase 3 graphics. The migration lands after the `?perf` harness so the switch is measured against this baseline; it landed with #28 within budget (see "WebGPURenderer switch (#28)" below). Other decisions: adaptive resolution between DPR 1.25 and 2, starting at 1.5 on touch devices (landed with #29, see "Adaptive resolution (#29)"), and sky-tinted distance fog at roughly 300–400 m together with sector culling.
 
 # Truck Sim: performance and architecture before phase 3
 
@@ -313,6 +313,45 @@ As before, the simulator uses the Mac's GPU. It shows the WebGL 2 backend holdin
 - *Bundle:* 922 KB minified / 259 KB gzip, against 664 / 173 KB. `three/webgpu` brings the node system; the classic `WebGLRenderer` is tree-shaken out.
 - *Programs:* about 40 against 5–6. WebGPURenderer counts one per shader stage and pipeline (see above), so the two counts aren't comparable.
 - *Device loss:* a lost GPU device or WebGL context now reloads the page. Neither backend restores itself, while `WebGLRenderer` did. The save survives the reload; an order in progress doesn't.
+
+## Adaptive resolution (#29)
+
+The pixel ratio now follows the GPU load (`src/resolution.js`, tunables in `tables.resolution`). Before, it was fixed at the device ratio capped at 2.
+
+**Behaviour:**
+- It starts at 1.5 on touch screens (`pointer: coarse`), and at the device ratio capped at 2 elsewhere.
+- It stays between 1.25 and 2, and never goes above the device ratio. On a DPR 1 screen it stays at 1.
+- Frames are judged in 3 s windows by their mean interval. Each interval counts as at most 50 ms, so a single stall, a pause or a hidden tab doesn't move the ratio.
+  - If a window's mean is over 18 ms, the ratio steps down 0.25.
+  - After two windows in a row at or under 17.2 ms, it steps up 0.25.
+  - Between those two thresholds it holds.
+- If a step up is taken back in the very next window, the next try needs twice as many good windows: 2, 4, 8 and so on, up to 32 (about 96 s). So a ratio the GPU can't hold isn't retried every few seconds.
+- The ratio changes at the start of a frame, just before that frame draws. The `?perf` overlay shows it as `dpr` and `buffer`.
+- *Why the mean, and not a share of slow frames:* the first version counted frames over 20 ms. Unloaded, Safari in the simulator misses 2–3% of frames at any ratio. Under load its intervals spread over 17–20 ms instead of snapping to 33 ms. At 1.75 under load it sat at a mean of 18.1–18.9 ms (about 53 fps) for 30 s, because few frames passed 20 ms. Unloaded, the window mean is 16.6–17.1 ms; overloaded, it is 17.5 ms and up.
+- *Limit:* the thresholds assume the browser can draw at 60 Hz. A 50 Hz screen, or iOS Low Power Mode at 30 fps, sits at 1.25.
+
+**How measured:** iPad (A16) simulator, iPadOS 27.0 Safari, landscape, `?perf&auto` from the dev server. The simulator uses the Mac's GPU and runs the WebGL 2 backend. Load came from a scratch knob, not in the repo: N transparent full-screen quads in front of the camera, switched on 30 s after load. The scene's own GPU cost is far too low to load the Mac's GPU, and this load scales with the pixel count, as phase-3 shading will. A scratch on-screen log recorded each 3 s window.
+
+**Simulator, ms mean frame interval per 3 s window:**
+
+| Load | Ratio over time | Mean before the load | Mean at the ratio it settles on |
+|---|---|---|---|
+| none | 1.5 at start, 1.75 at about 9 s, 2 at about 15 s, then holds | 16.7 | 16.6–16.7 at 2 |
+| 50 quads from 30 s | 2 → 1.75 → 1.5 within 6 s; tries 1.75 again after 6 s and 12 s, both taken back | 16.7 at 2; 20.6 in the first loaded window | 16.7–16.8 at 1.5 |
+| 60 quads from 30 s | 2 → 1.75 → 1.5 → 1.25 within 9 s | 16.7 at 2; 20.6–22.0 at 2 and 1.75 loaded | 16.9–18.7 at 1.25 (this load is beyond what 1.25 absorbs) |
+| 40 quads from 30 s, slow-share rule | holds 2 with 0–4% slow frames (mean 16.9–18.0) | 16.7 | – |
+
+**Hitches:** the frame after a change took 16–18 ms. In one run with five changes, up and down, under load, they took 17, 16, 17, 17 and 18 ms. A change resizes the drawing buffer and its depth and MSAA targets, then draws into them in the same frame, so no cleared or stretched frame shows.
+
+**GPU** (Chrome 155 headless on the M2, WebGPU, chase camera, uncapped as in #28, buffer 1180×820 times the ratio, ratio pinned by a scratch knob). Load average was 4–84 from other sessions, so read these as indicative:
+
+| Ratio | 2 | 1.75 | 1.5 | 1.25 |
+|---|---|---|---|---|
+| Pixels, share of ratio 2 | 100% | 77% | 56% | 39% |
+| Uncapped frame, median, plain scene | 0.63 ms | 0.54 ms | 0.56 ms | 0.86 ms |
+| Uncapped frame, median, 20 scratch quads | 3.56 ms | 2.42 ms | 1.96 ms | 1.36 ms |
+
+The plain scene is too light for the ratio to show: the uncapped frame is CPU-bound at about 0.6 ms. Under fill load, frame time falls with the pixel count. At 1.25 it costs 38% of ratio 2. That is in line with the phase-3 stress table above: 5.66 ms of GPU at DPR 2 and 3.30 ms at 1.5. Frame time on the real iPad remains for the owner's `?perf&auto` run. Watch the `dpr` value there.
 
 ## Files
 
