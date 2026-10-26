@@ -326,7 +326,7 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
   }
 }
 
-const newData = () => ({ position: [], uv: [], color: [], index: [] });
+export const newData = () => ({ position: [], uv: [], color: [], index: [] });
 
 function vertex(data, [x, y, z], [u, v], colour) {
   data.position.push(x, y, z);
@@ -335,14 +335,14 @@ function vertex(data, [x, y, z], [u, v], colour) {
 }
 
 // Two triangles, corners counter-clockwise seen from the front.
-function quad(data, corners, uvs, colours) {
+export function quad(data, corners, uvs, colours) {
   const first = data.position.length / 3;
   for (let i = 0; i < 4; i++) vertex(data, corners[i], uvs[i], colours[i]);
   data.index.push(first, first + 1, first + 2, first, first + 2, first + 3);
 }
 
 // Colours as bytes (four, as the GPU takes them), a quarter of the memory of floats.
-function toGeometry(data) {
+export function toGeometry(data) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.position, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.uv, 2));

@@ -39,5 +39,5 @@ ambient occlusion / roughness / metalness (`_arm`) maps.
 `public/basis/` is three.js's copy of the Basis Universal transcoder (Apache 2.0, https://github.com/BinomialLLC/basis_universal), served for its KTX2 loader.
 
 Everything else (code, the generated cars and their number plate, cab interior, dashboard, the truck's visual items,
-palette, city map, the procedural buildings and their painted window, door, shutter and sign pictures) is the
-project's own.
+palette, city map, the procedural buildings and their painted window, door, shutter and sign pictures, the skyline ring
+round the city with its domes, towers and arcades and its painted window picture) is the project's own.

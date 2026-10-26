@@ -11,6 +11,7 @@ import { planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets } from './streets.js';
+import { planSkyline, skylineMeshes, paintSkylineWindows } from './skyline.js';
 import assetInfo from './assetInfo.json';
 
 // CC0 kit models in public/models/, sky, ground and building textures in public/textures/ (see CREDITS.md); the textures are
@@ -197,7 +198,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return material;
   }
 
-  const ground = new THREE.Mesh(worldUVs(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2), tables.ground.open.repeat), groundMaterial(tables.ground.open));
+  // Centred on the map, so it reaches under the skyline ring on every side.
+  const groundPlane = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((map.cols * map.tileSize) / 2, 0, (map.rows * map.tileSize) / 2);
+  const ground = new THREE.Mesh(worldUVs(groundPlane, tables.ground.open.repeat), groundMaterial(tables.ground.open));
   ground.receiveShadow = true;
   ground.renderOrder = 1; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
   scene.add(ground);
@@ -254,6 +257,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.add(...buildingParts.meshes);
     streets.dress(plan);
   }));
+  // The skyline ring outside the map (skyline.js): two meshes, its roofs in the buildings' roof material.
+  const skylineWalls = new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 });
+  loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, { walls: skylineWalls, roof: buildingMaterials.roof }))));
 
   // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
   // covered car. Drawn with the AI cars (drawCars).

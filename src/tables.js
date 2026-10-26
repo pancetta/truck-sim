@@ -243,6 +243,39 @@ export const buildings = {
   dock: { height: 3.8, depth: 0.5, edge: 1.1, door: 0x8a8d8f },
 };
 
+// The skyline ring (skyline.js): background buildings round the city, outside the map's edge, which stays the drivable
+// boundary. Only for the view: no colliders, no shadows. The haze (lighting.haze, camera.fog) fades it into the sky,
+// and the camera draws nothing past camera.fog[1], so any of the ring further than that from the city never shows.
+// Plain extrusions with a painted window picture and hipped roofs in the buildings' roof texture, with landmarks of our
+// own among them. The same `seed` gives the same ring.
+export const skyline = {
+  seed: 42,
+  gap: 14, // m from the map's edge to the nearest ring walls: a street behind the city's outer row of buildings
+  depth: 300, // m the ring reaches out past that
+  block: 44, // m, about; the ring is cut into blocks of about this size, `street` m apart
+  street: 12, // m
+  width: [10, 22], // m, buildings along a block's longer side, in two rows back to back
+  floors: [3, 7], // storeys; a little taller than the city's (buildings.floors), so the ring shows over its outer row
+  floor: 3.5, // m per storey, a row of painted windows each
+  bay: 3.2, // m per painted window, about
+  roofPitch: 0.45, // m of rise per m across the hipped roofs
+  tints: buildings.tints, // walls, times `brightness`
+  brightness: [0.75, 1],
+  stone: buildings.stone, // the landmarks
+  // A block each, taken in turn by the north, east, south and west sides, among the blocks within `near` m of the map
+  // (the row nearest it), at the end of a street running out to the edge.
+  landmarks: ['dome', 'tower', 'arcade', 'tower', 'tower', 'dome', 'dome', 'arcade'],
+  near: 60, // m
+  // A dome on a drum (radius in m, the lantern's side a share of it, under a pyramid roof `pitch` steep) over a base of
+  // `floors` storeys.
+  dome: { floors: 5, drum: 8, radius: [10, 14], lantern: 0.25, pitch: 1.6 },
+  // A bell tower over the block's buildings: a stone shaft `side` m square, the belfry's openings, a steep pyramid roof.
+  tower: { side: 7, height: [44, 58], belfry: 6, pitch: 1.6 },
+  // A block of `floors` storeys with an open arcade on its roof: piers `pier` m square every `pitch` m round the edge,
+  // `height` m tall, under a slab `slab` m thick and a hipped roof.
+  arcade: { floors: 5, height: 6, pitch: 4.5, pier: 1, slab: 0.8 },
+};
+
 export const minimap = {
   tile: 3, // CSS px per map tile at full size; the minimap shrinks on short screens
   truckSize: 2, // map tiles from the truck marker's centre to its tip
