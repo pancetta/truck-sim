@@ -636,8 +636,19 @@ The Kenney sedan, SUV and van are replaced by cars generated in `src/vehicles.js
 - *Covered car:* the pipeline's meshopt output stores positions as normalized int16, which can't hold metres once the fit is baked in, so the renderer converts them to floats first. Its five meshes share one material and are merged into one per detail level.
 - *Programs:* 35 → 54. The added ones are the paint, the details and the covered car's materials, each for the view and the shadow, compiled during the warm-up frame.
 
+**On top of #39** (rebased onto `3241507`, the procedural buildings; re-measured back to back, load average 7–8):
+
+| | main with #39 | #41 with #39 |
+|---|---|---|
+| Chrome, 8 cars: render CPU / GPU / triangles | 1.57 / 2.89 / 1.79; 6.69; 175k | 2.12 / 3.30 / 2.18; 7.95; 172k |
+| Chrome, 100 cars: render CPU / GPU / triangles | 2.05 / 2.69 / 1.97; 8.05; 317k | 1.62 / 2.64 / 1.80; 5.17; 205k |
+| Simulator, 100 cars: frame | 24.26 / 31.90 / 24.90 at ratio 1.25 | 18.08 / 21.72 / 18.63 at ratio 1.25 |
+| Simulator, 100 cars: render / triangles | 2.52 / 3.04 / 2.55; 308k | 1.92 / 2.66 / 1.99; 187k |
+
+With #39's buildings, main itself misses 60 fps in the 100-car stress run on the simulator. #41 makes that run faster, because the 100 Kenney cars cost more than the generated ones' far detail level, but it still runs at 18 ms rather than 16.7.
+
 **Verdict:**
-- *60 fps:* holds in the cab view in Chrome and in the simulator, with 8 cars and with 100 at the stress setting.
+- *60 fps:* holds in the cab view in Chrome, with 8 cars and with 100. In the simulator it holds with 8 cars. With 100 cars it held before #39, but not on top of it: 18.1 ms per frame, down from main's 24.3 ms. #39's buildings are the larger cost there (see its section).
 - *Triangles:* down from 198k to 85k at 100 cars, because far cars use 14×12-section bodies.
 - *Real iPad:* still unmeasured. The simulator says nothing about the A16's GPU speed.
 
