@@ -96,8 +96,12 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   const { pavements, kerbs } = pavementLayout(map, pavement.width);
 
   // Pavement tops, a quad per cell with UVs from world x and z so the texture runs on across cells. Until its textures
-  // come, the material shows placeholders of the same kind, so swapping them in doesn't rebuild its shader.
-  const pixel = (r, g, b, colour) => Object.assign(new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1), { wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, colorSpace: colour ? THREE.SRGBColorSpace : THREE.NoColorSpace, needsUpdate: true });
+  // come, the material shows placeholders sampled alike (wrapping and filters are part of three's shader key), so
+  // swapping them in doesn't rebuild its shader.
+  const pixel = (r, g, b, colour) => Object.assign(new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1), {
+    wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, magFilter: THREE.LinearFilter, minFilter: THREE.LinearMipmapLinearFilter,
+    colorSpace: colour ? THREE.SRGBColorSpace : THREE.NoColorSpace, needsUpdate: true,
+  });
   const pavers = new THREE.MeshStandardMaterial({ map: pixel(170, 165, 155, true), normalMap: pixel(128, 128, 255), aoMap: pixel(255, 230, 0), roughnessMap: pixel(255, 230, 0) });
   const y = pavement.height;
   const top = quads(pavements.map((r) => [[[r.minX, y, r.minZ], [r.minX, y, r.maxZ], [r.maxX, y, r.maxZ], [r.maxX, y, r.minZ]], [0, 1, 0]]), pavement.repeat);
@@ -119,7 +123,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   // mesh, filled every frame with the lanterns in view by distance (update()). The glass part is the one to light up at
   // night (#52).
   const spots = lanternSpots(map, lantern);
-  const lanterns = []; // { near, far } per part
+  const lanterns = []; // { near, far } per part: the street lights as one set
   const lanternBounds = new THREE.Sphere(new THREE.Vector3(), 1.2);
   const partMatrix = new THREE.Matrix4();
   const spotMatrices = spots.map(({ x, z, angle }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, lantern.height, z));
@@ -251,7 +255,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     });
   }
 
-  return { load, update, lanterns };
+  return { load, update };
 }
 
 const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place, as in renderer.js
