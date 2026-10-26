@@ -269,6 +269,7 @@ export const camera = {
   rearEye: [0, 3.6, -3.95],
   rearLook: [0, 0, -6],
   rearFov: 70, // degrees, vertical; wide, as reversing cameras are
+  rearFar: 60, // m it draws to: it looks down, and the short far plane leaves most of the city out of its draw
   rearHold: 1.5, // s
   // m: sky-coloured distance fog starts at the first and is full at the second, where the camera stops drawing
   fog: [150, 350],

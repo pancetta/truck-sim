@@ -312,9 +312,11 @@ export function createTraffic(tables, map, random) {
         const entering = g && g !== groupOf(car.route[i - 1]);
         dist += laneLength(p);
         if (!entering || short > t.giveWay) continue;
-        // A car waiting for room past the crossing doesn't hold it up for the others.
+        // A car waiting for room past the crossing, or behind the truck, doesn't hold it up for the others.
         if (!stoppable(car, short)) hold(g, p.from);
-        else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck))) arrive(g, p.from, car, short);
+        else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOf(car, truckBox) - size.length / 2 >= short) {
+          arrive(g, p.from, car, short);
+        }
       }
     }
 

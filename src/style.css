@@ -27,7 +27,7 @@ body {
   top: max(24px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  width: max(240px, 30vw);
+  width: max(200px, 30vw);
   aspect-ratio: 16 / 10;
   border: 3px solid #1d1f24;
   border-radius: 6px;

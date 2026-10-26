@@ -1728,6 +1728,19 @@ describe('Sim: right of way and collisions', () => {
     expect(entered.has(a)).toBe(true);
   });
 
+  test('a truck waiting at the crossing lets the car on its left go, even with a car queued behind it', () => {
+    // #43 QA: the car behind can't go first, so it mustn't hold the crossing for its approach.
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 4 * TILE + 3 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    const behind = addCar(sim, 1, through[WEST]);
+    const a = addCar(sim, 2, through[NORTH]);
+
+    const { entered } = watch(sim, [a, behind], 10);
+
+    expect(entered.has(a)).toBe(true);
+    expect(entered.has(behind)).toBe(false);
+  });
+
   test('with the truck waiting on one approach, three cars arriving at once all get through', () => {
     const sim = crossSim();
     Object.assign(sim.state.truck, { x: 3.5 * TILE + laneOffset, z: 4 * TILE + 5 + tables.vehicle.length / 2, heading: NORTH });

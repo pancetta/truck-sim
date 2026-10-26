@@ -443,7 +443,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // after, the scene from the roof camera goes into a small render target, then onto the inset's rectangle,
   // mirrored like a real one. The rectangle is the inside of the `.rear-inset` frame (style.css), measured when it
   // shows and on resize.
-  const rearCamera = new THREE.PerspectiveCamera(cam.rearFov, 1, 0.1, cam.fog[1]);
+  const rearCamera = new THREE.PerspectiveCamera(cam.rearFov, 1, 0.1, cam.rearFar);
   const rearTarget = new THREE.RenderTarget(1, 1);
   const insetScene = new THREE.Scene();
   const insetCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -569,9 +569,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
     pipeline.render(scene, camera);
     if (rearTime) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
+      // The truck from outside, also from the cab, so its back edge shows at the bottom as a guide.
+      exterior.visible = parts.exterior.visible = true;
+      interior.visible = false;
       renderer.setRenderTarget(rearTarget);
       renderer.render(scene, rearCamera);
       renderer.setRenderTarget(null);
+      exterior.visible = parts.exterior.visible = !inCab;
+      interior.visible = inCab;
       const autoClear = renderer.autoClear;
       renderer.autoClear = false;
       renderer.setViewport(inset.x, inset.y, inset.width, inset.height);
