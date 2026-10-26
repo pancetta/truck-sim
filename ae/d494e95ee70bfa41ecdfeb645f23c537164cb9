@@ -1,0 +1,21 @@
+README.md
+  s_c34b2924f7d147::t_1c3cd603fc7c85 51-52
+docs/adr/0001-realistic-look.md
+  s_c34b2924f7d147::t_908a0d6d03e607 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aed494e95ee70bfa41ecdfeb645f23c537164cb9",
+  "prompts": {},
+  "sessions": {
+    "s_c34b2924f7d147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a56e64-1812-43df-b206-48bdde1707db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
