@@ -1,0 +1,49 @@
+src/sim/sim.js
+  s_aaf842448a8f2c::t_4ad4f3e0391d46 157,203-207,210-214
+src/tables.js
+  s_aaf842448a8f2c::t_eec52dc6b6bbe6 143-148,151-152,154-157
+  s_aaf842448a8f2c::t_51a91be76a548a 149-150,153
+  s_aaf842448a8f2c::t_974a406cf29720 164-165,172,174-176
+src/sim/map.js
+  s_aaf842448a8f2c::t_51a91be76a548a 81-82,85-95,97-104,162
+  s_aaf842448a8f2c::t_bec22a2eadfa62 83-84,96
+src/renderer.js
+  s_aaf842448a8f2c::t_074df24f8cd8cc 164-165
+  s_aaf842448a8f2c::t_b09b309c6976af 257-291
+src/style.css
+  s_aaf842448a8f2c::t_b6cb386a19d0f9 157-160
+README.md
+  s_aaf842448a8f2c::t_f0921d09a8581c 12-14
+src/sim/traffic.bench.test.js
+  s_aaf842448a8f2c::t_2fe97bcf993c4d 38,47-48,53
+src/sim/traffic.js
+  s_aaf842448a8f2c::t_f0921d09a8581c 10
+  s_aaf842448a8f2c::t_974a406cf29720 16,95-98,433,437
+  s_aaf842448a8f2c::t_da2007ffce19a5 58-59,61-64,316-318,345-347,428,442
+  s_aaf842448a8f2c::t_0f0fc06ea01ace 429-430
+  s_aaf842448a8f2c::t_1f368e436759df 446
+src/sim/sim.test.js
+  s_aaf842448a8f2c::t_f37eb504bb398f 6,1546-1561,1998-2076
+  s_aaf842448a8f2c::t_bdbea3731fc885 1294-1306
+  s_aaf842448a8f2c::t_1f368e436759df 1936-1937
+  s_aaf842448a8f2c::t_8045c20755df91 361-379,1880,1883,1889,1891,1894-1935,1938-1941
+  s_aaf842448a8f2c::t_2c134e7a028769 2077
+src/hud.js
+  s_aaf842448a8f2c::t_b6cb386a19d0f9 1,28-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7b5b224cced018fff7f90a6128ee2d8a92c2795",
+  "prompts": {},
+  "sessions": {
+    "s_aaf842448a8f2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7858631f-92f2-4cf9-82f8-dfb4adb2cbd9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
