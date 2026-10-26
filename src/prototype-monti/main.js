@@ -8,6 +8,7 @@ import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 
 const BASE = `${import.meta.env.BASE_URL}prototype-monti/`;
 const VARIANTS = [
@@ -23,6 +24,16 @@ const toXZ = (p) => [(p.lon - LON0) * M_LON, -(p.lat - LAT0) * M_LAT];
 const GROUND_FLOOR = 4.5; // m
 const FLOOR = 3.5; // m
 const WALL_TINTS = ['#d9a35b', '#c8744a', '#e3c58f', '#e8d9b8', '#b8573a', '#d8a48c', '#cf9a6a'];
+// Poly Haven wall textures: [name, takes a palette tint, metres per repeat]. Index 0 also dresses the kerbs.
+const WALL_TEXTURES = [
+  ['painted_plaster_wall', true, 3],
+  ['damaged_plaster', true, 3],
+  ['grey_plaster_02', true, 3],
+  ['worn_plaster_wall', true, 3],
+  ['clay_plaster', false, 3],
+  ['red_brick_03', false, 2],
+];
+const GRIME = 2.5; // m of darkening at the foot of each wall
 const SHUTTERS = ['#3f5b3a', '#4d6b45', '#6b4a2e', '#55603c', '#7a5a3a'];
 const STONE = '#e6dcc6';
 const ROAD_WIDTH = { secondary: 12, tertiary: 10, residential: 7, unclassified: 7, living_street: 6, pedestrian: 6, service: 4 };
@@ -37,12 +48,13 @@ const osm = await (await fetch(`${BASE}monti-osm.json`)).json();
 
 // ---- geometry -------------------------------------------------------------------------------------------------
 const newData = () => ({ pos: [], uv: [], col: [] });
-// Pushes one triangle of [x, y, z, u, v] corners.
+// Pushes one triangle of [x, y, z, u, v] corners; a corner's optional sixth item overrides `color` there.
 function tri(d, a, b, c, color) {
-  for (const [x, y, z, u, v] of [a, b, c]) {
+  for (const [x, y, z, u, v, own] of [a, b, c]) {
     d.pos.push(x, y, z);
     d.uv.push(u, v);
-    if (color) d.col.push(color.r, color.g, color.b);
+    const col = own ?? color;
+    if (col) d.col.push(col.r, col.g, col.b);
   }
 }
 function toGeometry(d) {
@@ -74,7 +86,7 @@ for (const el of buildingEls) {
   }
 }
 
-const walls = newData();
+const walls = WALL_TEXTURES.map(() => newData());
 const roofs = newData();
 const parts = { glass: [], frame: [], sill: [], shutter: [], cornice: [], plinth: [], bollard: [], cap: [] };
 const facades = []; // outside walls, for the wall lanterns
@@ -95,19 +107,33 @@ for (const el of buildingEls) {
   const church = t.building === 'church' || t.building === 'chapel';
   const levels = church ? 0 : Math.max(1, Math.round(parseFloat(t['building:levels']) || 3 + Math.floor(rnd(el.id, 1) * 3)));
   const height = parseFloat(t.height) || (church ? 20 : GROUND_FLOOR + (levels - 1) * FLOOR + 1);
-  const tint = linear(pick(WALL_TINTS, el.id, 2)).multiplyScalar(0.85 + rnd(el.id, 3) * 0.2);
+  // One in ten exposed brick, some untinted clay plaster, the rest a tinted plaster at random.
+  const r = rnd(el.id, 8);
+  const texture = r < 0.1 ? 5 : r < 0.25 ? 4 : Math.floor(rnd(el.id, 9) * 4);
+  const [, tinted, tile] = WALL_TEXTURES[texture];
+  const brightness = 0.85 + rnd(el.id, 3) * 0.2;
+  const tint = tinted ? linear(pick(WALL_TINTS, el.id, 2)).multiplyScalar(brightness) : new THREE.Color(1, 1, 1).multiplyScalar(brightness);
+  const grimy = tint.clone().multiplyScalar(0.62);
   const shutter = linear(pick(SHUTTERS, el.id, 4));
   const stone = linear(STONE);
 
-  let along0 = 0;
+  // A random texture offset per building, so neighbours' plaster doesn't line up; walls split at GRIME so the
+  // darkening fades out over the bottom band only.
+  let along0 = rnd(el.id, 10) * 20;
+  const v0 = rnd(el.id, 11) * 20;
+  const bands = height > GRIME ? [[0, GRIME, grimy, tint], [GRIME, height, tint, tint]] : [[0, height, grimy, tint]];
   ring.forEach((p, i) => {
     const q = ring[(i + 1) % ring.length];
     const [dx, dz] = [q[0] - p[0], q[1] - p[1]];
     const L = Math.hypot(dx, dz);
-    const [u0, u1, v1] = [along0 / 3, (along0 + L) / 3, height / 3];
+    const [u0, u1] = [along0 / tile, (along0 + L) / tile];
     along0 += L;
-    tri(walls, [p[0], 0, p[1], u0, 0], [q[0], 0, q[1], u1, 0], [q[0], height, q[1], u1, v1], tint);
-    tri(walls, [p[0], 0, p[1], u0, 0], [q[0], height, q[1], u1, v1], [p[0], height, p[1], u0, v1], tint);
+    for (const [y0, y1, c0, c1] of bands) {
+      const [va, vb] = [v0 + y0 / tile, v0 + y1 / tile];
+      const [p0, q0, q1, p1] = [[p[0], y0, p[1], u0, va, c0], [q[0], y0, q[1], u1, va, c0], [q[0], y1, q[1], u1, vb, c1], [p[0], y1, p[1], u0, vb, c1]];
+      tri(walls[texture], p0, q0, q1);
+      tri(walls[texture], p0, q1, p1);
+    }
     if (edgeUse.get(edgeKey(nodes[i], nodes[(i + 1) % nodes.length])) > 1) return partyEdges++;
     if (L < 1.5) return;
 
@@ -153,8 +179,8 @@ function ribbon(d, pts, w, y, tile, kerb) {
   // Vertical face from a to b, facing left of a→b (the walls' winding).
   const side = (a, b) => {
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]) / 3;
-    tri(walls, [a[0], 0, a[1], 0, 0], [b[0], 0, b[1], L, 0], [b[0], y, b[1], L, y / 3], kerb);
-    tri(walls, [a[0], 0, a[1], 0, 0], [b[0], y, b[1], L, y / 3], [a[0], y, a[1], 0, y / 3], kerb);
+    tri(walls[0], [a[0], 0, a[1], 0, 0], [b[0], 0, b[1], L, 0], [b[0], y, b[1], L, y / 3], kerb);
+    tri(walls[0], [a[0], 0, a[1], 0, 0], [b[0], y, b[1], L, y / 3], [a[0], y, a[1], 0, y / 3], kerb);
   };
   pts.forEach(([x, z], i) => {
     const ring = Array.from({ length: 12 }, (_, s) => [x + Math.cos((s * Math.PI) / 6) * w, z + Math.sin((s * Math.PI) / 6) * w]);
@@ -267,9 +293,9 @@ async function pbr(name, extra = {}) {
 const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
 const gltfLoader = new GLTFLoader();
 const model = (id) => gltfLoader.loadAsync(`${BASE}models/${id}/${id}_1k.gltf`);
-const [skyHdr, wallM, roofM, groundM, asphaltM, grassM, paversM, treeTex, wallLampModel, poleLampModel, binModel] = await Promise.all([
+const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTex, wallLampModel, poleLampModel, binModel] = await Promise.all([
   new HDRLoader().loadAsync(`${BASE}sky_2k.hdr`),
-  pbr('painted_plaster_wall', { vertexColors: true }),
+  Promise.all(WALL_TEXTURES.map(([name]) => pbr(name, { vertexColors: true }))),
   pbr('clay_roof_tiles_02'),
   pbr('cobblestone_square'),
   pbr('asphalt_02'),
@@ -290,7 +316,8 @@ function add(mesh, A, B) {
   scene.add(mesh);
   looks.push({ mesh, A, B });
 }
-add(new THREE.Mesh(toGeometry(walls), wallM), lambert('#ffffff', { vertexColors: true, flatShading: true }), wallM);
+const flatWalls = lambert('#ffffff', { vertexColors: true, flatShading: true });
+walls.forEach((d, k) => add(new THREE.Mesh(toGeometry(d), wallMs[k]), flatWalls, wallMs[k]));
 add(new THREE.Mesh(toGeometry(roofs), roofM), lambert('#b5603e'), roofM);
 add(new THREE.Mesh(toGeometry(groundData), groundM), lambert('#9a968e'), groundM);
 add(new THREE.Mesh(toGeometry(asphaltData), asphaltM), lambert('#4a4d55'), asphaltM);
@@ -356,34 +383,63 @@ treeMesh.castShadow = true; // not receiving: the crossed quads shadowed each ot
 scene.add(treeMesh);
 looks.push({ mesh: treeMesh, A: new THREE.MeshLambertMaterial(treeLook), B: treeB });
 
-// A Poly Haven model, one InstancedMesh per sub-mesh, standing on y = 0 at each placement. `wall`: its back at
-// z = 0 after `turn`, so it sits on a facade whose outward normal is the placement's local +z.
-function instanceModel(gltf, placements, { turn = 0, wall = false } = {}) {
+// A Poly Haven model as instances standing on y = 0 at each placement. `wall`: its back at z = 0, so it sits on a
+// facade whose outward normal is the placement's local +z. Each sub-mesh gets a near and a far InstancedMesh:
+// full detail within LOD_NEAR metres of the camera, a meshoptimizer-simplified copy (`keep` of the vertices)
+// beyond; updateLods() re-sorts the instances between them.
+const LOD_NEAR = 25; // m
+const simplifier = new SimplifyModifier();
+const lodModels = [];
+let fullTris = 0;
+let lowTris = 0;
+async function instanceModel(gltf, placements, { wall = false, keep = 0.05 } = {}) {
   const root = gltf.scene;
-  root.rotation.y = turn;
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(root);
   const c = bounds.getCenter(new THREE.Vector3());
   const base = new THREE.Matrix4().makeTranslation(-c.x, -bounds.min.y, wall ? -bounds.min.z : -c.z);
-  root.traverse((o) => {
-    if (!o.isMesh) return;
-    const mesh = new THREE.InstancedMesh(o.geometry, o.material, placements.length);
-    placements.forEach((p, i) =>
-      mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(p.x, p.y, p.z), quat.setFromAxisAngle(yAxis, p.rot), new THREE.Vector3(1, 1, 1)).multiply(base).multiply(o.matrixWorld)),
+  const meshes = [];
+  root.traverse((o) => o.isMesh && meshes.push(o));
+  const parts = [];
+  for (const o of meshes) {
+    const low = await simplifier.modify(o.geometry, Math.floor(o.geometry.attributes.position.count * (1 - keep)));
+    const tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+    fullTris += tris(o.geometry);
+    lowTris += tris(low);
+    const matrices = placements.map((p) =>
+      new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y, p.z), quat.setFromAxisAngle(yAxis, p.rot), new THREE.Vector3(1, 1, 1)).multiply(base).multiply(o.matrixWorld),
     );
-    // shortcut: no shadows from these film-grade meshes (20k triangles a lantern), real use needs a decimated LOD.
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    looks.push({ mesh, A: o.material, B: o.material });
-  });
-  return bounds.getSize(new THREE.Vector3());
+    const [near, far] = [o.geometry, low].map((g) => {
+      const mesh = new THREE.InstancedMesh(g, o.material, placements.length);
+      mesh.frustumCulled = false; // instances move between near and far, so the bounds would go stale
+      mesh.castShadow = mesh.receiveShadow = true;
+      scene.add(mesh);
+      looks.push({ mesh, A: o.material, B: o.material });
+      return mesh;
+    });
+    parts.push({ near, far, matrices });
+  }
+  lodModels.push({ placements, parts });
 }
-instanceModel(wallLampModel, wallLamps, { wall: true });
+let lodOn = !new URLSearchParams(location.search).has('nolod');
+function updateLods(eye) {
+  for (const { placements, parts } of lodModels) {
+    const close = placements.map((p) => !lodOn || Math.hypot(p.x - eye.x, p.z - eye.z) < LOD_NEAR);
+    for (const { near, far, matrices } of parts) {
+      let [n, f] = [0, 0];
+      matrices.forEach((m, i) => (close[i] ? near.setMatrixAt(n++, m) : far.setMatrixAt(f++, m)));
+      [near.count, far.count] = [n, f];
+      near.instanceMatrix.needsUpdate = far.instanceMatrix.needsUpdate = true;
+    }
+  }
+}
 const poleLamps = atNodes(nodesOf('highway', 'street_lamp'));
 const bins = atNodes(nodesOf('amenity', 'waste_basket'));
-instanceModel(poleLampModel, poleLamps);
-instanceModel(binModel, bins);
-const propsLine = `trees ${trees.length}  lanterns ${wallLamps.length}+${poleLamps.length}  bins ${bins.length}`;
+await instanceModel(wallLampModel, wallLamps, { wall: true });
+await instanceModel(poleLampModel, poleLamps);
+await instanceModel(binModel, bins);
+const propsLine = `trees ${trees.length}  lanterns ${wallLamps.length}+${poleLamps.length}  bins ${bins.length}\n` +
+  `prop meshes ${(fullTris / 1000).toFixed(1)}k → ${(lowTris / 1000).toFixed(1)}k tris beyond ${LOD_NEAR} m`;
 
 // ---- lights, renderer, post -----------------------------------------------------------------------------------
 const hemi = new THREE.HemisphereLight('#dbe8ff', '#8a7d6a', 1.2);
@@ -397,7 +453,8 @@ scene.add(hemi, sun, sun.target);
 
 const canvas = document.getElementById('scene');
 const forceWebGL = new URLSearchParams(location.search).has('webgl');
-const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL });
+// trackTimestamp: GPU time per frame where the browser offers timestamp queries.
+const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL, trackTimestamp: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -508,6 +565,7 @@ for (const b of document.querySelectorAll('#views button')) b.onclick = () => se
 addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft') setVariant(-1);
   if (e.key === 'ArrowRight') setVariant(1);
+  if (e.key === 'l') lodOn = !lodOn; // compare with all props at full detail
 });
 applyVariant();
 setView(view);
@@ -518,6 +576,7 @@ let last = performance.now();
 let driveS = 160;
 let driveDir = 1;
 let frames = 0;
+let gpuMs = null;
 const backend = renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2';
 
 renderer.setAnimationLoop(() => {
@@ -541,16 +600,21 @@ renderer.setAnimationLoop(() => {
   sun.target.position.set(Math.round(focus.x), 0, Math.round(focus.z));
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 300);
 
+  if (frames % 10 === 0) updateLods(camera.position);
   renderer.info.reset();
   if (variant === 'C') pipeline.render();
   else renderer.render(scene, camera);
+  renderer.resolveTimestampsAsync('render').then((ms) => {
+    if (ms) gpuMs = ms;
+  });
 
   if (++frames % 10 === 0) {
     const avg = frameMs.reduce((a, b) => a + b, 0) / frameMs.length;
     const { drawCalls, triangles } = renderer.info.render;
     statsEl.textContent =
       `PROTOTYPE  ${backend}  ${Math.round(innerWidth * renderer.getPixelRatio())}×${Math.round(innerHeight * renderer.getPixelRatio())}\n` +
-      `frame ${avg.toFixed(1)} ms (${Math.round(1000 / avg)} fps)\n` +
+      `frame ${avg.toFixed(1)} ms (${Math.round(1000 / avg)} fps)  gpu ${gpuMs ? gpuMs.toFixed(1) + ' ms' : 'n/a'}\n` +
+      `LOD ${lodOn ? 'on' : 'off'} (L toggles)\n` +
       `draws ${drawCalls}  tris ${(triangles / 1e6).toFixed(2)} M\n` +
       `buildings ${buildingEls.length}  detail parts ${instances.toLocaleString('en')}\n` +
       `party walls skipped ${partyEdges}\n${propsLine}`;
