@@ -803,8 +803,15 @@ export function createRenderer(canvas, tables, map, onProgress) {
     for (const car of cars) drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
     for (const mesh of carMeshes) {
       mesh.visible = warmCars || mesh.count > 0;
+      // Only the instances in use go up to the GPU.
+      mesh.instanceMatrix.clearUpdateRanges();
+      mesh.instanceMatrix.addUpdateRange(0, mesh.count * 16);
       mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      if (mesh.instanceColor) {
+        mesh.instanceColor.clearUpdateRanges();
+        mesh.instanceColor.addUpdateRange(0, mesh.count * 3);
+        mesh.instanceColor.needsUpdate = true;
+      }
     }
     warmCars = false;
   }
@@ -839,8 +846,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     warmCars = true;
   }).catch(console.error);
 
-  // The covered car's meshes as car meshes, scaled into the car footprint and set on the ground (it is modelled
-  // lengthwise along z).
+  // The covered car's meshes (cover and wheels, all one material) merged into one car mesh, scaled into the car
+  // footprint and set on the ground (it is modelled lengthwise along z).
   function coverMeshes(gltf, shadow) {
     gltf.scene.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(gltf.scene);
@@ -848,9 +855,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const centre = bounds.getCenter(new THREE.Vector3());
     const s = Math.min(city.obstacles.car.length / size.z, city.obstacles.car.width / size.x);
     const fit = new THREE.Matrix4().makeScale(s, s, s).multiply(new THREE.Matrix4().makeTranslation(-centre.x, -bounds.min.y, -centre.z));
-    const meshes = [];
+    const parts = [];
+    let material;
     gltf.scene.traverse((o) => {
       if (!o.isMesh) return;
+      material = o.material;
       // The pipeline quantizes the attributes into normalized integers, which can't hold metres: floats first.
       const geometry = new THREE.BufferGeometry().setIndex(o.geometry.index);
       for (const [name, a] of Object.entries(o.geometry.attributes)) {
@@ -858,9 +867,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
         for (let i = 0; i < a.count; i++) for (let k = 0; k < a.itemSize; k++) floats[i * a.itemSize + k] = a.getComponent(i, k);
         geometry.setAttribute(name, new THREE.BufferAttribute(floats, a.itemSize));
       }
-      meshes.push(carMesh(geometry.applyMatrix4(fit.clone().multiply(o.matrixWorld)), o.material, shadow));
+      parts.push(geometry.applyMatrix4(fit.clone().multiply(o.matrixWorld)));
     });
-    return meshes;
+    return [carMesh(mergeGeometries(parts), material, shadow)];
   }
 
   return { render, toggleCamera, ready, renderer };
