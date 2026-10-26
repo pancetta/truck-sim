@@ -605,6 +605,42 @@ The Kenney building models give way to procedural buildings (`src/buildings.js`,
   - the walls' full PBR maps.
 - *Budget:* the download budget check passes, at 7.3 of 12 MB. Render CPU is up 0.3–0.5 ms in the cab view.
 
+## Procedural vehicles (#41)
+
+The Kenney sedan, SUV and van are replaced by cars generated in `src/vehicles.js` from `tables.vehicles`: a hatch, a sedan and a van, all fitted to `city.obstacles.car`. Each has a painted body and a details mesh, at a near and a far detail level. AI cars and the 14 parked cars share one instanced mesh per kind, detail level and part. `drawCars` culls and fills them each frame. Two parked spots get Poly Haven's `covered_car` (579 KB near, 114 KB far), which loads after the first frame. `public/` is now 6.4 MB of the 12 MB budget.
+
+**How measured:** `?perf&auto` in the cab view. *Before* is main at `324a938`, *after* is this change. *100 cars* is a scratch copy with every rank tier at 100 cars and the spawn ring at 45–400 m, as for #37. Chrome 155 headless on the M2, `apple metal-3` (WebGPU), 1180×820 at DPR 2, vsync, load average 4–6. The iPad (A16) simulator ran Safari on the WebGL 2 backend, in landscape, with the window read about 60 s after load. The machine was shared with other sessions, so the simulator's numbers move by ±2 ms between runs; before and after were run back to back.
+
+**Chrome** (ms, median / p95 / mean; GPU is the mean of the timestamp queries at vsync):
+
+| | before | after | before, 100 cars | after, 100 cars |
+|---|---|---|---|---|
+| Render CPU | 1.69 / 2.83 / 1.89 | 2.12 / 2.79 / 1.90 | 2.08 / 2.59 / 1.98 | 2.21 / 2.66 / 2.03 |
+| GPU at vsync | 6.68 | 4.82 | 4.63 | 4.77 |
+| Draw calls / triangles | 472 / 63k | 477 / 60k | 456 / 198k | 460 / 85k |
+| Programs | 35 | 54 | 35 | 54 |
+| Frames over 20 ms in 10 s | 0 | 0 | 0 | 0 |
+
+**iPad (A16) simulator** (frame and render in ms, median / p95 / mean):
+
+| | before | after |
+|---|---|---|
+| Frame, 8 cars | 16.66 mean (#38) | 16.68 / 18.98 / 16.87 at ratio 2 |
+| Render, 8 cars | 2.21 mean (#38) | 2.18 / 2.58 / 2.17 |
+| Frame, 100 cars | 16.66 / 18.02 / 16.83 at ratio 1.75 | 16.72 / 18.92 / 17.00 at ratio 2 |
+| Render, 100 cars | 2.32 / 3.20 / 2.39 | 2.48 / 2.98 / 2.51 |
+
+**Found on the way:**
+- *Car shadows:* the first version let every car cast a shadow. With 100 cars the simulator then ran 20–23 ms per frame at ratio 1.25, against 16.7 ms on main. With no car shadows it was back at main's numbers. Now only the near detail level (within `vehicles.near`, 25 m of the truck) casts shadows. Cars beyond that stand without one, which haze and distance hide.
+- *First sight of a kind:* the first frame a covered car came into view stalled for 130–180 ms in Chrome; `compileAsync` and `initTexture` didn't help. `drawCars` now leaves every car mesh visible, with no instances, for one frame after loading. three then sets up its shaders and textures for the view and the shadow but draws nothing, so the cost lands in the first half-second.
+- *Covered car:* the pipeline's meshopt output stores positions as normalized int16, which can't hold metres once the fit is baked in, so the renderer converts them to floats first. Its five meshes share one material and are merged into one per detail level.
+- *Programs:* 35 → 54. The added ones are the paint, the details and the covered car's materials, each for the view and the shadow, compiled during the warm-up frame.
+
+**Verdict:**
+- *60 fps:* holds in the cab view in Chrome and in the simulator, with 8 cars and with 100 at the stress setting.
+- *Triangles:* down from 198k to 85k at 100 cars, because far cars use 14×12-section bodies.
+- *Real iPad:* still unmeasured. The simulator says nothing about the A16's GPU speed.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
