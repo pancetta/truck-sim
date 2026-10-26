@@ -1,0 +1,19 @@
+docs/perf/2026-10-baseline.md
+  s_3ef6b943e3bd9f::t_1160ce21f188c6 560-607
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3241507a3cddaa180a675742c6aaae071d5dca3e",
+  "prompts": {},
+  "sessions": {
+    "s_3ef6b943e3bd9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "81a77973-76e2-4e36-9d86-5a2a771e0af4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
