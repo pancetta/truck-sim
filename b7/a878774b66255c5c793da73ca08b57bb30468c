@@ -1,0 +1,40 @@
+docs/perf/2026-10-baseline.md
+  s_aaf842448a8f2c::t_4e1bab321f6f51 404-423
+src/sim/map.js
+  s_aaf842448a8f2c::t_f293b9052a2d51 84,96-97
+src/autopilot.test.js
+  s_aaf842448a8f2c::t_3159d88cbaf063 19,21,23,29,32,35-36
+  s_aaf842448a8f2c::t_f293b9052a2d51 33-34
+src/tables.js
+  s_aaf842448a8f2c::t_3159d88cbaf063 254
+src/renderer.js
+  s_aaf842448a8f2c::t_f293b9052a2d51 258-259,273-274
+src/sim/sim.test.js
+  s_aaf842448a8f2c::t_06dc1457518a06 2007
+  s_aaf842448a8f2c::t_7e449d18e3cadf 2000,2004-2006,2008
+  s_aaf842448a8f2c::t_556ebc069a4da3 2012,2082-2083
+  s_aaf842448a8f2c::t_7a9e1a7274c8fb 2013,2058
+  s_aaf842448a8f2c::t_65ec8a85ab3a45 2001-2003,2009,2016-2025,2028-2034,2037-2040,2044,2050,2054-2055,2059-2060,2063,2065-2078,2084
+src/autopilot.js
+  s_aaf842448a8f2c::t_fd5a6b304a5acf 72-74,81-82
+  s_aaf842448a8f2c::t_3159d88cbaf063 2-4,6,59,61-63,65,75-80,83
+  s_aaf842448a8f2c::t_800b23d9973e9e 84-85
+src/sim/sim.js
+  s_aaf842448a8f2c::t_f293b9052a2d51 157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b7a878774b66255c5c793da73ca08b57bb30468c",
+  "prompts": {},
+  "sessions": {
+    "s_aaf842448a8f2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7858631f-92f2-4cf9-82f8-dfb4adb2cbd9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
