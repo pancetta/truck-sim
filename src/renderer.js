@@ -35,8 +35,9 @@ const newKitMaterial = () => new THREE.MeshStandardMaterial({ vertexColors: true
 const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), batched: newKitMaterial() };
 
 // Stretches a geometry into the unit box: x and z in [-0.5, 0.5], y in [0, 1].
+// The box is read once: translate() recomputes it from the vertices, which may not span the model's own box (loadModel).
 function unitBox(geometry) {
-  const { min, max } = geometry.boundingBox;
+  const { min, max } = geometry.boundingBox.clone();
   return geometry
     .translate(-(min.x + max.x) / 2, -min.y, -(min.z + max.z) / 2)
     .scale(1 / (max.x - min.x), 1 / (max.y - min.y), 1 / (max.z - min.z));
@@ -125,6 +126,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   Object.assign(sun.shadow.camera, { left: -shadow.extent, right: shadow.extent, top: shadow.extent, bottom: -shadow.extent, near: 1, far: 2 * SUN_DISTANCE });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.camera.layers.enable(SHADOW_ONLY);
+  sun.shadow.autoUpdate = false; // once per frame (see render()), not again for the reversing camera
   Object.assign(sun.shadow, { bias: shadow.bias, normalBias: shadow.normalBias });
   scene.add(sun, sun.target);
   // The shadow camera's own axes: it looks along -z, at the ground from the sun, with the world's up as its up.
@@ -149,7 +151,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   const ground = new THREE.Mesh(worldUVs(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2), tables.ground.open.repeat), groundMaterial(tables.ground.open));
   ground.receiveShadow = true;
-  ground.renderOrder = 2; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
+  ground.renderOrder = 1; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
   scene.add(ground);
 
   // City from the parsed map, built from kit models.
@@ -168,7 +170,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     Object.assign(groundMaterial(tables.ground.road), { polygonOffset: true, polygonOffsetUnits: 4 }),
   );
   asphalt.receiveShadow = true;
-  asphalt.renderOrder = 1; // after the city, before the ground (see ground)
+  // First of the opaque meshes, and always in view. three renders the sun's shadow map when the first shadow receiver
+  // draws, after that mesh has culled itself for the view; if that were the city batch, its cull for the sun would
+  // replace the one for the view, and buildings would go missing.
+  asphalt.renderOrder = -1;
   scene.add(asphalt);
   for (const { col, row } of map.roads) {
     const open = DIRS.map(([dc, dr]) => map.isRoad(col + dc, row + dr));
@@ -282,8 +287,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   ]);
   const signals = new THREE.InstancedMesh(signal, new THREE.MeshStandardMaterial({ color: palette.signal }), map.lights.length);
   signals.castShadow = signals.receiveShadow = true;
-  // Lamps glow in their palette colours, untouched by the tone mapping.
-  const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({ toneMapped: false }), map.lights.length * 3);
+  // Lamps glow brighter than their palette colours (tables.lighting.lampGlow), so they read as lit after tone mapping.
+  const lampMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(lighting.lampGlow) });
+  const lamps = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.3), lampMaterial, map.lights.length * 3);
   const stopLines = [];
   const m = new THREE.Matrix4();
   map.lights.forEach((l, i) => {
@@ -304,7 +310,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only
   // what's on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is
-  // [geometry, placements] per model.
+  // [geometry, placements] per model. three warns once that the batch has no normals; flat shading doesn't use them.
   function addCity(models) {
     if (!models.length) return;
     const instances = models.reduce((n, [, list]) => n + list.length, 0);
@@ -334,7 +340,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const { height, radius, ring, post } = tables.signs;
     const parts = [];
     const add = (geometry, colour) => {
-      const part = geometry.toNonIndexed().deleteAttribute('uv');
+      const part = geometry.toNonIndexed().deleteAttribute('normal').deleteAttribute('uv');
       const colours = new Float32Array(part.getAttribute('position').count * 3);
       const c = new THREE.Color(colour);
       for (let i = 0; i < colours.length; i += 3) c.toArray(colours, i);
@@ -423,7 +429,6 @@ export function createRenderer(canvas, tables, map, onProgress) {
     // Free the decoded colour maps now; they are never drawn.
     gltf.scene.traverse((mesh) => mesh.material?.map?.image.close?.());
     const geometry = mergeGeometries(parts);
-    geometry.computeVertexNormals(); // per face, the faces being unshared; the sun's shadow offsets along them
     geometry.boundingBox = new THREE.Box3().setFromObject(gltf.scene, true);
     return geometry;
   }
@@ -527,7 +532,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // shows and on resize.
   const rearCamera = new THREE.PerspectiveCamera(cam.rearFov, 1, 0.1, cam.rearFar);
   rearCamera.layers.enable(SHADOW_ONLY);
-  const rearTarget = new THREE.RenderTarget(1, 1);
+  const rearTarget = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType }); // keeps light above 1 for the tone mapping
   const insetScene = new THREE.Scene();
   const insetCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   // Drawn over the finished view without clearing it, so no depth test against it.
@@ -659,6 +664,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     camera.getWorldDirection(focus).setY(0).normalize().multiplyScalar(lighting.shadow.ahead).add(camera.position);
     shadowCentre(focus, light, shadowTexel, sun.target.position);
     sun.position.copy(sun.target.position).addScaledVector(light.z, SUN_DISTANCE);
+    sun.shadow.needsUpdate = true;
     drawTraffic(state.traffic, !!rearTime);
     pipeline.render(scene, camera);
     if (rearTime) {

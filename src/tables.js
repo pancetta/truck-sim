@@ -303,6 +303,7 @@ export const lighting = {
   sun: 3.2, // directional light intensity
   sunColour: 0xfff3e0,
   sunDirection: [0.555, 0.742, 0.377], // towards the sun: 48° up, as in the HDRI
+  lampGlow: 1.5, // traffic light lamps and light bars shine this many times their palette colour
   // Sky-coloured haze, exponential squared, per m; camera.fog fades the rest to the sky at the far plane.
   haze: 0.0022,
   shadow: {

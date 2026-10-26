@@ -12,7 +12,8 @@ const PIVOT = { dice: [0.2, 2.4, 2.35], figure: [0.15, 1.7, 2.25] }; // gimmicks
 
 const materials = new Map();
 const matte = (color) => materials.get(color) ?? materials.set(color, new THREE.MeshStandardMaterial({ color, flatShading: true })).get(color);
-const glow = (color) => new THREE.MeshBasicMaterial({ color, toneMapped: false });
+// Lamps glow `brightness` times their palette colour, so they read as lit after tone mapping.
+const glow = (color, brightness) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(brightness) });
 
 // A thin bar on a side wall from (u0, v0) to (u1, v1); u runs forward along z, v is the height.
 function bar(u0, v0, u1, v1, width) {
@@ -77,13 +78,13 @@ const BUILDERS = {
     const sides = (list) => [BOX.side, -BOX.side].flatMap((x) => list.map((g) => g.clone().translate(x, 0, 0)));
     return meshes(perColour.map((list, i) => [matte(palette[colours[i]]), sides(list)]));
   },
-  lightBar({ lamp }, palette) {
+  lightBar({ lamp }, palette, lampGlow) {
     const base = new THREE.BoxGeometry(1.7, 0.08, 0.3).translate(0, ROOF.y + 0.04, ROOF.z);
     const lamps =
       lamp === 'lampAmber'
         ? [0.65, -0.65].map((x) => new THREE.CylinderGeometry(0.1, 0.12, 0.18, 10).translate(x, ROOF.y + 0.17, ROOF.z))
         : [-0.6, -0.2, 0.2, 0.6].map((x) => new THREE.BoxGeometry(0.24, 0.16, 0.12).translate(x, ROOF.y + 0.16, ROOF.z + 0.08));
-    return meshes([[matte(palette.trim), [base]], [glow(palette[lamp]), lamps]]);
+    return meshes([[matte(palette.trim), [base]], [glow(palette[lamp], lampGlow), lamps]]);
   },
   gimmick({ kind, colour }, palette) {
     const size = 0.065;
@@ -151,7 +152,7 @@ export function createTruckParts(tables) {
   function build(id) {
     if (!built.has(id)) {
       const item = visuals[id];
-      const group = item.price > 0 ? BUILDERS[item.slot]?.(item, palette) : null;
+      const group = item.price > 0 ? BUILDERS[item.slot]?.(item, palette, tables.lighting.lampGlow) : null;
       if (group) (item.slot === 'gimmick' ? cab : exterior).add(group);
       built.set(id, group ?? null);
     }
