@@ -193,8 +193,44 @@ export const city = {
     // turns from the kerb lane clip it.
     signal: { width: 0.2, inset: 0.3 },
   },
-  buildingHeight: [6, 24], // m, lowest and highest; the renderer picks per tile
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
+};
+
+// Procedural buildings on the building tiles (buildings.js), in the style of the Monti prototype (ADR 0001). Each run
+// of building tiles along a street is a row of buildings one tile deep, cut at random widths; a spot's tile is always
+// a building of its own. The same `seed` gives the same city.
+export const buildings = {
+  seed: 39,
+  width: [8, 18], // m along the street; the widest must be at least twice the narrowest
+  floors: [2, 6], // storeys, ground floor included
+  groundFloor: 4.5, // m
+  floor: 3.5, // m, each upper floor
+  parapet: 1, // m of wall above the top floor, with the cornice
+  bay: 3.2, // m per window bay, at least
+  grime: 2.5, // m of darkening at the foot of each wall, from `grimeShade` of the wall's colour at the ground
+  grimeShade: 0.62,
+  closedShutters: 0.3, // share of windows with their shutters closed
+  chunk: 196, // m square, the pieces the city's building meshes are cut into and culled by
+  detailDistance: 120, // m from the camera within which facades show their window surrounds, sills and open shutters
+  // Wall materials: CC0 textures from `npm run assets` (CREDITS.md), each for a `share` of the buildings, `repeat` m
+  // per copy; a `tinted` one takes a colour from `tints`.
+  walls: [
+    { texture: 'painted_plaster_wall', share: 0.45, tinted: true, repeat: 3 },
+    { texture: 'worn_plaster_wall', share: 0.45, tinted: true, repeat: 3 },
+    { texture: 'red_brick_03', share: 0.1, tinted: false, repeat: 2 },
+  ],
+  roof: { texture: 'clay_roof_tiles_02', repeat: 3 },
+  brightness: [0.85, 1.05], // each building's walls, times its tint
+  tints: [0xd9a35b, 0xc8744a, 0xe3c58f, 0xe8d9b8, 0xb8573a, 0xd8a48c, 0xcf9a6a],
+  stone: 0xe6dcc6, // window surrounds, sills, cornices
+  plinth: 0xa39a8a,
+  shutters: [0x3f5b3a, 0x4d6b45, 0x6b4a2e, 0x55603c, 0x7a5a3a],
+  doors: [0x6b4a2e, 0x4f3a26, 0x3f5b3a, 0x5a2a26, 0x7a5a3a],
+  rollers: [0x9a9a96, 0xb4b2ac, 0x7d7f80, 0x5f6b5a],
+  signs: [0x24442f, 0x5a1f24, 0x1f2f4a, 0x2b2b2b, 0x7a5a2a], // shop signs; spots' signs and awnings are palette.spot
+  // A dock's opening in its building's face, as wide as the bay (dockHalf in buildings.js): `height` m tall, `depth` m
+  // deep, its floor the dock edge (`edge` m high), its back a roller door.
+  dock: { height: 3.8, depth: 0.5, edge: 1.1, door: 0x8a8d8f },
 };
 
 export const minimap = {
@@ -326,7 +362,7 @@ export const ground = {
 export const palette = {
   light: 0xffffff, // minimap
   ground: 0x7fb069, // minimap
-  spot: 0x4f86c6, // tint of the pickup and drop-off buildings
+  spot: 0x4f86c6, // the spots' signs and awnings, and their dots on the minimap
   zone: 0x8fc1f0,
   pickup: 0x6cc551, // active order's zone marker
   dropoff: 0xf08a4b,
@@ -342,7 +378,6 @@ export const palette = {
   orange: 0xe07a3f,
   yellow: 0xe8c547,
   blue: 0x3d6b8c,
-  buildings: [0xd9cbb4, 0xe3b29a, 0xbfcfb4, 0xc9c3d6, 0xe8d9a8, 0xb8c8d4], // per-building wall tints
   truckBody: 0xe8c547,
   truckCab: 0xd1495b,
   dashboard: 0x3b4252,

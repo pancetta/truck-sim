@@ -6,9 +6,11 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
 import { createTruckParts } from './truckLook.js';
 import { createResolution } from './resolution.js';
+import { planBuildings, buildingMeshes, dockHalf } from './buildings.js';
+import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import assetInfo from './assetInfo.json';
 
-// CC0 kit models in public/models/, sky and ground textures in public/textures/ (see CREDITS.md); the textures are
+// CC0 kit models in public/models/, sky, ground and building textures in public/textures/ (see CREDITS.md); the textures are
 // KTX2 from `npm run assets`, transcoded by three's Basis transcoder in public/basis/.
 const MODELS = `${import.meta.env.BASE_URL}models/`;
 const TEXTURES = `${import.meta.env.BASE_URL}textures/`;
@@ -22,7 +24,6 @@ const ROAD_PIECES = [
   ['roads/road-intersection.glb', [1, 2, 3]],
   ['roads/road-crossroad.glb', [0, 1, 2, 3]],
 ];
-const BUILDINGS = [...'abcdefghijklmn'].map((l) => `commercial/low-detail-building-${l}.glb`);
 const CARS = ['cars/sedan.glb', 'cars/suv.glb', 'cars/van.glb'];
 const POLE = 'roads/light-square.glb';
 const TRUCK = 'cars/delivery.glb';
@@ -30,6 +31,12 @@ const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of 
 
 const SUN_DISTANCE = 300; // m from the shadow area's centre to the sun, back along its light
 const SHADOW_ONLY = 1; // layer the sun's shadow camera and the reversing camera see, but not the main camera
+// One-texel maps sampled like the KTX2 ones (filters, wrapping, colour space), for materials whose maps load later.
+const standIn = (rgba, colorSpace = THREE.NoColorSpace) => Object.assign(new THREE.DataTexture(new Uint8Array(rgba), 1, 1), {
+  colorSpace, magFilter: THREE.LinearFilter, minFilter: THREE.LinearMipmapLinearFilter, wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping, needsUpdate: true,
+});
+// White colour, a flat normal, and no occlusion with roughness 0.8 (ambient occlusion, roughness, metalness).
+const STAND_INS = { map: standIn([255, 255, 255, 255], THREE.SRGBColorSpace), normal: standIn([128, 128, 255, 255]), arm: standIn([255, 204, 0, 255]) };
 
 const loader = new GLTFLoader();
 const newKitMaterial = () => new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true });
@@ -165,18 +172,24 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const shadowTexel = (2 * shadow.extent) / shadow.mapSize; // m
   const focus = new THREE.Vector3();
 
-  // A CC0 PBR ground material (tables.ground): its colour, normal, and ambient occlusion / roughness map, set once
-  // loaded (before the first frame draws). The colour map's sRGB comes with the file.
-  function groundMaterial({ texture: name }) {
-    const material = new THREE.MeshStandardMaterial();
-    loads.push(Promise.all(['Diffuse', 'nor_gl', 'arm'].map((kind) => loadTexture(`${name}_${kind}.ktx2`))).then((maps) => {
+  // A CC0 PBR material (tables.ground, tables.buildings): its colour, normal, and ambient occlusion / roughness map,
+  // set once loaded. The colour map's sRGB comes with the file. The ground's load before the first frame draws; a
+  // `later` one's once everything the first frame waits for is in, and until then it draws with one-texel stand-ins
+  // sampled alike, so swapping in the real maps builds no new shaders.
+  const laterLoads = [];
+  function groundMaterial({ texture: name }, options, later) {
+    const material = new THREE.MeshStandardMaterial(options);
+    if (later) Object.assign(material, { map: STAND_INS.map, normalMap: STAND_INS.normal, aoMap: STAND_INS.arm, roughnessMap: STAND_INS.arm });
+    const load = () => Promise.all(['Diffuse', 'nor_gl', 'arm'].map((kind) => loadTexture(`${name}_${kind}.ktx2`))).then((maps) => {
       for (const t of maps) {
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
         t.anisotropy = 8;
       }
       const [map, normalMap, arm] = maps;
       Object.assign(material, { map, normalMap, aoMap: arm, roughnessMap: arm });
-    }));
+    });
+    if (later) laterLoads.push(load);
+    else loads.push(load());
     return material;
   }
 
@@ -217,22 +230,23 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
   }
 
-  // Only buildings that face a drivable tile are drawn; the solid block behind them stays empty.
-  const [low, high] = city.buildingHeight;
+  // The building tiles, which the cameras keep out of.
   const blocks = map.colliders.filter((b) => b.kind === 'building' || b.kind === 'spot');
   const blockAt = new Map(blocks.map((b) => [`${Math.floor(b.minX / ts)},${Math.floor(b.minZ / ts)}`, b]));
-  for (const b of blocks) {
-    const [col, row] = [Math.floor(b.minX / ts), Math.floor(b.minZ / ts)];
-    if (DIRS.every(([dc, dr]) => blockAt.has(`${col + dc},${row + dr}`))) continue;
-    const { x, z } = centre(b);
-    place(pick(BUILDINGS, x, z), {
-      x,
-      z,
-      angle: (Math.floor(hash(z, x) * 4) * Math.PI) / 2,
-      size: [ts, low + (high - low) * hash(x, z), ts],
-      tint: b.kind === 'spot' ? palette.spot : pick(palette.buildings, z, x),
-    });
-  }
+  // Procedural buildings (buildings.js), a few meshes per chunk of the map, each culled whole against the view. Their
+  // facade pictures are painted at load; their wall and roof textures load after the first frame.
+  const cells = atlasCells(map.spots.map((s) => s.id));
+  const buildingMaterials = {
+    walls: tables.buildings.walls.map((wall) => groundMaterial(wall, { vertexColors: true, flatShading: true }, true)),
+    roof: groundMaterial(tables.buildings.roof, { flatShading: true }, true),
+    parts: new THREE.MeshStandardMaterial({ ...paintFacadePictures(cells, palette.spot), vertexColors: true, flatShading: true }),
+  };
+  const buildingParts = { meshes: [], near: [] };
+  // Built once the model and texture requests are out, as building them takes a few hundred ms.
+  loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
+    Object.assign(buildingParts, buildingMeshes(planBuildings(map, tables), tables, palette.spot, cells, buildingMaterials));
+    scene.add(...buildingParts.meshes);
+  }));
 
   for (const b of map.colliders.filter((c) => c.kind === 'car')) {
     const { x, z } = centre(b);
@@ -253,8 +267,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // The kit cars, loaded once for the parked cars and the AI cars.
   const carModels = CARS.map((file) => loadModel(file));
   const cityModels = [...placements].map(([file, list]) => {
-    // Building walls are white so their per-building tint shows as is; road pieces leave out their road surface.
-    const colours = BUILDINGS.includes(file) ? { ...palette, wall: 0xffffff } : file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
+    // Road pieces leave out their road surface.
+    const colours = file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
     const model = CARS.includes(file) ? carModels[CARS.indexOf(file)] : loadModel(file, colours);
     return model.then((geometry) => {
       // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
@@ -272,10 +286,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   loads.push(...cityModels, Promise.all(cityModels.map((m) => m.catch(() => null))).then((models) => addCity(models.filter(Boolean))));
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
-  // Dock bays, our own boxes: a dock edge (a low dark platform) along the building face, and painted lines on
-  // either side of the bay, as far apart as the docking check allows. They stand a little above the kerb so
-  // they show over the pavement too. The edge isn't solid; the building behind it is.
+  // Dock bays, our own boxes: a dock edge (a low dark platform) in the floor of the opening in the building face
+  // (buildings.js), and painted lines on either side of the bay, as far apart as the docking check allows. They stand
+  // a little above the kerb so they show over the pavement too. The edge isn't solid; the building behind it is.
   const bayHalf = tables.vehicle.width / 2 + tables.orders.dockCentre;
+  const { dock } = tables.buildings;
   const bayLines = [];
   const dockEdges = [];
   for (const { dir, zone } of map.spots.filter((s) => s.dock)) {
@@ -288,7 +303,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const [z0, z1] = [fz + dr * out0 + dc * side0, fz + dr * out1 + dc * side1];
       return { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
     };
-    dockEdges.push({ ...bay(-0.5, 0, -bayHalf - 0.5, bayHalf + 0.5), height: 1.1 });
+    dockEdges.push({ ...bay(-dock.depth, 0, -dockHalf(tables), dockHalf(tables)), height: dock.edge });
     for (const side of [-bayHalf, bayHalf]) bayLines.push(bay(0, 10, side - 0.12, side + 0.12));
   }
   addBoxes(palette.dark, dockEdges);
@@ -696,6 +711,12 @@ export function createRenderer(canvas, tables, map, onProgress) {
     shadowCentre(focus, light, shadowTexel, sun.target.position);
     sun.position.copy(sun.target.position).addScaledVector(light.z, SUN_DISTANCE);
     sun.shadow.needsUpdate = true;
+    // Window surrounds, sills and open shutters only near the camera, and only on facades facing it.
+    const { x: cx, z: cz } = camera.position;
+    for (const { mesh, dir } of buildingParts.near) {
+      const { min, max } = mesh.geometry.boundingBox;
+      mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
+    }
     drawTraffic(state.traffic, !!rearTime);
     pipeline.render(scene, camera);
     if (rearTime) {
@@ -713,6 +734,12 @@ export function createRenderer(canvas, tables, map, onProgress) {
       renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
       renderer.autoClear = autoClear;
     }
+  }
+
+  // Whether (x, z) is in front of some facade within `box`, all facing DIRS[dir]: past the box's back that way.
+  function facing(min, max, dir, x, z) {
+    const [dc, dr] = DIRS[dir];
+    return dc ? dc * (x - (dc > 0 ? min.x : max.x)) > 0 : dr * (z - (dr > 0 ? min.z : max.z)) > 0;
   }
 
   // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most chaseDistance. The ray is
@@ -762,7 +789,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let loaded = 0;
   const models = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
   const ready = Promise.all([renderer.init(), models]);
-  models.then(() => showFullSky && loadSky(lighting.sky).then(showFullSky)).catch(console.error);
+  models.then(() => {
+    for (const load of laterLoads) load().catch(console.error);
+    return showFullSky && loadSky(lighting.sky).then(showFullSky);
+  }).catch(console.error);
 
   return { render, toggleCamera, ready, renderer };
 }
