@@ -73,7 +73,8 @@ export function createTraffic(tables, map, random) {
   }
 
   // Scratch, reused every step: the cars' footprints (by index in `cars`), the truck's, poses, and the
-  // uniform grid the neighbour queries use. `found` holds the car indices of the last query.
+  // uniform grid the neighbour queries use. `found` holds the car indices of the last query, so a loop over it
+  // must not call nearby() again.
   const footprints = [];
   const truckBox = newBox();
   const probe = newBox();
@@ -327,7 +328,8 @@ export function createTraffic(tables, map, random) {
         continue;
       }
       const f = g.fronts;
-      const all = f.every((w) => w.on && w.car);
+      let all = true;
+      for (const w of f) all &&= w.on && w.car !== null;
       g.way = -1;
       for (let dir = 0; dir < 4; dir++) {
         const free = f[dir].on && f[dir].car && (all || !f[(dir + 3) % 4].on);
@@ -366,7 +368,10 @@ export function createTraffic(tables, map, random) {
   function see(col, row, dir) {
     const j = junctionAt[tileAt(col, row)];
     if (!j) return;
-    if (j.stamp !== now) [j.stamp, j.seen] = [now, 0];
+    if (j.stamp !== now) {
+      j.stamp = now;
+      j.seen = 0;
+    }
     j.seen |= 1 << dir;
   }
   const oncoming = (p, dir) => {
@@ -389,7 +394,9 @@ export function createTraffic(tables, map, random) {
   // drives into has no room for the car, because a car or the truck slower than `boxSpeed` is less than a car
   // length and `followGap` beyond it. False while the planned route ends inside the box.
   const room = size.length + t.followGap;
-  const queueReach = Math.hypot(room, size.width / 2 + t.sideGap) + Math.hypot(size.length, size.width) / 2 + 1; // m, exit to a queued car's centre
+  // m from the exit to the centre of a car that can be queued there: the far corner of the strip `room` long,
+  // plus half the car's diagonal, plus 1 m to spare against rounding
+  const queueReach = Math.hypot(room, size.width / 2 + t.sideGap) + Math.hypot(size.length, size.width) / 2 + 1;
   const queued = (box, speed) => Math.abs(speed) < t.boxSpeed && aheadOf(exitPose, box) < room;
   function exitBlocked(car, i, truck) {
     let j = i;
@@ -490,7 +497,7 @@ export function createTraffic(tables, map, random) {
   const carRadius = Math.hypot(size.length, size.width) / 2;
   function touching(box) {
     const [cx, cz] = [(box[0].x + box[2].x) / 2, (box[0].z + box[2].z) / 2];
-    const r = Math.hypot(box[0].x - box[2].x, box[0].z - box[2].z) / 2 + carRadius + 0.01;
+    const r = Math.hypot(box[0].x - box[2].x, box[0].z - box[2].z) / 2 + carRadius + 0.01; // 1 cm against rounding
     const out = [];
     for (const c of cars) if ((c.x - cx) ** 2 + (c.z - cz) ** 2 <= r ** 2 && boxesOverlap(box, corners(c, size, probe))) out.push(c);
     return out;
