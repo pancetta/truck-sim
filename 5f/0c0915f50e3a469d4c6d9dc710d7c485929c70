@@ -1,0 +1,25 @@
+src/prototype-monti/main.js
+  s_c34b2924f7d147::t_05b7a77f8f39f3 637,647,652-653
+  s_c34b2924f7d147::t_929158304999d1 14,341-344,375,436,450,556-559,561,566-597,599,611,613,617,619,621-626,628-631,635-636,638-646,648-651,654-675
+public/prototype-monti/models/covered_car/covered_car_1k.gltf
+  s_c34b2924f7d147::t_223585e5a58170 1-523
+src/prototype-monti/vehicles.js
+  s_c34b2924f7d147::t_7f2267fe4cdaaf 2,5-6,10-11,16,21,26,31,36,39,42-57,60-75,77-84,86-102,104-109,111-117,119-127,148-219,221-229,231-233,235-238,241-247,257-260,262-263,268
+  s_c34b2924f7d147::t_05b7a77f8f39f3 3-4,40,58-59,76,85,103,110,118,128-147,220,234,239-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f0c0915f50e3a469d4c6d9dc710d7c485929c70",
+  "prompts": {},
+  "sessions": {
+    "s_c34b2924f7d147": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51a56e64-1812-43df-b206-48bdde1707db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
