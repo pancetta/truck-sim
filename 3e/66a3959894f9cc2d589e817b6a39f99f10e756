@@ -1,5 +1,6 @@
 scripts/assets.test.js
   s_36efe775d24de1::t_ecb2c2fa42c6ce 26-28,30,33
+  s_36efe775d24de1::t_0245c529df3903 5,31
 scripts/assets.config.js
   s_36efe775d24de1::t_02299d1fefa5b4 19-23
 src/sim/map.js
@@ -13,6 +14,7 @@ src/streets.test.js
   s_36efe775d24de1::t_67e70032dabfea 1-9,11-97
 src/renderer.js
   s_36efe775d24de1::t_27069cb2196790 5,12,121,268,344-345,347,712,759-761,768
+  s_36efe775d24de1::t_d6c82331eaeb6c 346
 src/tables.js
   s_36efe775d24de1::t_1ac6fdf1dd2969 196-204
   s_36efe775d24de1::t_3f0235f7518840 373-375
