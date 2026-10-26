@@ -1,0 +1,57 @@
+scripts/assets.test.js
+  s_36efe775d24de1::t_ecb2c2fa42c6ce 26-28,30,33
+scripts/assets.config.js
+  s_36efe775d24de1::t_02299d1fefa5b4 19-23
+src/sim/map.js
+  s_36efe775d24de1::t_993b0e01441735 81-104
+  s_36efe775d24de1::t_19cd3fb4e3a906 3
+src/sim/sim.test.js
+  s_36efe775d24de1::t_96c82d7e0add64 327-328,339-367
+  s_36efe775d24de1::t_aff855933bf820 368-369
+src/streets.test.js
+  s_36efe775d24de1::t_d18568f7f3ba97 10
+  s_36efe775d24de1::t_67e70032dabfea 1-9,11-97
+src/renderer.js
+  s_36efe775d24de1::t_27069cb2196790 5,12,121,268,344-345,347,712,759-761,768
+src/tables.js
+  s_36efe775d24de1::t_1ac6fdf1dd2969 196-204
+  s_36efe775d24de1::t_3f0235f7518840 373-375
+  s_36efe775d24de1::t_a6724ce18c3d3a 365-372,376-387
+src/streets.js
+  s_36efe775d24de1::t_d73aba4815cf3c 124,174-175,181-182,243-246
+  s_36efe775d24de1::t_1cf7a5b7c331d0 185
+  s_36efe775d24de1::t_d94f06da1c3277 265,268-271
+  s_36efe775d24de1::t_ab9b6ee8479095 179-180
+  s_36efe775d24de1::t_bdd3f411c669be 1-4,6-56,59-60,62,65-69,78-101,104-109,111-117,121-123,125-143,145-153,155-173,176-178,183-184,186-195,198-212,221-239,242,247-256,258,262-263,275,277-288
+  s_36efe775d24de1::t_482c9cc79a2c9e 118-120
+  s_36efe775d24de1::t_2f0c27fbf338de 5,102-103,110,144,154,196-197,213-220,240-241,257,259-261,264,266-267,272-274,276
+  s_36efe775d24de1::t_68d3b4c768de1f 57-58,61,63-64,70-77
+CREDITS.md
+  s_42f3d1d4365464::t_6679c01e775326 26-30
+src/assetInfo.json
+  s_42f3d1d4365464::t_3a2b65b7a25622 7-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e66a3959894f9cc2d589e817b6a39f99f10e756",
+  "prompts": {},
+  "sessions": {
+    "s_36efe775d24de1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bea614df-45f4-43a5-a823-27b568ac5f61",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    },
+    "s_42f3d1d4365464": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1a95ecda-7a72-44fd-9cc3-73764e37494d",
+        "model": "unknown"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
