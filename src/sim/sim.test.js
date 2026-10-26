@@ -1832,3 +1832,57 @@ describe('Sim: right of way and collisions', () => {
     expect(contact(Math.PI / 2)).toBe(null);
   });
 });
+
+describe('Sim: collider broad phase', () => {
+  test('the indexed collision check agrees with testing every collider, on tile borders, corners and turned', () => {
+    const noCars = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
+    const map = parseMap(city, tables);
+    // The city's colliders each sit inside one tile; add one spanning several on the open ground, as a longer obstacle would.
+    map.colliders.push({ kind: 'wide', minX: 25.6 * TILE, maxX: 28.3 * TILE, minZ: 25.2 * TILE, maxZ: 27.7 * TILE });
+    const sim = createSim(noCars, map, seeded(1));
+    const { length, width } = tables.vehicle;
+    // Brute force: the truck's box against the map edge and every collider, touching isn't overlapping.
+    const blocked = ({ x, z, heading }) => {
+      const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
+      const [l, w] = [length / 2, width / 2];
+      const cs = [[l, w], [l, -w], [-l, -w], [-l, w]].map(([a, b]) => ({ x: x + fx * a - fz * b, z: z + fz * a + fx * b }));
+      if (cs.some((c) => c.x < 0 || c.z < 0 || c.x > map.cols * TILE || c.z > map.rows * TILE)) return true;
+      return map.colliders.some((b) => {
+        if (cs.every((c) => c.x <= b.minX) || cs.every((c) => c.x >= b.maxX)) return false;
+        if (cs.every((c) => c.z <= b.minZ) || cs.every((c) => c.z >= b.maxZ)) return false;
+        const bc = [[b.minX, b.minZ], [b.maxX, b.minZ], [b.maxX, b.maxZ], [b.minX, b.maxZ]];
+        const along = bc.map(([px, pz]) => (px - x) * fx + (pz - z) * fz);
+        const right = bc.map(([px, pz]) => -(px - x) * fz + (pz - z) * fx);
+        if (along.every((a) => a >= l) || along.every((a) => a <= -l)) return false;
+        return !(right.every((r) => r >= w) || right.every((r) => r <= -w));
+      });
+    };
+    // Every light junction (signal posts), the map's corners, the tiles round the wide box, and every 11th tile;
+    // on each, the tile corner, border midpoints and inner points, at headings along, across and between the axes.
+    const tiles = [...map.lights, { col: 0, row: 0 }, { col: map.cols - 1, row: map.rows - 1 }];
+    for (let col = 24; col <= 29; col++) for (let row = 24; row <= 28; row++) tiles.push({ col, row });
+    for (let i = 0; i < map.cols * map.rows; i += 11) tiles.push({ col: i % map.cols, row: Math.floor(i / map.cols) });
+    const mismatches = [];
+    let hits = 0;
+    let poses = 0;
+    for (const { col, row } of tiles) {
+      for (const fx of [0, 0.25, 0.5, 0.9]) {
+        for (const fz of [0, 0.25, 0.5, 0.9]) {
+          for (const heading of [0, 0.3, Math.PI / 4, Math.PI / 2, 2.5, Math.PI]) {
+            const pose = { x: (col + fx) * TILE, z: (row + fz) * TILE, heading };
+            Object.assign(sim.state.truck, pose, { speed: 0 });
+            sim.step(DT, IDLE);
+            const expected = blocked(pose);
+            if (sim.state.collision !== expected) mismatches.push({ ...pose, expected });
+            hits += expected;
+            poses++;
+          }
+        }
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+    expect(hits).toBeGreaterThan(poses / 10); // both outcomes well represented
+    expect(hits).toBeLessThan(poses * 0.9);
+  });
+});

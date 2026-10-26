@@ -62,6 +62,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const traffic = map && createTraffic(tables, map, random);
   let contacts = new Set(); // ids of the AI cars the truck is in contact with
   if (traffic) state.traffic = traffic.cars;
+  // The map tile (clamped to the map) holding coordinate v along an axis of n tiles.
+  const tileOf = (v, n) => Math.min(n - 1, Math.max(0, Math.floor(v / map.tileSize)));
+  // map.colliders by every tile their box spans (`row * cols + col`), so fits() tests only those near the truck. An
+  // edge on a tile border counts the tile beyond too, so boxes that overlap always share a tile.
+  const collidersAt = map ? Array.from({ length: map.cols * map.rows }, () => []) : [];
+  for (const b of map?.colliders ?? []) {
+    for (let row = tileOf(b.minZ, map.rows); row <= tileOf(b.maxZ, map.rows); row++) {
+      for (let col = tileOf(b.minX, map.cols); col <= tileOf(b.maxX, map.cols); col++) collidersAt[row * map.cols + col].push(b);
+    }
+  }
 
   const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
 
@@ -421,13 +431,26 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return pose;
   }
 
-  // Whether the truck's footprint at `pose` stays inside the map and clear of every collider.
+  // Whether the truck's footprint at `pose` stays inside the map and clear of every collider. Runs every step,
+  // so it tests only the colliders indexed on the tiles under the footprint's bounding box.
   function fits(pose) {
     if (!map) return true;
     const cs = corners(pose);
-    const [w, h] = [map.cols * map.tileSize, map.rows * map.tileSize];
-    if (!cs.every((c) => c.x >= 0 && c.x <= w && c.z >= 0 && c.z <= h)) return false;
-    return !map.colliders.some((b) => overlaps(pose, cs, b));
+    const minX = Math.min(cs[0].x, cs[1].x, cs[2].x, cs[3].x);
+    const maxX = Math.max(cs[0].x, cs[1].x, cs[2].x, cs[3].x);
+    const minZ = Math.min(cs[0].z, cs[1].z, cs[2].z, cs[3].z);
+    const maxZ = Math.max(cs[0].z, cs[1].z, cs[2].z, cs[3].z);
+    if (minX < 0 || minZ < 0 || maxX > map.cols * map.tileSize || maxZ > map.rows * map.tileSize) return false;
+    for (let row = tileOf(minZ, map.rows); row <= tileOf(maxZ, map.rows); row++) {
+      for (let col = tileOf(minX, map.cols); col <= tileOf(maxX, map.cols); col++) {
+        for (const b of collidersAt[row * map.cols + col]) {
+          // Bounding boxes apart (touching included) can't overlap; this skips most candidates cheaply.
+          if (b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) continue;
+          if (overlaps(pose, b)) return false;
+        }
+      }
+    }
+    return true;
   }
 
   // Footprint corners, `grow` m larger all round; right is (-cos heading, sin heading).
@@ -437,10 +460,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return [[l, w], [l, -w], [-l, -w], [-l, w]].map(([a, b]) => ({ x: x + fx * a - fz * b, z: z + fz * a + fx * b }));
   }
 
-  // Separating-axis test of the truck's box against an axis-aligned box; touching isn't overlapping.
-  function overlaps({ x, z, heading }, cs, b) {
-    if (cs.every((c) => c.x <= b.minX) || cs.every((c) => c.x >= b.maxX)) return false;
-    if (cs.every((c) => c.z <= b.minZ) || cs.every((c) => c.z >= b.maxZ)) return false;
+  // Separating-axis test of the truck's box against an axis-aligned box whose bounding box overlaps the truck's
+  // (fits() checks the world axes); touching isn't overlapping.
+  function overlaps({ x, z, heading }, b) {
     const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
     const [l, w] = [v.length / 2, v.width / 2];
     const bc = [[b.minX, b.minZ], [b.maxX, b.minZ], [b.maxX, b.maxZ], [b.minX, b.maxZ]];
