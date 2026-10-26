@@ -7,6 +7,7 @@ import { pass, mrt, normalView, screenUV, builtinAOContext } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const BASE = `${import.meta.env.BASE_URL}prototype-monti/`;
 const VARIANTS = [
@@ -75,7 +76,8 @@ for (const el of buildingEls) {
 
 const walls = newData();
 const roofs = newData();
-const parts = { glass: [], frame: [], sill: [], shutter: [], cornice: [], plinth: [] };
+const parts = { glass: [], frame: [], sill: [], shutter: [], cornice: [], plinth: [], bollard: [], cap: [] };
+const facades = []; // outside walls, for the wall lanterns
 let partyEdges = 0;
 
 for (const el of buildingEls) {
@@ -111,6 +113,7 @@ for (const el of buildingEls) {
 
     const [ux, uz] = [dx / L, dz / L];
     const e = { px: p[0], pz: p[1], ux, uz, nx: -uz, nz: ux, rot: Math.atan2(-uz, ux) };
+    facades.push({ e, L, height, id: el.id, i });
     const put = (part, along, y, out, sx, sy, sz, color) =>
       parts[part].push({ x: e.px + ux * along + e.nx * out, y, z: e.pz + uz * along + e.nz * out, rot: e.rot, sx, sy, sz, color });
 
@@ -142,8 +145,41 @@ for (const el of buildingEls) {
   flat(roofs, ring, height, 3, null);
 }
 
+const upward = (a, b, c) => ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) >= 0 ? [a, b, c] : [a, c, b]);
+// A strip of half-width w along pts at height y: a quad per segment and a disc per joint, with world UVs so
+// overlaps match exactly. With `kerb` (a tint), vertical faces down to the ground go into the walls mesh.
+function ribbon(d, pts, w, y, tile, kerb) {
+  const v = (x, z) => [x, y, z, x / tile, z / tile];
+  // Vertical face from a to b, facing left of a→b (the walls' winding).
+  const side = (a, b) => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) / 3;
+    tri(walls, [a[0], 0, a[1], 0, 0], [b[0], 0, b[1], L, 0], [b[0], y, b[1], L, y / 3], kerb);
+    tri(walls, [a[0], 0, a[1], 0, 0], [b[0], y, b[1], L, y / 3], [a[0], y, a[1], 0, y / 3], kerb);
+  };
+  pts.forEach(([x, z], i) => {
+    const ring = Array.from({ length: 12 }, (_, s) => [x + Math.cos((s * Math.PI) / 6) * w, z + Math.sin((s * Math.PI) / 6) * w]);
+    ring.forEach((p, s) => {
+      const q = ring[(s + 1) % 12];
+      tri(d, ...upward(v(x, z), v(...p), v(...q)));
+      if (kerb) side(q, p);
+    });
+    if (i === pts.length - 1) return;
+    const [x2, z2] = pts[i + 1];
+    const L = Math.hypot(x2 - x, z2 - z);
+    if (L < 0.01) return;
+    const [nx, nz] = [(-(z2 - z) / L) * w, ((x2 - x) / L) * w];
+    const quad = [[x + nx, z + nz], [x2 + nx, z2 + nz], [x2 - nx, z2 - nz], [x - nx, z - nz]];
+    tri(d, ...upward(v(...quad[0]), v(...quad[1]), v(...quad[2])));
+    tri(d, ...upward(v(...quad[0]), v(...quad[2]), v(...quad[3])));
+    if (kerb) {
+      side(quad[0], quad[1]);
+      side(quad[2], quad[3]);
+    }
+  });
+}
+
 // Asphalt where OSM says so (secondary/tertiary default to it); everything else stays sampietrini, which is the
-// ground plane. Each segment is a quad, each joint a disc, all with world UVs so overlaps match exactly.
+// ground plane.
 const asphaltData = newData();
 const grassData = newData();
 const drivable = [];
@@ -157,26 +193,63 @@ for (const el of osm.elements) {
   drivable.push(el);
   const isAsphalt = t.surface === 'asphalt' || (!t.surface && (t.highway === 'secondary' || t.highway === 'tertiary'));
   if (!isAsphalt) continue;
-  const w = (ROAD_WIDTH[t.highway] ?? 6) / 2;
-  const pts = el.geometry.map(toXZ);
-  const v = (x, z) => [x, 0.03, z, x / 4, z / 4];
-  pts.forEach(([x, z], i) => {
-    for (let s = 0; s < 12; s++) {
-      const [a, b] = [(s * Math.PI) / 6, ((s + 1) * Math.PI) / 6];
-      tri(asphaltData, v(x, z), v(x + Math.cos(b) * w, z + Math.sin(b) * w), v(x + Math.cos(a) * w, z + Math.sin(a) * w));
-    }
-    if (i === pts.length - 1) return;
-    const [x2, z2] = pts[i + 1];
-    const L = Math.hypot(x2 - x, z2 - z);
-    const [nx, nz] = [(-(z2 - z) / L) * w, ((x2 - x) / L) * w];
-    const quad = [v(x + nx, z + nz), v(x2 + nx, z2 + nz), v(x2 - nx, z2 - nz), v(x - nx, z - nz)];
-    const up = (a, b, c) => ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) >= 0 ? [a, b, c] : [a, c, b]);
-    tri(asphaltData, ...up(quad[0], quad[1], quad[2]));
-    tri(asphaltData, ...up(quad[0], quad[2], quad[3]));
-  });
+  ribbon(asphaltData, el.geometry.map(toXZ), (ROAD_WIDTH[t.highway] ?? 6) / 2, 0.03, 4, null);
 }
 const groundData = newData();
 flat(groundData, [[-600, -600], [600, -600], [600, 600], [-600, 600]], 0, 1.4, null);
+
+// ---- street furniture from OSM ----------------------------------------------------------------------------------
+const furniture = (await (await fetch(`${BASE}monti-furniture.json`)).json()).elements;
+const KERB = 0.15; // m
+const kerbTint = linear('#d8d2c4');
+const pavement = { pavers: newData(), asphalt: newData(), cobble: newData() };
+const nodesOf = (tag, value) => furniture.filter((e) => e.type === 'node' && e.tags[tag] === value).map((e) => ({ id: e.id, xz: toXZ(e) }));
+for (const el of furniture) {
+  if (el.type !== 'way') continue;
+  const s = el.tags.surface;
+  const [kind, tile] = s === 'asphalt' ? ['asphalt', 4] : s === 'sett' ? ['cobble', 1.4] : ['pavers', 1.5];
+  ribbon(pavement[kind], el.geometry.map(toXZ), (parseFloat(el.tags.width) || 2) / 2, KERB, tile, kerbTint);
+}
+const iron = linear('#3b443c');
+for (const { xz: [x, z] } of nodesOf('barrier', 'bollard')) {
+  parts.bollard.push({ x, y: 0.45, z, rot: 0, sx: 0.22, sy: 0.9, sz: 0.22, color: linear('#4a4844') });
+  parts.cap.push({ x, y: 0.92, z, rot: 0, sx: 0.26, sy: 0.05, sz: 0.26, color: linear('#4a4844') });
+}
+// Nasoni: Rome's cast-iron drinking fountains, a post with a spout over a drain grate.
+for (const { id, xz: [x, z] } of nodesOf('amenity', 'drinking_water')) {
+  const rot = rnd(id, 1) * Math.PI * 2;
+  const [ox, oz] = [Math.sin(rot), Math.cos(rot)];
+  parts.bollard.push({ x, y: 0.58, z, rot, sx: 0.32, sy: 1.15, sz: 0.32, color: iron });
+  parts.cap.push({ x, y: 1.18, z, rot, sx: 0.38, sy: 0.08, sz: 0.38, color: iron });
+  parts.sill.push({ x: x + ox * 0.22, y: 0.62, z: z + oz * 0.22, rot, sx: 0.05, sy: 0.05, sz: 0.26, color: iron });
+  parts.sill.push({ x: x + ox * 0.25, y: 0.02, z: z + oz * 0.25, rot, sx: 0.55, sy: 0.04, sz: 0.45, color: linear('#2a2a28') });
+}
+
+// OSM maps almost none of Monti's lamps (they hang on the walls), so a lantern goes on street-facing walls about
+// every 24 m, half a window bay off the window axis. Street-facing: 2 m out from the wall is inside a street's
+// half-width plus 4 m.
+const roadSegs = drivable.flatMap((w) => {
+  const pts = w.geometry.map(toXZ);
+  const reach = (ROAD_WIDTH[w.tags.highway] ?? 6) / 2 + 4;
+  return pts.slice(1).map((q, i) => [pts[i], q, reach]);
+});
+const nearStreet = (x, z) =>
+  roadSegs.some(([a, b, reach]) => {
+    const [dx, dz] = [b[0] - a[0], b[1] - a[1]];
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz || 1)));
+    return Math.hypot(x - a[0] - t * dx, z - a[1] - t * dz) < reach;
+  });
+const wallLamps = [];
+for (const { e, L, height, id, i } of facades) {
+  if (height < 6) continue;
+  const n = Math.floor(L / 24) + (rnd(id, i + 900) < (L % 24) / 24 ? 1 : 0);
+  for (let k = 0; k < n; k++) {
+    const along = Math.min(L - 0.6, ((k + 0.5) * L) / n + 1.6);
+    const [x, z] = [e.px + e.ux * along, e.pz + e.uz * along];
+    if (nearStreet(x + e.nx * 2, z + e.nz * 2)) wallLamps.push({ x, y: 3.3, z, rot: e.rot });
+  }
+}
+const atNodes = (list, y = 0) => list.map(({ id, xz: [x, z] }) => ({ x, y, z, rot: rnd(id, 5) * Math.PI * 2 }));
 
 // ---- materials ------------------------------------------------------------------------------------------------
 const texLoader = new THREE.TextureLoader();
@@ -192,15 +265,23 @@ async function pbr(name, extra = {}) {
   return new THREE.MeshStandardMaterial({ map, normalMap, aoMap: arm, roughnessMap: arm, ...extra });
 }
 const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
-const [skyHdr, wallM, roofM, groundM, asphaltM, grassM] = await Promise.all([
+const gltfLoader = new GLTFLoader();
+const model = (id) => gltfLoader.loadAsync(`${BASE}models/${id}/${id}_1k.gltf`);
+const [skyHdr, wallM, roofM, groundM, asphaltM, grassM, paversM, treeTex, wallLampModel, poleLampModel, binModel] = await Promise.all([
   new HDRLoader().loadAsync(`${BASE}sky_2k.hdr`),
   pbr('painted_plaster_wall', { vertexColors: true }),
   pbr('clay_roof_tiles_02'),
   pbr('cobblestone_square'),
   pbr('asphalt_02'),
   pbr('leafy_grass'),
+  pbr('floor_pavement'),
+  texLoader.loadAsync(`${BASE}tree_jacaranda.png`),
+  model('street_lamp_02'),
+  model('street_lamp_01'),
+  model('metal_trash_can'),
 ]);
 skyHdr.mapping = THREE.EquirectangularReflectionMapping;
+treeTex.colorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 const looks = []; // { mesh, A, B }: the flat and the PBR material of each mesh
@@ -214,8 +295,13 @@ add(new THREE.Mesh(toGeometry(roofs), roofM), lambert('#b5603e'), roofM);
 add(new THREE.Mesh(toGeometry(groundData), groundM), lambert('#9a968e'), groundM);
 add(new THREE.Mesh(toGeometry(asphaltData), asphaltM), lambert('#4a4d55'), asphaltM);
 add(new THREE.Mesh(toGeometry(grassData), grassM), lambert('#6d9b4f'), grassM);
+add(new THREE.Mesh(toGeometry(pavement.pavers), paversM), lambert('#b9b0a0'), paversM);
+add(new THREE.Mesh(toGeometry(pavement.asphalt), asphaltM), lambert('#4a4d55'), asphaltM);
+add(new THREE.Mesh(toGeometry(pavement.cobble), groundM), lambert('#9a968e'), groundM);
 
 const box = new THREE.BoxGeometry(1, 1, 1);
+const cylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
+const partGeometry = { bollard: cylinder, cap: cylinder };
 const partLooks = {
   glass: [lambert('#2c3440'), new THREE.MeshStandardMaterial({ color: '#1b2128', roughness: 0.06, metalness: 0.6 })],
   frame: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.8 })],
@@ -223,6 +309,8 @@ const partLooks = {
   shutter: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.55 })],
   cornice: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.85 })],
   plinth: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.9 })],
+  bollard: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.6 })],
+  cap: [lambert('#ffffff'), new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.6 })],
 };
 const m4 = new THREE.Matrix4();
 const quat = new THREE.Quaternion();
@@ -230,18 +318,72 @@ const yAxis = new THREE.Vector3(0, 1, 0);
 let instances = 0;
 for (const [name, list] of Object.entries(parts)) {
   const [A, B] = partLooks[name];
-  const mesh = new THREE.InstancedMesh(box, B, list.length);
+  const mesh = new THREE.InstancedMesh(partGeometry[name] ?? box, B, list.length);
   list.forEach((p, i) => {
     m4.compose(new THREE.Vector3(p.x, p.y, p.z), quat.setFromAxisAngle(yAxis, p.rot), new THREE.Vector3(p.sx, p.sy, p.sz));
     mesh.setMatrixAt(i, m4);
     if (p.color) mesh.setColorAt(i, p.color);
   });
   instances += list.length;
-  mesh.castShadow = name === 'cornice' || name === 'shutter';
+  mesh.castShadow = name === 'cornice' || name === 'shutter' || name === 'bollard';
   mesh.receiveShadow = true;
   scene.add(mesh);
   looks.push({ mesh, A, B });
 }
+
+// Trees: the jacaranda rendered once (prototype-monti-bake.html) on three crossed quads. Upward normals light all
+// quads alike, as a canopy; the picture is TREE_SPAN metres wide with the trunk at u = 0.54.
+const TREE_SPAN = 24.2;
+const treeData = newData();
+for (const a of [0, Math.PI / 3, (2 * Math.PI) / 3]) {
+  const P = (u, v) => [(u - 0.54) * Math.cos(a), v, (u - 0.54) * Math.sin(a), u, v];
+  tri(treeData, P(0, 0), P(1, 0), P(1, 1));
+  tri(treeData, P(0, 0), P(1, 1), P(0, 1));
+}
+const treeGeometry = toGeometry(treeData);
+treeGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(Array.from({ length: 18 }, () => [0, 1, 0]).flat(), 3));
+const trees = furniture.filter((e) => e.tags?.natural === 'tree');
+const treeLook = { map: treeTex, alphaTest: 0.5, side: THREE.DoubleSide };
+const treeB = new THREE.MeshStandardMaterial({ ...treeLook, roughness: 1 });
+const treeMesh = new THREE.InstancedMesh(treeGeometry, treeB, trees.length);
+trees.forEach((t, i) => {
+  const [x, z] = toXZ(t);
+  const pine = t.tags.leaf_type === 'needleleaved' || t.tags.genus === 'Pinus';
+  const s = TREE_SPAN * (pine ? 0.5 + rnd(t.id, 6) * 0.1 : 0.32 + rnd(t.id, 6) * 0.15);
+  treeMesh.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 0, z), quat.setFromAxisAngle(yAxis, rnd(t.id, 7) * Math.PI), new THREE.Vector3(s, s, s)));
+});
+treeMesh.castShadow = true; // not receiving: the crossed quads shadowed each other black
+scene.add(treeMesh);
+looks.push({ mesh: treeMesh, A: new THREE.MeshLambertMaterial(treeLook), B: treeB });
+
+// A Poly Haven model, one InstancedMesh per sub-mesh, standing on y = 0 at each placement. `wall`: its back at
+// z = 0 after `turn`, so it sits on a facade whose outward normal is the placement's local +z.
+function instanceModel(gltf, placements, { turn = 0, wall = false } = {}) {
+  const root = gltf.scene;
+  root.rotation.y = turn;
+  root.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(root);
+  const c = bounds.getCenter(new THREE.Vector3());
+  const base = new THREE.Matrix4().makeTranslation(-c.x, -bounds.min.y, wall ? -bounds.min.z : -c.z);
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const mesh = new THREE.InstancedMesh(o.geometry, o.material, placements.length);
+    placements.forEach((p, i) =>
+      mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(p.x, p.y, p.z), quat.setFromAxisAngle(yAxis, p.rot), new THREE.Vector3(1, 1, 1)).multiply(base).multiply(o.matrixWorld)),
+    );
+    // shortcut: no shadows from these film-grade meshes (20k triangles a lantern), real use needs a decimated LOD.
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    looks.push({ mesh, A: o.material, B: o.material });
+  });
+  return bounds.getSize(new THREE.Vector3());
+}
+instanceModel(wallLampModel, wallLamps, { wall: true });
+const poleLamps = atNodes(nodesOf('highway', 'street_lamp'));
+const bins = atNodes(nodesOf('amenity', 'waste_basket'));
+instanceModel(poleLampModel, poleLamps);
+instanceModel(binModel, bins);
+const propsLine = `trees ${trees.length}  lanterns ${wallLamps.length}+${poleLamps.length}  bins ${bins.length}`;
 
 // ---- lights, renderer, post -----------------------------------------------------------------------------------
 const hemi = new THREE.HemisphereLight('#dbe8ff', '#8a7d6a', 1.2);
@@ -411,8 +553,8 @@ renderer.setAnimationLoop(() => {
       `frame ${avg.toFixed(1)} ms (${Math.round(1000 / avg)} fps)\n` +
       `draws ${drawCalls}  tris ${(triangles / 1e6).toFixed(2)} M\n` +
       `buildings ${buildingEls.length}  detail parts ${instances.toLocaleString('en')}\n` +
-      `party walls skipped ${partyEdges}`;
+      `party walls skipped ${partyEdges}\n${propsLine}`;
   }
 });
 document.getElementById('loading').remove();
-window.proto = { camera, drive, driveLen, renderer }; // console poking only
+window.proto = { camera, controls, drive, driveLen, renderer, wallLamps, trees: trees.map(toXZ), nasoni: nodesOf('amenity', 'drinking_water') }; // console poking only

@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- PROTOTYPE (throwaway): renders the 215 MB Poly Haven jacaranda once, side-on, into a transparent tree picture.
+     Run through headless Chrome (see the prototype commit message); the scene shows the picture on crossed quads.
+     The model isn't committed: download jacaranda_tree (glTF, 1k) from Poly Haven into
+     public/prototype-monti/models/jacaranda_tree/ to bake again. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>html, body { margin: 0; background: transparent; }</style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+      const size = 1024;
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+      renderer.setSize(size, size);
+      renderer.setClearColor(0x000000, 0);
+      document.body.appendChild(renderer.domElement);
+
+      const gltf = await new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}prototype-monti/models/jacaranda_tree/jacaranda_tree_1k.gltf`);
+      const tree = gltf.scene;
+      const box = new THREE.Box3().setFromObject(tree);
+      const [w, h] = [box.max.x - box.min.x, box.max.y - box.min.y];
+      const s = Math.max(w, h);
+      const cx = (box.min.x + box.max.x) / 2;
+      const camera = new THREE.OrthographicCamera(cx - s / 2, cx + s / 2, box.min.y + s, box.min.y, 0.1, 200);
+      camera.position.set(0, 0, 100);
+
+      // Mostly flat light, so the picture is close to albedo: the scene lights the quads again.
+      const scene = new THREE.Scene();
+      scene.add(tree, new THREE.AmbientLight('#ffffff', 2.2));
+      const top = new THREE.DirectionalLight('#ffffff', 1.2);
+      top.position.set(0.3, 1, 0.6);
+      scene.add(top);
+      renderer.render(scene, camera);
+      document.title = `baked ${w.toFixed(2)} x ${h.toFixed(2)} in ${s.toFixed(2)}`;
+      console.log(document.title);
+    </script>
+  </body>
+</html>
