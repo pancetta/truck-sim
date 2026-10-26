@@ -48,4 +48,5 @@ Vite, plain JavaScript (ES modules), Three.js, no backend.
 - [Spec #1](https://github.com/pancetta/truck-sim/issues/1) (MVP), [spec #12](https://github.com/pancetta/truck-sim/issues/12) (phase 2) and their tickets: the intended design and why.
 - [`CLAUDE.md`](CLAUDE.md): working rules for agents (review effort, issue tracker).
 - [`CREDITS.md`](CREDITS.md): every third-party asset with source and licence.
-- Originality rules (from the spec): only CC0 or self-made assets, our own flat-shaded look and palette, nothing copied from or modelled on other games.
+- [`docs/adr/`](docs/adr/): decisions that change or outlive a spec, such as [ADR 0001](docs/adr/0001-realistic-look.md) (a realistic look replaces flat-shaded low-poly).
+- Originality rules (from the spec, look changed by ADR 0001): only CC0 or self-made assets, our own dashboard, HUD and colour tables, generic vehicles with no real makes, nothing copied from or modelled on other games.
