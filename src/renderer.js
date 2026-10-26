@@ -10,6 +10,7 @@ import { createResolution } from './resolution.js';
 import { planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
+import { createStreets } from './streets.js';
 import assetInfo from './assetInfo.json';
 
 // CC0 kit models in public/models/, sky, ground and building textures in public/textures/ (see CREDITS.md); the textures are
@@ -27,7 +28,6 @@ const ROAD_PIECES = [
   ['roads/road-crossroad.glb', [0, 1, 2, 3]],
 ];
 const COVERED = ['covered_car.glb', 'covered_car_far.glb']; // near and far, from `npm run assets`
-const POLE = 'roads/light-square.glb';
 const TRUCK = 'cars/delivery.glb';
 const roadHeight = 0.06; // m, kerb top; the kit's road surface sits at half of it
 
@@ -119,6 +119,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const loads = []; // every model and texture load, up to being added to the scene
   // KTX2 textures transcode to what the GPU takes, which the renderer knows once it's initialised.
   const ktx2Loader = new KTX2Loader().setTranscoderPath(TRANSCODER);
+  loader.setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder); // the pipeline's models (streets.js)
   const gpu = renderer.init().then(() => ktx2Loader.detectSupport(renderer));
   const loadTexture = (file) => gpu.then(() => ktx2Loader.loadAsync(TEXTURES + file));
   loader.setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder); // for the pipeline's models
@@ -262,25 +263,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return { x, z, heading, kind: covered ? carTypes.length : Math.floor(hash(x, z) * 9973) % carTypes.length, paint: pick(paints, z, x) };
   });
 
-  // The lamp's arm points along its -z; turn it out over the road tile it stands on.
-  for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
-    const { x, z } = centre(b);
-    const angle = Math.atan2(x - (Math.floor(x / ts) + 0.5) * ts, z - (Math.floor(z / ts) + 0.5) * ts);
-    place(POLE, { x, z, angle, size: [1, 1, 1] });
-  }
-
   const cityModels = [...placements].map(([file, list]) => {
     // Road pieces leave out their road surface.
     const colours = file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
-    return loadModel(file, colours).then((geometry) => {
-      // The pole keeps its proportions (and its own origin, at the post); everything else is stretched to its box.
-      if (file === POLE) {
-        const { min, max } = geometry.boundingBox;
-        const s = city.obstacles.pole.height / (max.y - min.y);
-        geometry.translate(0, -min.y, 0).scale(s, s, s);
-      } else unitBox(geometry);
-      return [geometry, list];
-    });
+    return loadModel(file, colours).then((geometry) => [unitBox(geometry), list]);
   });
   // The speed limit signs, our own geometry, join the city's batch so they are culled and fogged with it.
   cityModels.push(Promise.resolve([speedSign(), map.signs.map(({ x, z, dir }) => ({ x, z, angle: Math.atan2(-DIRS[dir][0], -DIRS[dir][1]), size: [1, 1, 1] }))]));
@@ -380,6 +366,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   scene.add(signals, lamps);
   addBoxes(palette.stopLine, stopLines, 0.045);
   let shownLights = null;
+
+  // Pavements, lanterns (also on the poles), and the trees and props on open ground.
+  const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
+  laterLoads.push(streets.load);
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only
   // what's on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is
@@ -745,6 +735,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
     drawCars(state.traffic, !!rearTime);
+    streets.update(camera.position, inView);
     pipeline.render(scene, camera);
     if (rearTime) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
@@ -792,6 +783,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     c.updateMatrixWorld();
     return out.setFromProjectionMatrix(viewProjection.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse), c.coordinateSystem);
   };
+  // Whether a bounding sphere is in view, or in the inset's while it shows; drawCars() sets up both views.
+  const inView = (sphere) => frustum.intersectsSphere(sphere) || (rearTime > 0 && rearFrustum.intersectsSphere(sphere));
   // Only the cars in view, or in the inset's while it shows, are drawn, in full detail within vehicles.near of the
   // truck: from the chase camera, camera.chaseDistance back, the car just ahead of the truck would lose its lights and plate.
   // An AI car's id picks its body type and paint.

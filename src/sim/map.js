@@ -1,6 +1,6 @@
 // Parses the ASCII city grid into tiles, spots and solid colliders (spec #1: "Map").
 // Tile (col, row) covers x from col to col + 1 and z from row to row + 1, in tile sizes.
-//   .  road               ,  open ground (drivable, not road; listed in `open`)
+//   .  road               ,  open ground (drivable, not road; listed in `open`), with trees along its roads
 //   #  building           A–Z  spot: a building whose zone is the road tile beside it
 //   c  parked car, p  pole: a road tile with the obstacle at its kerb
 //   +  light junction: a road crossing with traffic lights on each road approach
@@ -77,6 +77,30 @@ export function parseMap(text, tables) {
     });
   });
   if (roads.length === 0) throw new Error('Map has no road');
+
+  // Trees and small props on open ground (tables.city.plaza), solid: a row along each edge it shares with a road.
+  // Where two rows meet at a corner, a tree too close to one already placed is left out, with its prop.
+  const { inset, spacing, props, size } = tables.city.plaza;
+  const trees = [];
+  const solid = (kind, x, z) => colliders.push({ kind, ...box(x, z, size[kind] / 2, size[kind] / 2) });
+  for (const { col, row } of open) {
+    for (const [dc, dr] of DIRS) {
+      if (!isRoad(col + dc, row + dr)) continue;
+      const alongX = dr !== 0; // a north or south edge runs along x
+      const across = alongX ? (row + 0.5) * tileSize + dr * (tileSize / 2 - inset) : (col + 0.5) * tileSize + dc * (tileSize / 2 - inset);
+      const start = (alongX ? col : row) * tileSize;
+      // Trees stand at (k + 0.5) × spacing along the row, so rows line up across tiles.
+      for (let k = Math.ceil(start / spacing - 0.5); (k + 0.5) * spacing < start + tileSize; k++) {
+        const at = (along) => (alongX ? [along, across] : [across, along]);
+        const [x, z] = at((k + 0.5) * spacing);
+        if (trees.some((t) => Math.hypot(t.x - x, t.z - z) < spacing / 2)) continue;
+        trees.push({ x, z });
+        solid('tree', x, z);
+        const prop = props[k % props.length];
+        if (prop) solid(prop[0], ...at((k + 0.5) * spacing + prop[1]));
+      }
+    }
+  }
 
   // Speed limit signs (tables.signs) where a street begins: on every way out of a light junction, and on every
   // way into the city out of a junction on the road round its edge. Each stands on the right-hand pavement of

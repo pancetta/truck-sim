@@ -24,6 +24,11 @@ writes this list from `scripts/assets.config.js` and Poly Haven's own records; d
 | Red Brick 03 (texture) by Rob Tuytel | `public/textures/red_brick_03_Diffuse.ktx2`, `public/textures/red_brick_03_nor_gl.ktx2`, `public/textures/red_brick_03_arm.ktx2` | https://polyhaven.com/a/red_brick_03 | CC0 1.0 |
 | Clay Roof Tiles 02 (texture) by Amal Kumar | `public/textures/clay_roof_tiles_02_Diffuse.ktx2`, `public/textures/clay_roof_tiles_02_nor_gl.ktx2`, `public/textures/clay_roof_tiles_02_arm.ktx2` | https://polyhaven.com/a/clay_roof_tiles_02 | CC0 1.0 |
 | Covered Car (model) by MP | `public/models/covered_car.glb`, `public/models/covered_car_far.glb` | https://polyhaven.com/a/covered_car | CC0 1.0 |
+| Floor Pavement (texture) by Dario Barresi, Charlotte Baglioni | `public/textures/floor_pavement_Diffuse.ktx2`, `public/textures/floor_pavement_nor_gl.ktx2`, `public/textures/floor_pavement_arm.ktx2` | https://polyhaven.com/a/floor_pavement | CC0 1.0 |
+| Street Lamp 02 (model) by Josh Dean | `public/models/street_lamp_02.glb`, `public/models/street_lamp_02_far.glb` | https://polyhaven.com/a/street_lamp_02 | CC0 1.0 |
+| Jacaranda Tree (tree) by Rob Tuytel, Rico Cilliers | `public/textures/jacaranda_tree.ktx2` | https://polyhaven.com/a/jacaranda_tree | CC0 1.0 |
+| Tree Small 02 (tree) by Rico Cilliers | `public/textures/tree_small_02.ktx2` | https://polyhaven.com/a/tree_small_02 | CC0 1.0 |
+| Searsia Lucida (tree) by James Ray Cock, Jenelle van Heerden | `public/textures/searsia_lucida.ktx2` | https://polyhaven.com/a/searsia_lucida | CC0 1.0 |
 <!-- assets:end -->
 
 CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/. Each kit's own `License.txt`

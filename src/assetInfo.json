@@ -4,5 +4,17 @@
   },
   "textures/kloofendal_48d_partly_cloudy_puresky_2k.ktx2": {
     "scale": 1.1226693391799927
+  },
+  "textures/jacaranda_tree.ktx2": {
+    "span": 24.417049407958984,
+    "trunk": 0.5291487385215216
+  },
+  "textures/tree_small_02.ktx2": {
+    "span": 4.556740965694189,
+    "trunk": 0.4672229461489615
+  },
+  "textures/searsia_lucida.ktx2": {
+    "span": 4.777316927909851,
+    "trunk": 0.4790859716942509
   }
 }

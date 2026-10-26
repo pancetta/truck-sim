@@ -193,6 +193,15 @@ export const city = {
     // turns from the kerb lane clip it.
     signal: { width: 0.2, inset: 0.3 },
   },
+  // Trees and small props on open ground (#40), all solid: a row of trees `inset` m in from every edge the open
+  // ground shares with a road, `spacing` m apart, and beside every n-th tree the n-th of `props` (kind, m along the
+  // row from the tree; null for none). Footprints are squares `size` m across.
+  plaza: {
+    inset: 5,
+    spacing: 14,
+    props: [['bin', 1.4], null, ['bollard', -1.2], null, ['fountain', 1.6], null, ['bollard', 1.2], null],
+    size: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
+  },
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
 };
 
@@ -351,6 +360,29 @@ export const lighting = {
     bias: -0.0004,
     normalBias: 0.05, // m
   },
+};
+
+// Street dressing (streets.js, #40): pavements, lanterns, and the look of the trees and props on open ground
+// (placed by the Sim, city.plaza). Sizes in m. Textures and models are CC0 from `npm run assets` (CREDITS.md).
+export const streets = {
+  // Along road tiles beside a building or spot tile, raised, over the road models' own pavement band, which the
+  // Sim keeps clear of the lanes (city.obstacles); none in front of a dock, where trucks back across it. The kerb
+  // is a stone strip `kerb` wide along the pavement's road edge, its face down to the road.
+  pavement: { width: 1.4, height: 0.15, texture: 'floor_pavement', repeat: 1.5, kerb: 0.15, kerbColour: 0xd8d2c4 },
+  // Lanterns (Poly Haven street_lamp_02) on street-facing walls about every `spacing` m and on the poles, their
+  // foot `height` up. Within `near` m of the camera the full model (20k triangles), then its far copy (1.2k) up to
+  // `cull`, then none; with near 20 m and cull 150 m the iPad simulator dropped to its lowest resolution.
+  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 10, cull: 100, post: 0.09, postColour: 0x2b2d33 },
+  // Crossed-quad trees from pictures (`npm run assets`): species picked per tree, `size` m across, mirrored at random.
+  trees: [
+    { picture: 'jacaranda_tree', size: [8, 11] },
+    { picture: 'tree_small_02', size: [6, 8] },
+    { picture: 'searsia_lucida', size: [6, 8] },
+  ],
+  // Our own small props, cast iron and painted metal.
+  bollard: { radius: 0.11, height: 0.9, colour: 0x4a4844 },
+  bin: { radius: 0.3, height: 0.95, colour: 0x2f4a3a },
+  fountain: { radius: 0.16, height: 1.15, colour: 0x3b443c, grate: 0x2a2a28 },
 };
 
 // Ground materials: CC0 PBR textures in public/textures/ from `npm run assets` (CREDITS.md), <texture>_Diffuse,

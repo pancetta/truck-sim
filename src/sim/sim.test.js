@@ -324,7 +324,8 @@ describe('Sim: city', () => {
       ,,,,,,
       ,,,,,,
       ,,,,,,`;
-    const sim = simOn(grid);
+    const noTrees = { ...tables, city: { ...tables.city, plaza: { ...tables.city.plaza, spacing: Infinity } } }; // open ground left bare
+    const sim = createSim(noTrees, parseMap(grid, noTrees));
     let hit = false;
     for (let t = 0; t < 7; t += DT) {
       sim.step(DT, { steer: t < 2.25 ? -0.5 : 0, gas: 1, brake: 0 });
@@ -333,6 +334,37 @@ describe('Sim: city', () => {
 
     expect(hit).toBe(false);
     expect(sim.state.truck.z).toBeGreaterThan(2 * TILE);
+  });
+
+  test('open ground has solid trees in rows along its roads, with small props beside some', () => {
+    const map = parseMap(city, tables);
+    const { inset, spacing, size } = tables.city.plaza;
+    const centre = (b) => [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
+    const tileAt = (x, z) => [Math.floor(x / TILE), Math.floor(z / TILE)];
+    const trees = map.colliders.filter((c) => c.kind === 'tree').map(centre);
+    const props = map.colliders.filter((c) => c.kind in size && c.kind !== 'tree');
+    expect(trees.length).toBeGreaterThan(30);
+    expect(new Set(props.map((p) => p.kind))).toEqual(new Set(['bin', 'bollard', 'fountain']));
+    const open = new Set(map.open.map(({ col, row }) => `${col},${row}`));
+    for (const [x, z] of [...trees, ...props.map(centre)]) expect(open.has(tileAt(x, z).join())).toBe(true);
+    for (const [x, z] of trees) {
+      // `inset` m from the nearest road tile, and never two trees closer than half the spacing.
+      const [col, row] = tileAt(x, z);
+      const gaps = DIRS.filter(([dc, dr]) => map.isRoad(col + dc, row + dr)).map(([dc, dr]) =>
+        dc ? Math.abs((col + 0.5 + dc / 2) * TILE - x) : Math.abs((row + 0.5 + dr / 2) * TILE - z));
+      expect(Math.min(...gaps)).toBeCloseTo(inset);
+      expect(trees.filter(([tx, tz]) => Math.hypot(tx - x, tz - z) < spacing / 2)).toHaveLength(1);
+    }
+    // A tree stops the truck: one stands in a row along the road to the east.
+    const grid = `
+      .,,
+      .,,
+      .,,`;
+    const sim = simOn(grid);
+    Object.assign(sim.state.truck, { x: TILE + inset - 6, z: 1.5 * TILE, heading: Math.PI / 2 });
+    drive(sim, 4, { steer: 0, gas: 0.3, brake: 0 });
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.x + tables.vehicle.length / 2).toBeLessThanOrEqual(TILE + inset - size.tree / 2 + 1e-6);
   });
 
   test('resetToRoad() from off-road puts the truck in the right-hand lane of the nearest road, along it, stopped in first gear', () => {

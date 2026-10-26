@@ -17,6 +17,11 @@ export const assets = [
   { id: 'red_brick_03', type: 'texture', res: '1k' },
   { id: 'clay_roof_tiles_02', type: 'texture', res: '1k' },
   { id: 'covered_car', type: 'model', res: '1k', far: 0.08 },
+  { id: 'floor_pavement', type: 'texture', res: '1k' },
+  { id: 'street_lamp_02', type: 'model', res: '1k', far: 0.05 },
+  { id: 'jacaranda_tree', type: 'tree', res: '1k', picture: 1024 },
+  { id: 'tree_small_02', type: 'tree', res: '1k', picture: 512 },
+  { id: 'searsia_lucida', type: 'tree', res: '1k', picture: 512 },
 ];
 
 // A texture's maps, as Poly Haven names them: colour, OpenGL normal, packed ambient occlusion / roughness / metalness.
