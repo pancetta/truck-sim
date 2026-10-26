@@ -652,6 +652,60 @@ With #39's buildings, main itself misses 60 fps in the 100-car stress run on the
 - *Triangles:* down from 198k to 85k at 100 cars, because far cars use 14×12-section bodies.
 - *Real iPad:* still unmeasured. The simulator says nothing about the A16's GPU speed.
 
+## Street dressing (#40)
+
+The streets get pavements, lanterns, trees and small props (`src/streets.js`, numbers in `tables.streets` and `tables.city.plaza`):
+- *Pavements:* raised 15 cm with stone kerbs, on the outer 1.4 m of road tiles beside buildings. That is the band the road models already drew as pavement and the Sim keeps clear of the lanes. They are not solid, and none run across a dock's bay.
+- *Lanterns:* Poly Haven's `street_lamp_02` hangs between two windows of #39's buildings, about every 24 m, and on each `p` pole, which is now an iron post.
+- *Facade props:* potted plants beside some doors and flower boxes on some sills.
+- *Open ground:* rows of crossed-quad trees (three baked species), with bins, bollards and drinking fountains. They are solid Sim colliders.
+
+The new assets add 1.2 MB, so `public/` is now 7.8 MB of 12 MB, counted as the budget test counts it: the pavement texture 418 KB, the lantern 508 KB plus a 58 KB far copy, and the tree pictures 204 KB. They all load after the first frame, so the first frame waits for about as much as before (2.39 MB).
+
+**How it is drawn:**
+- *Pavements and kerbs:* two merged meshes, always drawn. The pavement uses the ground material's later-loading maps.
+- *Instanced sets:* every lantern, post, pot, box, bollard, bin and fountain is drawn from an instanced set by distance. Each frame looks only at the 32 m cells within reach and copies precomputed matrices: 0.04 ms in Node. Visiting every place had cost 0.42 ms.
+- *Lantern levels:* the full model (20k triangles) within `near`, then the far copy (1.2k) up to `cull`. The glass is always the far copy's, so it doesn't change at the swap.
+- *Trees:* three instanced meshes, one per species, culled whole.
+
+**How measured:** as for #39. Production builds of main `3241507` (*before*, with #39) and this change (*after*), `?perf&auto`, alternating runs.
+
+**iPad (A16) simulator** (Safari, WebGL 2, cab, a window of 1,200 frames; ms median / p95 / mean):
+
+| | frame | render | ratio | calls / tris |
+|---|---|---|---|---|
+| before | 16.68 / 17.38 / 16.72 | 1.30 / 1.74 / 1.37 | 1.5 | 57 / 100k |
+| lanterns full model to 10 m, far copy to 100 m, props to 150 m, props cast shadows | 17.08–17.14 / 19.36–19.48 / 17.42–17.49 | 1.92 / 2.52–2.54 / 1.99 | 1.5 | 77 / 167–170k |
+| … props cast no shadows | 16.90–17.00 / 19.16–19.20 / 17.29–17.37 | 1.86–1.88 / 2.38 / 1.93 | 1.5 | 73–75 / 156–161k |
+| shipped: also lanterns 8 m / 70 m, props 90 m | 16.84–16.86 / 18.80–18.86 / 17.16–17.19 | 1.80 / 2.40–2.42 / 1.87–1.88 | 1.75 | 64–69 / 137–163k |
+
+**Earlier, before #39:**
+- With the lanterns' full model to 20 m, far copies to 150 m and lantern shadows, the simulator dropped to its lowest ratio, 1.25, at a mean frame of 18.4 ms.
+- Without lanterns, it matched main.
+- *The cost is the lanterns.* What helped was fewer of them (shorter distances), no shadows from them or the props, and the cheaper per-frame update. The pavements, kerbs and trees cost next to nothing.
+
+**Chrome** (M2, WebGPU, DPR 2, vsync, the shipped build; ms):
+
+Load average 2–10, alternating runs:
+
+| | before | after |
+|---|---|---|
+| Render CPU median, cab | 3.10, 2.12 | 2.30, 2.38 |
+| Render CPU median, chase | 1.98, 1.34 | 2.06, 2.33 |
+| GPU at vsync, cab | 6.66, 7.46 | 7.82, 7.90 |
+| GPU at vsync, chase | 8.01, 8.30 | 9.06, 8.72 |
+| Draw calls / triangles, cab | 262–268 / 172k | 273 / 221–223k |
+| Frame median / p95 | 16.67 / 16.67 | 16.67 / 16.67 |
+| First playable frame at 10 Mbit/s (load average ~17, earlier build) | 4.38, 4.64 s | 4.62, 4.75 s |
+| On the wire | 2.27–3.06 MB | 2.39 MB |
+
+**Verdict:**
+- *60 fps:* holds in the cab view in Chrome. In the simulator, the median frame is 0.2 ms over vsync, and the ratio climbs to 1.75, against 1.5 for main.
+- *Real iPad:* still unmeasured. If it misses, these are the first costs to cut:
+  - the lantern far copies' distance (`tables.streets.lantern.cull`);
+  - the flower boxes (`tables.streets.flowers`: 1,207 boxes in the city, about 100 triangles each).
+- *Budget:* the download budget check passes at 7.8 of 12 MB, and the first playable frame is unchanged. Render CPU is up about 0.5 ms in the simulator, from about 15 more objects.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

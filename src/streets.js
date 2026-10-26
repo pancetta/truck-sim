@@ -173,11 +173,11 @@ export function createStreets(scene, map, tables, { pavers, loadTexture, loader,
     }
     sets.push({ places, cells, levels, height });
   }
-  // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past `upTo` m, casting shadows.
+  // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past `upTo` m.
   const prop = (places, parts, height, upTo = propCull) => {
     if (!places.length) return;
     const mesh = new THREE.InstancedMesh(mergeGeometries(parts.map(([g, colour]) => coloured(g, colour))), propMaterial, places.length);
-    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.receiveShadow = true;
     addSet(places, [{ upTo, meshes: [mesh] }], height);
   };
 
