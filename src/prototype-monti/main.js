@@ -11,7 +11,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 import { newData, tri, toGeometry, flat } from './geometry.js';
 import { glassTextures, louvreTexture, doorTexture, rollerTexture, shopTexture, facadeTexture, arcadeTexture } from './textures.js';
-import { carGeometries, scooterGeometry, bikeGeometry } from './vehicles.js';
+import { carGeometries, scooterGeometry, bikeGeometry, detailAtlas } from './vehicles.js';
 import { buildRing } from './ring.js';
 
 const BASE = `${import.meta.env.BASE_URL}prototype-monti/`;
@@ -338,8 +338,10 @@ const SCOOTER_PAINT = ['#f2f2f0', '#9ec3c7', '#2b2d31', '#b8402e', '#e8d9b8', '#
 const carGeos = carGeometries();
 const scooterGeo = scooterGeometry();
 const bikeGeo = bikeGeometry();
-const KINDS = [['city', 0.3], ['hatch', 0.25], ['micro', 0.1], ['sedan', 0.15], ['van', 0.05], ['scooters', 0.15]];
-const parked = { ...Object.fromEntries(Object.keys(carGeos).map((k) => [k, []])), scooter: [], bike: [] };
+const KINDS = [['city', 0.28], ['hatch', 0.23], ['micro', 0.1], ['sedan', 0.14], ['van', 0.05], ['covered', 0.07], ['scooters', 0.13]];
+// [length, width] per kind; the covered car is Poly Haven's.
+const SIZES = { ...Object.fromEntries(Object.entries(carGeos).map(([k, g]) => [k, [g.length, g.width]])), covered: [4.38, 1.79], scooters: [2.6, 1.8] };
+const parked = { ...Object.fromEntries(Object.keys(carGeos).map((k) => [k, []])), covered: [], scooter: [], bike: [] };
 // Parked spots so far, by 10 m cell: parallel ways (dual carriageways, a square's sides) would stack cars.
 const taken = new Map();
 const tkey = (x, z) => `${Math.floor(x / 10)},${Math.floor(z / 10)}`;
@@ -370,7 +372,7 @@ for (const w of drivable) {
         const roll = rnd(seed, 1);
         let acc = 0;
         const kind = KINDS.find(([, share]) => (acc += share) > roll)?.[0] ?? 'city';
-        const [len, width] = kind === 'scooters' ? [2.6, 1.8] : [carGeos[kind].length, carGeos[kind].width];
+        const [len, width] = SIZES[kind];
         if (cursor + len > L - 2) break;
         const mid = cursor + len / 2;
         const off = side * (half - width / 2 - 0.15);
@@ -431,7 +433,7 @@ async function pbr(name, extra = {}) {
 const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
 const gltfLoader = new GLTFLoader();
 const model = (id) => gltfLoader.loadAsync(`${BASE}models/${id}/${id}_1k.gltf`);
-const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTexs, wallLampModel, poleLampModel, binModel, potModel, boxModel] = await Promise.all([
+const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTexs, wallLampModel, poleLampModel, binModel, potModel, boxModel, coveredModel] = await Promise.all([
   new HDRLoader().loadAsync(`${BASE}sky_2k.hdr`),
   Promise.all(WALL_TEXTURES.map(([name]) => pbr(name, { vertexColors: true }))),
   pbr('clay_roof_tiles_02'),
@@ -445,6 +447,7 @@ const [skyHdr, wallMs, roofM, groundM, asphaltM, grassM, paversM, treeTexs, wall
   model('metal_trash_can'),
   model('potted_plant_02'),
   model('planter_box_01'),
+  model('covered_car'),
 ]);
 skyHdr.mapping = THREE.EquirectangularReflectionMapping;
 for (const t of treeTexs) t.colorSpace = THREE.SRGBColorSpace;
@@ -550,45 +553,50 @@ Object.entries(TREE_PICS).forEach(([pic, [span, trunk]], k) => {
   looks.push({ mesh, A: new THREE.MeshLambertMaterial(look), B });
 });
 
-// ---- parked vehicles' meshes: one InstancedMesh per kind and material, the paint per instance ----------------
-const carPaint = new THREE.MeshPhysicalMaterial({ roughness: 0.35, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.08 });
-const vehicleLooks = {
-  body: [lambert('#ffffff'), carPaint],
-  glass: [lambert('#20262d'), new THREE.MeshStandardMaterial({ color: '#151a20', roughness: 0.05, metalness: 0.2 })],
-  dark: [lambert('#1d1d1f'), new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 })],
-  metal: [lambert('#b9bcc0'), new THREE.MeshStandardMaterial({ color: '#b9bcc0', roughness: 0.3, metalness: 0.9 })],
-};
-const lean = new THREE.Quaternion();
-let vehicleCount = 0;
-for (const [kind, list] of Object.entries(parked)) {
-  const geos = kind === 'scooter' ? scooterGeo : kind === 'bike' ? bikeGeo : carGeos[kind];
-  vehicleCount += list.length;
-  for (const [part, [A, B]] of Object.entries(vehicleLooks)) {
-    if (!geos[part] || !list.length) continue;
-    const mesh = new THREE.InstancedMesh(geos[part], B, list.length);
-    list.forEach((p, i) => {
-      quat.setFromAxisAngle(yAxis, p.rot).multiply(lean.setFromAxisAngle(new THREE.Vector3(1, 0, 0), p.lean ?? 0));
-      mesh.setMatrixAt(i, m4.compose(new THREE.Vector3(p.x, p.y, p.z), quat, new THREE.Vector3(1, 1, 1)));
-      if (part === 'body') mesh.setColorAt(i, p.color);
-    });
-    mesh.castShadow = mesh.receiveShadow = true;
-    scene.add(mesh);
-    looks.push({ mesh, A, B });
-  }
-}
-
-// A Poly Haven model as instances standing on y = 0 at each placement. `wall`: its back at z = 0, so it sits on a
-// facade whose outward normal is the placement's local +z. Each sub-mesh gets a near and a far InstancedMesh:
-// full detail within LOD_NEAR metres of the camera, a meshoptimizer-simplified copy (`keep` of the vertices)
-// beyond, nothing past PROP_CULL (haze hides them there); updateLods() re-sorts the instances between them.
+// ---- near/far instancing ------------------------------------------------------------------------------------
+// Each part of a placed thing gets a near and a far InstancedMesh: full detail within LOD_NEAR metres of the camera,
+// the far geometry beyond, nothing past `cull` (haze hides it there). updateLods() re-sorts the placements between
+// them every few frames, carrying each placement's paint colour along on parts marked `paint`.
 const LOD_NEAR = 25; // m
-const PROP_CULL = 150; // m
+const PROP_CULL = 150; // m, small props
 const simplifier = new SimplifyModifier();
 const lodModels = [];
 let fullTris = 0;
 let lowTris = 0;
-async function instanceModel(gltf, placements, { wall = false, keep = 0.05, shadows = true } = {}) {
+// parts: [{ near, far, material, matrices (one per placement), paint? }].
+function addLods(placements, parts, { shadows = true, cull = PROP_CULL } = {}) {
+  lodModels.push({
+    placements,
+    cull,
+    parts: parts.map((part) => {
+      const [near, far] = [part.near, part.far].map((g) => {
+        const mesh = new THREE.InstancedMesh(g, part.material, placements.length);
+        mesh.frustumCulled = false; // instances move between near and far, so the bounds would go stale
+        mesh.castShadow = shadows;
+        mesh.receiveShadow = true;
+        if (part.paint) mesh.setColorAt(0, new THREE.Color()); // allocates the colour buffer
+        scene.add(mesh);
+        looks.push({ mesh, A: part.material, B: part.material });
+        return mesh;
+      });
+      return { ...part, near, far };
+    }),
+  });
+}
+const tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+const placementMatrix = (p) =>
+  new THREE.Matrix4().compose(
+    new THREE.Vector3(p.x, p.y, p.z),
+    new THREE.Quaternion().setFromAxisAngle(yAxis, p.rot).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p.lean ?? 0)),
+    new THREE.Vector3(1, 1, 1),
+  );
+
+// A Poly Haven model at each placement, standing on y = 0, turned by `turn` first. `wall`: its back at z = 0, so it
+// sits on a facade whose outward normal is the placement's local +z. Far copies are meshoptimizer-simplified to
+// `keep` of the vertices.
+async function instanceModel(gltf, placements, { wall = false, keep = 0.05, shadows = true, turn = 0 } = {}) {
   const root = gltf.scene;
+  root.rotation.y = turn;
   root.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(root);
   const c = bounds.getCenter(new THREE.Vector3());
@@ -598,37 +606,73 @@ async function instanceModel(gltf, placements, { wall = false, keep = 0.05, shad
   const parts = [];
   for (const o of meshes) {
     const low = await simplifier.modify(o.geometry, Math.floor(o.geometry.attributes.position.count * (1 - keep)));
-    const tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
     fullTris += tris(o.geometry);
     lowTris += tris(low);
-    const matrices = placements.map((p) =>
-      new THREE.Matrix4().compose(new THREE.Vector3(p.x, p.y, p.z), quat.setFromAxisAngle(yAxis, p.rot), new THREE.Vector3(1, 1, 1)).multiply(base).multiply(o.matrixWorld),
-    );
-    const [near, far] = [o.geometry, low].map((g) => {
-      const mesh = new THREE.InstancedMesh(g, o.material, placements.length);
-      mesh.frustumCulled = false; // instances move between near and far, so the bounds would go stale
-      mesh.castShadow = shadows;
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-      looks.push({ mesh, A: o.material, B: o.material });
-      return mesh;
-    });
-    parts.push({ near, far, matrices });
+    parts.push({ near: o.geometry, far: low, material: o.material, matrices: placements.map((p) => placementMatrix(p).multiply(base).multiply(o.matrixWorld)) });
   }
-  lodModels.push({ placements, parts });
+  addLods(placements, parts, { shadows });
 }
 let lodOn = !new URLSearchParams(location.search).has('nolod');
 function updateLods(eye) {
-  for (const { placements, parts } of lodModels) {
+  for (const { placements, parts, cull } of lodModels) {
     const dist = placements.map((p) => (lodOn ? Math.hypot(p.x - eye.x, p.z - eye.z) : 0));
-    for (const { near, far, matrices } of parts) {
+    for (const { near, far, matrices, paint } of parts) {
       let [n, f] = [0, 0];
-      matrices.forEach((m, i) => (dist[i] < LOD_NEAR ? near.setMatrixAt(n++, m) : dist[i] < PROP_CULL && far.setMatrixAt(f++, m)));
+      matrices.forEach((m, i) => {
+        const [mesh, k] = dist[i] < LOD_NEAR ? [near, n++] : dist[i] < cull ? [far, f++] : [];
+        if (!mesh) return;
+        mesh.setMatrixAt(k, m);
+        if (paint) mesh.setColorAt(k, placements[i].color);
+      });
       [near.count, far.count] = [n, f];
-      near.instanceMatrix.needsUpdate = far.instanceMatrix.needsUpdate = true;
+      for (const mesh of [near, far]) {
+        mesh.instanceMatrix.needsUpdate = true;
+        if (paint) mesh.instanceColor.needsUpdate = true;
+      }
     }
   }
 }
+
+// ---- parked vehicles ------------------------------------------------------------------------------------------
+// Cars: lofted bodies with a painted skin and windows (paint colour per car) and a details mesh (bumpers, lights,
+// plates, grille, tyres, hubs) coloured per vertex. Scooters and bikes: one mesh per material, always full detail.
+const detailM = new THREE.MeshStandardMaterial({ map: detailAtlas(), vertexColors: true, roughness: 0.45, metalness: 0.1 });
+for (const [kind, g] of Object.entries(carGeos)) {
+  if (!parked[kind].length) continue;
+  const paintM = new THREE.MeshPhysicalMaterial({ map: g.skin, roughness: 0.35, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const matrices = parked[kind].map(placementMatrix);
+  addLods(
+    parked[kind],
+    [
+      { near: g.near.body, far: g.far.body, material: paintM, matrices, paint: true },
+      { near: g.near.details, far: g.far.details, material: detailM, matrices },
+    ],
+    { cull: 300 },
+  );
+  fullTris += tris(g.near.body) + tris(g.near.details);
+  lowTris += tris(g.far.body) + tris(g.far.details);
+}
+await instanceModel(coveredModel, parked.covered, { turn: Math.PI / 2, keep: 0.08 }); // modelled lengthwise along z
+const twoWheelLooks = {
+  body: new THREE.MeshPhysicalMaterial({ roughness: 0.35, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.08 }),
+  dark: new THREE.MeshStandardMaterial({ color: '#1d1d1f', roughness: 0.9 }),
+  metal: new THREE.MeshStandardMaterial({ color: '#b9bcc0', roughness: 0.3, metalness: 0.9 }),
+};
+for (const [kind, geos] of [['scooter', scooterGeo], ['bike', bikeGeo]]) {
+  for (const [part, material] of Object.entries(twoWheelLooks)) {
+    if (!geos[part] || !parked[kind].length) continue;
+    const mesh = new THREE.InstancedMesh(geos[part], material, parked[kind].length);
+    parked[kind].forEach((p, i) => {
+      mesh.setMatrixAt(i, placementMatrix(p));
+      if (part === 'body') mesh.setColorAt(i, p.color);
+    });
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    looks.push({ mesh, A: material, B: material });
+  }
+}
+const vehicleCount = Object.values(parked).reduce((n, list) => n + list.length, 0);
+
 const poleLamps = atNodes(nodesOf('highway', 'street_lamp'));
 const bins = atNodes(nodesOf('amenity', 'waste_basket'));
 await instanceModel(wallLampModel, wallLamps, { wall: true });
