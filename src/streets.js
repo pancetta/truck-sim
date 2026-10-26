@@ -70,12 +70,13 @@ export function lanternMounts(map, plan, { spacing, post, clear }, bay) {
   for (const side of plan.flatMap((b) => b.sides).filter((s) => s.street && !s.hole)) {
     const { x, z, ux, uz, length, dir } = side;
     const bays = Math.floor((length - 1) / bay); // as facadeParts lays them out
-    // m along the street (x or z) of each gap between two windows, with its place
+    // Each gap between two windows as [m along the street (x or z), x, z].
     const gaps = Array.from({ length: bays - 1 }, (_, k) => {
-      const along = ((k + 1) * length) / bays;
-      return [x + ux * along, z + uz * along];
-    }).map(([gx, gz]) => [ux ? gx : gz, gx, gz]);
-    const [lo, hi] = [ux ? Math.min(x, x + ux * length) : Math.min(z, z + uz * length), ux ? Math.max(x, x + ux * length) : Math.max(z, z + uz * length)];
+      const [gx, gz] = [x + (ux * (k + 1) * length) / bays, z + (uz * (k + 1) * length) / bays];
+      return [ux ? gx : gz, gx, gz];
+    });
+    const ends = ux ? [x, x + ux * length] : [z, z + uz * length];
+    const [lo, hi] = [Math.min(...ends), Math.max(...ends)];
     for (let k = Math.ceil(lo / spacing - 0.5); (k + 0.5) * spacing < hi; k++) {
       if (!gaps.length) break;
       const [, gx, gz] = gaps.reduce((a, g) => (Math.abs(g[0] - (k + 0.5) * spacing) < Math.abs(a[0] - (k + 0.5) * spacing) ? g : a));
@@ -159,19 +160,20 @@ export function createStreets(scene, map, tables, { pavers, loadTexture, loader,
     const matrices = places.map(({ x, y = 0, z, angle = 0 }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, y, z));
     sets.push({ places, matrices, levels, height });
   }
-  // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past propCull, casting shadows.
-  const prop = (places, parts, height) => {
+  // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past `upTo` m, casting shadows.
+  const prop = (places, parts, height, upTo = propCull) => {
     if (!places.length) return;
     const mesh = new THREE.InstancedMesh(mergeGeometries(parts.map(([g, colour]) => coloured(g, colour))), propMaterial, places.length);
     mesh.castShadow = mesh.receiveShadow = true;
-    addSet(places, [{ upTo: propCull, meshes: [mesh] }], height);
+    addSet(places, [{ upTo, meshes: [mesh] }], height);
   };
 
   // The props on the Sim's colliders: the poles' posts, and the bollards, bins and fountains on open ground.
   const { bollard, bin, fountain, pot, box } = tables.streets;
   const at = (kind) => map.colliders.filter((c) => c.kind === kind).map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }));
   const postHeight = lantern.height + 1.7; // up to the top of the lantern's bracket
-  prop(at('pole'), [[cylinder(lantern.post, postHeight), lantern.postColour], [cylinder(lantern.post * 1.8, 0.5), lantern.postColour]], postHeight);
+  // The posts go with their lanterns, so none stands bare between the two cull distances.
+  prop(at('pole'), [[cylinder(lantern.post, postHeight), lantern.postColour], [cylinder(lantern.post * 1.8, 0.5), lantern.postColour]], postHeight, lantern.cull);
   prop(at('bollard'), [[cylinder(bollard.radius, bollard.height), bollard.colour], [cylinder(bollard.radius * 1.2, 0.05, bollard.height), bollard.colour]], bollard.height);
   prop(at('bin'), [[cylinder(bin.radius, bin.height), bin.colour], [cylinder(bin.radius * 1.08, 0.06, bin.height - 0.06), bin.colour]], bin.height);
   // A nasone: a post with a cap and a spout over a drain grate, turned a quarter at random.
