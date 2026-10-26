@@ -35,7 +35,7 @@ function drive(steps) {
 }
 
 test('the traffic step at 100 cars is fast and allocates next to nothing', () => {
-  const { frames, lights } = drive(1400);
+  const { frames, lights } = drive(1800);
   const traffic = createTraffic(tables, map, seeded(1));
   const truck = { ...frames[0].truck };
   const held = new Set();
@@ -44,12 +44,13 @@ test('the traffic step at 100 cars is fast and allocates next to nothing', () =>
     for (let k = 0; k < lights.length; k++) lights[k].phase = frames[i].phases[k];
     traffic.step(step, truck, lights, 100, held);
   };
-  for (let i = 0; i < 600; i++) play(i); // fills the city and warms up the JIT
+  // Fills the city and warms up the JIT; new cars need `lookAhead` of room, so filling takes a while.
+  for (let i = 0; i < 1000; i++) play(i);
   expect(traffic.cars.length).toBeGreaterThan(90);
 
   const before = allocated();
   let ms = Infinity;
-  for (let i = 600; i < 1400; i += 160) {
+  for (let i = 1000; i < 1800; i += 160) {
     const t0 = performance.now();
     for (let k = i; k < i + 160; k++) play(k);
     ms = Math.min(ms, (performance.now() - t0) / 160);

@@ -140,26 +140,40 @@ export const lights = {
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
   redLight: 100,
-  collision: 150, // the truck touching an AI car, once per contact
+  collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
+};
+
+// km/h in town, everywhere: AI cars cruise at it and the speedometer turns red above it. No fine for speeding.
+export const speedLimit = 50;
+
+// Speed limit signs (map.signs, solid like the poles): where a street begins, that is on its first tile out of a
+// light junction or out of the road round the city's edge, on the right-hand pavement, facing the traffic.
+export const signs = {
+  along: 3, // m from the tile edge the street begins at
+  inset: 0.7, // m from the kerb-side tile edge, mid-pavement
+  height: 2.6, // m, middle of the plate
+  radius: 0.45, // m, the plate; the red ring is the outer `ring` of it
+  ring: 0.09, // m
+  post: 0.08, // m square
 };
 
 // AI cars (sizes from city.obstacles.car). The lane runs `laneOffset` right of the road's centre line, so a
 // car keeps clear of the parked ones (3.6 m out) and of oncoming traffic.
 export const traffic = {
   laneOffset: 2.2, // m
-  speed: 10, // m/s (36 km/h) cruising
-  turnSpeed: 4.5, // m/s round corners
+  speed: speedLimit / 3.6, // m/s cruising, at the limit
+  turnAccel: 4.5, // m/s² sideways round corners: ~4.6 m/s turning right (4.8 m radius), ~6.4 m/s left (9.2 m)
   accel: 2, // m/s²
   brake: 4, // m/s², planned braking for stop lines, corners and the car or truck ahead
   maxBrake: 8, // m/s²; a light that would need harder braking (it turned amber too late) is driven through
   followGap: 2.5, // m between bumpers when stopped behind a car or the truck
   stopGap: 1.5, // m from the front bumper to the stop line
   sideGap: 0.3, // m each side of a car's path that must stay clear of the car or truck ahead
-  lookAhead: 25, // m; also the room a new car needs from the others
+  lookAhead: 35, // m; stopping from cruise at `brake` takes 24 m, plus the gaps; also the room a new car needs
   // m from an unsignalled crossing within which a car or the truck counts as arriving there, for right of way
-  // (and from a light junction, for a car turning left there); cars and the truck look two tiles ahead, so
-  // more than ~25 m has no effect
-  giveWay: 20,
+  // (and from a light junction, for a car turning left there): more than stopping from cruise at `brake`. The
+  // truck looks two tiles ahead, so more than ~28 m has no effect for it.
+  giveWay: 28,
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)

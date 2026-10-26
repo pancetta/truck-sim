@@ -161,6 +161,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       return [geometry, list];
     });
   });
+  // The speed limit signs, our own geometry, join the city's batch so they are culled and fogged with it.
+  cityModels.push(Promise.resolve([speedSign(), map.signs.map(({ x, z, dir }) => ({ x, z, angle: Math.atan2(-DIRS[dir][0], -DIRS[dir][1]), size: [1, 1, 1] }))]));
   // A model that fails is logged (through `loads`) and left out; the rest of the city still goes up.
   loads.push(...cityModels, Promise.all(cityModels.map((m) => m.catch(() => null))).then((models) => addCity(models.filter(Boolean))));
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
@@ -250,6 +252,41 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
     batch.sortObjects = false; // depth-sorting the visible placements allocated about 40 KB per frame
     scene.add(batch);
+  }
+
+  // A speed limit sign as one flat-coloured geometry like the kit's, its post at the origin and its face towards
+  // +z: a round plate, a red ring round a white disc with the limit in dark seven-segment bars.
+  function speedSign() {
+    const { height, radius, ring, post } = tables.signs;
+    const parts = [];
+    const add = (geometry, colour) => {
+      const part = geometry.toNonIndexed().deleteAttribute('normal').deleteAttribute('uv');
+      const colours = new Float32Array(part.getAttribute('position').count * 3);
+      const c = new THREE.Color(colour);
+      for (let i = 0; i < colours.length; i += 3) c.toArray(colours, i);
+      parts.push(part.setAttribute('color', new THREE.BufferAttribute(colours, 3)));
+    };
+    const disc = (r, depth, front) => new THREE.CylinderGeometry(r, r, depth, 20).rotateX(Math.PI / 2).translate(0, height, front - depth / 2);
+    add(new THREE.BoxGeometry(post, height, post).translate(0, height / 2, 0), palette.signal);
+    const face = post / 2 + 0.03; // each layer stands 1.5 cm proud of the one behind, against depth fighting
+    add(disc(radius, 0.03, face), palette.red);
+    add(disc(radius - ring, 0.015, face + 0.015), palette.stopLine);
+    // Segments a–g of a digit w × h, bars t thick: top, upper right, lower right, bottom, lower left, upper left, middle.
+    const [w, h, t] = [0.16, 0.32, 0.045];
+    const SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+    const bars = { a: [0, h / 2, 1], b: [w / 2, h / 4, 0], c: [w / 2, -h / 4, 0], d: [0, -h / 2, 1], e: [-w / 2, -h / 4, 0], f: [-w / 2, h / 4, 0], g: [0, 0, 1] };
+    const digits = String(tables.speedLimit);
+    [...digits].forEach((digit, i) => {
+      const cx = (i - (digits.length - 1) / 2) * (w + t + 0.08);
+      for (const s of SEGMENTS[digit]) {
+        const [x, y, across] = bars[s];
+        const bar = across ? new THREE.BoxGeometry(w + t, t, 0.015) : new THREE.BoxGeometry(t, h / 2 + t, 0.015);
+        add(bar.translate(cx + x, height + y, face + 0.0225), palette.trim);
+      }
+    });
+    const geometry = mergeGeometries(parts);
+    geometry.computeBoundingBox();
+    return geometry;
   }
 
   // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.

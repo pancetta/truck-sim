@@ -154,7 +154,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
-    if (traffic) touchCars(met);
+    if (traffic) touchCars(met, before);
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     checkRedLight(frontBefore, frontTile());
@@ -200,12 +200,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     traffic?.step(dt, truck, state.lights, tables.rank.tiers[state.rank.tier].traffic, contacts);
   }
 
-  // Each new contact with an AI car (`met`: the cars the truck's move touched) costs a fine. A contact lasts
-  // until the truck is `contactGap` clear of the car, so pushing on or nudging it again isn't a new one.
-  function touchCars(met) {
+  // A new contact with an AI car (`met`: the cars the truck touches after its move) costs a fine when the
+  // truck's move made it; a car that drove into the truck (`before`: touching before the move) costs nothing
+  // and stops the truck. A contact lasts until the truck is `contactGap` clear of the car, so pushing on or
+  // nudging it again isn't a new one.
+  function touchCars(met, before) {
     const near = contacts.size ? traffic.touching(corners(truck, tables.traffic.contactGap)) : [];
     const now = state.traffic.filter((c) => met.includes(c) || (contacts.has(c.id) && near.includes(c)));
-    for (const c of now) if (!contacts.has(c.id)) fine('collision');
+    for (const c of now) {
+      if (contacts.has(c.id)) continue;
+      if (before.includes(c)) truck.speed = 0;
+      else fine('collision');
+    }
     contacts = new Set(now.map((c) => c.id));
   }
 

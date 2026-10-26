@@ -154,6 +154,10 @@ body {
   line-height: 1;
 }
 
+.dash-speed b.over {
+  color: #ff4a3d; /* above tables.speedLimit */
+}
+
 .dash-speed small,
 .dash-rpm small {
   margin-left: 6px;

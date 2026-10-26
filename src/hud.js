@@ -1,4 +1,4 @@
-// Dashboard overlay: speed, gear, RPM, rank and total distance. Reads Sim state; never writes to it.
+// Dashboard overlay: speed (red above the limit), gear, RPM, rank and total distance. Reads Sim state; never writes to it.
 export function createHud(root, tables, strings) {
   const { idleRpm, upshiftRpm, torqueCurve } = tables.vehicle;
   const maxRpm = torqueCurve.at(-1)[0];
@@ -25,7 +25,9 @@ export function createHud(root, tables, strings) {
   let shownKm;
 
   function update({ truck, rank, profile }) {
-    set(speed, String(Math.round(Math.abs(truck.speed) * 3.6)));
+    const kmh = Math.round(Math.abs(truck.speed) * 3.6);
+    set(speed, String(kmh));
+    speed.classList.toggle('over', kmh > tables.speedLimit);
     set(gear, String(truck.gear));
     const fill = ((truck.rpm - idleRpm) / (maxRpm - idleRpm)).toFixed(2);
     if (fill !== shownBar) bar.style.transform = `scaleX(${(shownBar = fill)})`;

@@ -7,13 +7,13 @@
 // across the tile, or a quarter circle round the tile corner between its entry and exit edges.
 // At unsignalled crossings one approach at a time drives in, chosen right before left (see rightOfWay); at
 // light junctions a car turning left waits for the traffic coming the other way (see oncomingAt). No car
-// drives into a crossing or junction whose exit lane is queued up (see exitBlocked).
+// drives into a crossing or junction whose exit lane is queued up (see exitBlocked), or that the truck stands in.
 // The step allocates next to nothing (#31): footprints, poses and the neighbour grid are scratch that is
 // reused every step, and tiles are looked up by index, so the cost grows about linearly with the cars.
 
 import { DIRS } from './map.js';
 
-const ROUTE = 3; // pieces planned: the current one and two ahead, more than the longest stopping distance
+const ROUTE = 4; // pieces planned: the current one and three ahead, more than the longest stopping distance
 const SIGNS = [[1, 1], [1, -1], [-1, -1], [-1, 1]]; // footprint corners, front right first
 const newBox = () => SIGNS.map(() => ({ x: 0, z: 0 }));
 
@@ -55,9 +55,13 @@ export function createTraffic(tables, map, random) {
   }
   const groupAt = (col, row) => crossingAt[tileAt(col, row)]?.group;
   const groupOf = (p) => p && groupAt(p.col, p.row);
-  // Light junction tiles: who comes the other way there this step (see oncomingAt), as DIRS bits in `seen`.
+  // Light junction tiles: who comes the other way there this step (see oncomingAt), as DIRS bits in `seen`, and
+  // `truck === now` while the truck stands in one.
   const junctionAt = [];
-  for (const l of map.lights) junctionAt[tileAt(l.col, l.row)] ??= { stamp: -1, seen: 0 };
+  const junctions = [];
+  for (const { col, row } of map.lights) {
+    if (!junctionAt[tileAt(col, row)]) junctions.push((junctionAt[tileAt(col, row)] = { col, row, box: tileBox({ col, row }), stamp: -1, seen: 0, truck: -1 }));
+  }
   // The box a lane piece is in, if any: its crossing's group (touching crossings share one) or its light junction.
   const boxOf = (p) => groupOf(p) ?? (p && junctionAt[tileAt(p.col, p.row)]);
   // The lights by tile and direction of travel into it, indexed on first use (the Sim keeps its light objects).
@@ -88,8 +92,10 @@ export function createTraffic(tables, map, random) {
   let found = new Int32Array(64);
   let targets = new Float64Array(64);
 
-  // Turning right is to = from + 1 (DIRS run clockwise seen from above).
-  const laneLength = (p) => (p.from === p.to ? ts : (Math.PI / 2) * (p.to === (p.from + 1) % 4 ? half - t.laneOffset : half + t.laneOffset));
+  // Turning right is to = from + 1 (DIRS run clockwise seen from above). A turn's radius is round the tile corner.
+  const radius = (p) => (p.to === (p.from + 1) % 4 ? half - t.laneOffset : half + t.laneOffset);
+  const laneLength = (p) => (p.from === p.to ? ts : (Math.PI / 2) * radius(p));
+  const turnSpeed = (p) => Math.sqrt(t.turnAccel * radius(p));
 
   // Sets `out`'s { x, z, heading } to the pose `s` m along lane piece `p`. Right of travel (dc, dr) is (-dr, dc).
   function pose(p, s, out) {
@@ -307,11 +313,9 @@ export function createTraffic(tables, map, random) {
       }
     }
 
-    // The truck, in a crossing or driving towards one within `giveWay` along the road.
-    for (const c of crossings) {
-      const near = Math.abs((c.col + 0.5) * ts - truck.x) < ts && Math.abs((c.row + 0.5) * ts - truck.z) < ts;
-      if (near && boxesOverlap(truckBox, c.box)) hold(c.group, -1);
-    }
+    // The truck, in a crossing or light junction, or driving towards a crossing within `giveWay` along the road.
+    for (const c of crossings) if (truckIn(c, truck)) hold(c.group, -1);
+    for (const j of junctions) if (truckIn(j, truck)) j.truck = now;
     const n = truckAhead(truck);
     for (let k = 1; k < n; k++) {
       const { dir, col, row, short } = truckTiles[k];
@@ -337,6 +341,9 @@ export function createTraffic(tables, map, random) {
       }
     }
   }
+
+  const truckIn = (tile, truck) =>
+    Math.abs((tile.col + 0.5) * ts - truck.x) < ts && Math.abs((tile.row + 0.5) * ts - truck.z) < ts && boxesOverlap(truckBox, tile.box);
 
   // The tiles the truck drives into while it drives forwards along a road axis, from the one under its front
   // bumper to two ahead, into the scratch `truckTiles`: each with that axis' DIRS index and the m from the
@@ -418,24 +425,25 @@ export function createTraffic(tables, map, random) {
 
   // The fastest the car may go now: cruise, slower through turns, and able to stop at `brake` before a stop
   // line that isn't green, a left turn with traffic coming the other way, a crossing it may not drive into
-  // yet or a box whose exit is queued up, and behind the car or truck ahead. A light it can't stop for at
-  // `maxBrake` (it turned amber too late) is driven through. Goes into targets[i] for cars[i]: a returned
-  // number would be boxed on every call.
+  // yet, a box whose exit is queued up or a light junction the truck stands in, and behind the car or truck
+  // ahead. A light it can't stop for at `maxBrake` (it turned amber too late) is driven through. Goes into
+  // targets[i] for cars[i]: a returned number would be boxed on every call.
   function targetSpeed(ci, truck, lights) {
     const car = cars[ci];
-    let speed = car.lane.from === car.lane.to ? t.speed : t.turnSpeed;
+    let speed = car.lane.from === car.lane.to ? t.speed : turnSpeed(car.lane);
     let dist = laneLength(car.lane) - car.s; // centre to the start of the next piece
     for (let i = 1; i < car.route.length; i++) {
       const p = car.route[i];
-      if (p.from !== p.to) speed = Math.min(speed, limit(dist, t.turnSpeed));
+      if (p.from !== p.to) speed = Math.min(speed, limit(dist, turnSpeed(p)));
       const light = lightFor(p, lights);
       const short = dist - size.length / 2; // front bumper to the stop line
       const g = groupOf(p);
       const way = g && g !== groupOf(car.route[i - 1]) && g.stamp === now ? g.way : undefined;
+      const box = boxOf(p);
       const wait =
         (light && (light.phase !== 'green' || (p.to === (p.from + 3) % 4 && oncoming(p, (p.from + 2) % 4)))) ||
         (way !== undefined && way !== p.from) ||
-        (boxOf(p) && boxOf(p) !== boxOf(car.route[i - 1]) && exitBlocked(car, i, truck));
+        (box && box !== boxOf(car.route[i - 1]) && (box.truck === now || exitBlocked(car, i, truck)));
       if (wait && stoppable(car, short)) speed = Math.min(speed, limit(short - t.stopGap));
       dist += laneLength(p);
     }

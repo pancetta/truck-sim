@@ -9,8 +9,9 @@ A browser truck-delivery game: drive a heavy truck around a small low-poly city,
 - **Orders:** pick one of three offers, load at the pickup, unload at the drop-off. Pay grows with the road distance, plus a **time bonus** that shrinks to nothing at the offer's expected time. **Fragile** cargo pays a premium that hard braking and hits wear away. Drop-offs at a **dock** pay a bonus when you reverse into the bay (the reversing camera comes on in R).
 - **Rank:** deliveries (and their bonuses) earn rank points; a higher rank unlocks harder offer types, Werkstatt upgrades and more traffic.
 - **Werkstatt:** buy upgrades (motor, brakes, tyres, suspension, cargo bed) and looks (paint, livery, light bar, cab gimmick, rims, chrome), trying looks on before buying. Opens only while standing with no order.
-- **Traffic:** AI cars drive the right-hand lane, stop at red lights, give way right before left at unsignalled crossings, wait to turn left at lights while traffic comes the other way, and don't drive into a crossing whose exit is queued up.
-- **Fines:** crossing a stop line forwards on red, or touching an AI car, costs money (never below 0); the notice shows what was taken.
+- **Traffic:** AI cars drive the right-hand lane at the 50 km/h limit, stop at red lights, give way right before left at unsignalled crossings, wait to turn left at lights while traffic comes the other way, and don't drive into a crossing whose exit is queued up or where the truck stands.
+- **Speed limit:** 50 km/h everywhere in town, shown on round signs where streets begin; the speedometer turns red above it. There is no fine for speeding.
+- **Fines:** crossing a stop line forwards on red, or driving into an AI car, costs money (never below 0); the notice shows what was taken. A car that drives into the truck costs nothing.
 - **Saving:** money, rank, upgrades, looks and the distance driven save automatically in the browser; *Spielstand zurücksetzen* in the Werkstatt starts over.
 
 On iPad (or Android), use *Zum Home-Bildschirm* to add the game to the home screen; opened from there it runs full screen in landscape. The home-screen app keeps its own save: iOS stores it separately from Safari's, so progress made in Safari doesn't carry over.
