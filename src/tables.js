@@ -204,6 +204,21 @@ export const loop = {
   maxSteps: 4, // Sim steps per frame at most; time beyond them (after a stall) is dropped, not simulated
 };
 
+// Adaptive pixel ratio (resolution.js), judged from the frame intervals; the ?perf overlay shows the current ratio.
+export const resolution = {
+  touchStart: 1.5, // ratio on touch screens (pointer: coarse); elsewhere the screen's own ratio, capped at max
+  min: 1.25, // min and max are capped at the screen's own ratio
+  max: 2,
+  step: 0.25,
+  interval: 3, // s per window of frames judged together by their mean interval
+  // ms; the 60 Hz budget is 16.7. Unloaded, Safari in the iPad simulator averages 16.7–16.9 at any ratio.
+  downMean: 18, // a window with a longer mean steps down
+  upMean: 17.2, // a window with at most this mean counts towards a step up
+  upWindows: 2, // such windows in a row before a step up; doubled when that step up has to be taken back
+  maxUpWindows: 32,
+  maxFrame: 50, // ms; longer intervals (a stall, a pause, a hidden tab) count as this long
+};
+
 // The dev-only ?perf harness (perf.js). ?perf&auto drives the truck round a fixed loop of streets with an order
 // accepted, from a fresh profile and a seeded Sim, so runs are comparable (see docs/perf/2026-10-baseline.md).
 export const perf = {

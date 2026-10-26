@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
 import { createTruckParts } from './truckLook.js';
+import { createResolution } from './resolution.js';
 
 // CC0 kit models in public/models/ (see CREDITS.md).
 const MODELS = `${import.meta.env.BASE_URL}models/`;
@@ -68,7 +69,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // WebGPU where the browser has it, else its WebGL 2 backend; ?webgl forces the fallback for comparison.
   const forceWebGL = new URLSearchParams(location.search).has('webgl');
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, forceWebGL });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const resolution = createResolution(tables.resolution, window.devicePixelRatio, matchMedia('(pointer: coarse)').matches);
+  renderer.setPixelRatio(resolution.ratio);
   // sRGB output in the material shaders, as WebGLRenderer did: the default pipeline draws into a half-float MSAA
   // target and adds a full-screen output pass, which doubled the GPU time on the WebGL 2 backend.
   const pipeline = new THREE.DirectRenderPipeline(renderer);
@@ -407,6 +409,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // while driving, 'orbit' for the Werkstatt's circling camera, or 'cab' to show the gimmick from the seat.
   function render(state, input, look, showroom) {
     const now = performance.now();
+    // Resized right before this frame draws into it, so no frame shows a cleared or stretched buffer.
+    const ratio = resolution.frame(now - lastFrame);
+    if (ratio) renderer.setPixelRatio(ratio);
     const dt = Math.min((now - lastFrame) / 1000, 0.1);
     lastFrame = now;
     const { x, z, heading, roll } = state.truck;
