@@ -1,6 +1,7 @@
 docs/perf/2026-10-baseline.md
   s_a45957f3366ecc::t_9a067344aad4c1 356-361,363,365-403
   s_a45957f3366ecc::t_1b66a8dfb71db3 362
+  s_a45957f3366ecc::t_bd4c810a9b738d 364
 ---
 {
   "schema_version": "authorship/3.0.0",
