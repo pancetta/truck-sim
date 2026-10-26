@@ -1,15 +1,18 @@
 import * as THREE from 'three/webgpu';
-import { texture, uv, equirectUV, normalWorldGeometry, positionWorld, cameraPosition, fog, densityFogFactor, rangeFogFactor, float } from 'three/tsl';
+import { texture, uniform, uv, equirectUV, normalWorldGeometry, positionWorld, cameraPosition, fog, densityFogFactor, rangeFogFactor, float } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
 import { createTruckParts } from './truckLook.js';
 import { createResolution } from './resolution.js';
+import assetInfo from './assetInfo.json';
 
-// CC0 kit models in public/models/, sky and ground textures in public/textures/ (see CREDITS.md).
+// CC0 kit models in public/models/, sky and ground textures in public/textures/ (see CREDITS.md); the textures are
+// KTX2 from `npm run assets`, transcoded by three's Basis transcoder in public/basis/.
 const MODELS = `${import.meta.env.BASE_URL}models/`;
 const TEXTURES = `${import.meta.env.BASE_URL}textures/`;
+const TRANSCODER = `${import.meta.env.BASE_URL}basis/`;
 // Road pieces with the sides they open to, as modelled (DIRS order: north/-z, east/+x, south/+z, west/-x).
 const ROAD_PIECES = [
   ['roads/road-square.glb', []],
@@ -29,7 +32,6 @@ const SUN_DISTANCE = 300; // m from the shadow area's centre to the sun, back al
 const SHADOW_ONLY = 1; // layer the sun's shadow camera and the reversing camera see, but not the main camera
 
 const loader = new GLTFLoader();
-const textureLoader = new THREE.TextureLoader();
 const newKitMaterial = () => new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true });
 // One kit material per mesh variant: shared across variants, the renderer re-derives the program on every draw.
 const kitMaterials = { mesh: newKitMaterial(), instanced: newKitMaterial(), batched: newKitMaterial() };
@@ -106,18 +108,43 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   const scene = new THREE.Scene();
   const loads = []; // every model and texture load, up to being added to the scene
+  // KTX2 textures transcode to what the GPU takes, which the renderer knows once it's initialised.
+  const ktx2Loader = new KTX2Loader().setTranscoderPath(TRANSCODER);
+  const gpu = renderer.init().then(() => ktx2Loader.detectSupport(renderer));
+  const loadTexture = (file) => gpu.then(() => ktx2Loader.loadAsync(TEXTURES + file));
 
-  // Sky and sun, all from tables.lighting. The sky is the background and lights the scene from all around.
-  loads.push(new HDRLoader().loadAsync(TEXTURES + lighting.sky).then((sky) => {
+  // Sky and sun, all from tables.lighting. The sky is the background and lights the scene from all around. The first
+  // frame waits only for the small first sky, which stays the light; the full sky replaces it as background and haze
+  // once it arrives. The encoder scaled a sky down into half-float range; its `scale` brings it back.
+  const loadSky = (file) => loadTexture(file).then((loaded) => {
+    // shortcut: three r186's WebGPURenderer can't upload KTX2Loader's uncompressed half-float fallback for GPUs with
+    // neither BC6H nor HDR ASTC (iPad), so it's rewrapped as a DataTexture; drop this when three handles it.
+    const sky = loaded.isCompressedTexture && loaded.format === THREE.RGBAFormat
+      ? Object.assign(new THREE.DataTexture(loaded.mipmaps[0].data, loaded.image.width, loaded.image.height, THREE.RGBAFormat, THREE.HalfFloatType), { needsUpdate: true })
+      : loaded;
     sky.mapping = THREE.EquirectangularReflectionMapping;
+    sky.userData.scale = assetInfo[`textures/${file}`]?.scale ?? 1;
+    return sky;
+  });
+  loads.push(loadSky(lighting.skyFirst).then((sky) => {
     scene.environment = sky;
-    scene.environmentIntensity = lighting.skyLight;
+    scene.environmentIntensity = lighting.skyLight * sky.userData.scale;
     // Background and haze sample the sky alike, so whatever is fully hazed where the camera stops drawing is exactly
     // the sky behind it, and the far city fades out instead of popping.
-    const skyAt = (direction) => texture(sky, equirectUV(direction.normalize())).rgb;
+    const skyScale = uniform(sky.userData.scale);
+    const skyMaps = [];
+    const skyAt = (direction) => {
+      const map = texture(sky, equirectUV(direction.normalize()));
+      skyMaps.push(map);
+      return map.rgb.mul(skyScale);
+    };
     scene.backgroundNode = skyAt(normalWorldGeometry);
     const clear = densityFogFactor(float(lighting.haze)).oneMinus().mul(rangeFogFactor(float(cam.fog[0]), float(cam.fog[1])).oneMinus());
     scene.fogNode = fog(skyAt(positionWorld.sub(cameraPosition)), clear.oneMinus());
+    loadSky(lighting.sky).then((full) => {
+      skyScale.value = full.userData.scale;
+      for (const map of skyMaps) map.value = full;
+    }, console.error);
   }));
   const sun = new THREE.DirectionalLight(lighting.sunColour, lighting.sun);
   const { shadow } = lighting;
@@ -136,17 +163,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const shadowTexel = (2 * shadow.extent) / shadow.mapSize; // m
   const focus = new THREE.Vector3();
 
-  // A CC0 PBR ground material (tables.ground): its colour, normal, and ambient occlusion / roughness map.
+  // A CC0 PBR ground material (tables.ground): its colour, normal, and ambient occlusion / roughness map, set once
+  // loaded (before the first frame draws). The colour map's sRGB comes with the file.
   function groundMaterial({ texture: name }) {
-    const [map, normalMap, arm] = ['Diffuse', 'nor_gl', 'arm'].map((kind) => {
-      let t;
-      loads.push(new Promise((resolve, reject) => (t = textureLoader.load(`${TEXTURES}${name}_${kind}.jpg`, resolve, undefined, reject))));
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.anisotropy = 8;
-      return t;
-    });
-    map.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.MeshStandardMaterial({ map, normalMap, aoMap: arm, roughnessMap: arm });
+    const material = new THREE.MeshStandardMaterial();
+    loads.push(Promise.all(['Diffuse', 'nor_gl', 'arm'].map((kind) => loadTexture(`${name}_${kind}.ktx2`))).then((maps) => {
+      for (const t of maps) {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = 8;
+      }
+      const [map, normalMap, arm] = maps;
+      Object.assign(material, { map, normalMap, aoMap: arm, roughnessMap: arm });
+    }));
+    return material;
   }
 
   const ground = new THREE.Mesh(worldUVs(new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2), tables.ground.open.repeat), groundMaterial(tables.ground.open));

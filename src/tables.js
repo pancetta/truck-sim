@@ -294,10 +294,11 @@ export const gimmickSway = {
   damping: 0.12, // share of critical damping
 };
 
-// Sun and sky (renderer.js). The sky is a CC0 HDRI in public/textures/ (CREDITS.md): the background, and the light
-// from all around. The sun stands where the HDRI's sun is, so shadows fall away from it.
+// Sun and sky (renderer.js). The sky is a CC0 HDRI in public/textures/ from `npm run assets` (CREDITS.md): the
+// background, and the light from all around. The sun stands where the HDRI's sun is, so shadows fall away from it.
 export const lighting = {
-  sky: 'kloofendal_48d_partly_cloudy_puresky_2k.hdr',
+  sky: 'kloofendal_48d_partly_cloudy_puresky_2k.ktx2',
+  skyFirst: 'kloofendal_48d_partly_cloudy_puresky_1k.ktx2', // smaller, so the first frame waits less; stays the light
   skyLight: 0.35, // intensity of the sky's light
   exposure: 1, // ACES filmic tone mapping
   sun: 3.2, // directional light intensity
@@ -315,8 +316,8 @@ export const lighting = {
   },
 };
 
-// Ground materials: CC0 PBR textures in public/textures/ (CREDITS.md), <texture>_Diffuse, _nor_gl and _arm.jpg,
-// laid out in world space, `repeat` m per copy of the texture.
+// Ground materials: CC0 PBR textures in public/textures/ from `npm run assets` (CREDITS.md), <texture>_Diffuse,
+// _nor_gl and _arm.ktx2, laid out in world space, `repeat` m per copy of the texture.
 export const ground = {
   road: { texture: 'asphalt_02', repeat: 4 }, // road tiles
   open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level: open tiles and round the city

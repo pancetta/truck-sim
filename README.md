@@ -21,11 +21,31 @@ On iPad (or Android), use *Zum Home-Bildschirm* to add the game to the home scre
 ```bash
 npm install
 npm run dev     # dev server, served under /truck-sim/ (open the URL it prints)
-npm test        # Vitest, headless Sim tests
+npm test        # Vitest: headless Sim tests and the asset budget
 npm run build   # production build into dist/
+npm run assets  # download and process the Poly Haven assets (see "Assets")
 ```
 
 Every push to `main` runs the *Test and deploy to Pages* workflow (`.github/workflows/pages.yml`): install, `npm test`, `npm run build`, then deploy `dist/` to GitHub Pages. A failing test stops the deploy.
+
+## Assets
+
+The sky, ground textures and (later) props come from [Poly Haven](https://polyhaven.com) (all CC0) through one command, `npm run assets` (`scripts/assets.js`). It reads the list in `scripts/assets.config.js`, then:
+
+- **Fetches** each asset through the Poly Haven API into `assets-src/` (gitignored, kept between runs, checked against Poly Haven's md5). The large sources are never committed.
+- **Processes** them into `public/`, which is committed:
+  - Textures and the sky become KTX2 (Basis Universal: ETC1S for textures, UASTC HDR for the sky), which the GPU keeps compressed. They load through three's `KTX2Loader`, with the transcoder copied to `public/basis/`.
+  - Models get a far copy simplified with meshoptimizer (`<id>_far.glb`), KTX2 textures and meshopt-compressed geometry. Loading them needs `GLTFLoader` with `setKTX2Loader` and `setMeshoptDecoder`.
+  - Trees are drawn side-on into a picture for crossed quads. This runs `scripts/bake-tree.html` in headless Google Chrome (set `CHROME` to its binary if it isn't in `/Applications`).
+- **Records** data the game needs at runtime in `src/assetInfo.json` (a sky's HDR scale, a tree picture's span and trunk position), and the asset list in `CREDITS.md`.
+
+To add an asset, list it in `scripts/assets.config.js`, run `npm run assets`, and commit what changed. A run takes about 20 s plus downloads.
+
+**Budget**, checked by `npm test` (`scripts/assets.test.js`):
+- Everything under `public/` stays at or under 12 MB.
+- `public/textures/` holds only what the asset list makes, and `public/basis/` matches the installed three.
+
+First playable frame under 3 s on a 10 Mbit/s link is measured, not tested. To meet it, the first frame waits only for a 1k sky; the 2k sky replaces it once loaded. Measurements are in [`docs/perf/2026-10-baseline.md`](docs/perf/2026-10-baseline.md).
 
 ## Code layout
 

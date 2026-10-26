@@ -493,6 +493,62 @@ Cutting both the download and the decode time is #38's job (asset pipeline and d
 - *GPU:* on the M2 at DPR 2, up from about 2 to 6.5–8 ms at vsync clocks. By the baseline's estimate, an A16-class GPU has 40–50% of the M2's throughput. That would put the cab view near 13–16 ms at DPR 2, and about 7–9 ms at the touch start ratio of 1.5. The adaptive ratio (#29) is the safety net: it steps down to 1.25 before frames drop.
 - *Real iPad:* still unmeasured. The simulator says nothing about iPad GPU speed. The owner's `?perf&auto` run on the iPad decides, so watch `dpr` there. If it sits at 1.25 and still misses 60 fps, the first costs to cut are the sky's light on the kit models (a cheaper diffuse-only material) and the haze's sky sample (a constant colour beyond the fog start).
 
+## Asset pipeline and download budget (#38)
+
+The sky and ground textures now come from `npm run assets` (README, "Assets") as KTX2. The ground maps are ETC1S at quality 128; UASTC came out larger than the JPGs (0.9–1.4 MB per map). The sky is UASTC HDR. The first frame waits only for a 1k copy of the sky, which also stays the scene's light. The 2k sky replaces it as background and haze once it's loaded. The pipeline's model stage (meshopt far copies) and tree stage (pictures baked in headless Chrome) were run on `street_lamp_02` and `jacaranda_tree`, then left out of the asset list until #40 uses them. The lamp went from 20,338 to 1,228 triangles in its far copy, 508 KB near and 58 KB far, from 1.6 MB of sources. The tree picture came out at a 24.4 m span and its trunk at 0.53 across, against the prototype's 24.2 m and 0.54.
+
+**How measured:** production builds of main at `cd90b9c` (*before*) and this change (*after*), served the way GitHub Pages serves them. The server gzipped everything except images and KTX2, as Pages does for the `.hdr`. Chrome 155 headless on the M2, 1180×820 at DPR 2, load average 3–8.
+
+**Download and first playable frame** (cold cache; Chrome throttled to 10 Mbit/s down with 40 ms latency, two runs each):
+
+| | before | after |
+|---|---|---|
+| First playable frame, 10 Mbit/s | 7.22, 7.23 s | 2.74, 2.82 s |
+| First playable frame, unthrottled | 0.79, 0.89 s | 0.54, 0.59 s |
+| On the wire until then | 8.09 MB | 2.58 MB |
+| Sky | 3.59 MB (2k `.hdr`, gzipped) | 0.46 MB (1k KTX2); the 2k (1.78 MB) follows |
+| Ground textures (6 maps) | 3.75 MB JPEG | 1.09 MB KTX2 |
+| Basis transcoder | – | 0.25 MB (`basis_transcoder.wasm`, gzipped) |
+| JS bundle | 1,059 KB / 299 KB gzip | 1,115 KB / 322 KB gzip (`KTX2Loader` and its zstd decoder) |
+| `public/` in all (the budget's measure) | 10.3 MB | 5.0 MB of 12 MB |
+
+Without the 1k first sky, the after build took 3.75 s (3.90 MB). The sky alone was 46% of what the first frame waited for.
+
+**Texture memory** (from the formats the transcoder picked; checked by logging them on each backend):
+- *Chrome on the M2*, both backends: ETC2 for the ground maps (0.5 B per pixel), BC6H for the skies (1 B per pixel).
+- *iPad (A16) simulator* (WebGL 2): ETC2 for the ground, and half-float RGBA for the skies. WebGL 2 there has no HDR ASTC, and WebGPU has neither BC6H nor HDR ASTC on iPad.
+
+| MB, ground + sky | before | after, Mac | after, iPad |
+|---|---|---|---|
+| Ground (6 maps, 1k with mipmaps) | 33.6 | 4.2 | 4.2 |
+| Sky | 16.8 (2k half-float) | 2.6 (2k + 1k, BC6H) | 21.0 (2k + 1k, half-float) |
+| In all | 50.3 | 6.8 | 25.2 |
+
+The JS heap in the overlay fell from 41–52 MB to 23–37 MB: the decoded JPEGs are no longer kept.
+
+**Frame cost** (`?perf&auto`, cab, vsync):
+
+| | before | after |
+|---|---|---|
+| Chrome frame, median / p95 / mean | 16.67 / 16.67 / 16.67 | 16.67 / 16.67 / 16.67 |
+| Chrome render CPU, median / p95 / mean | 2.38–2.50 / 3.06–3.18 / 2.23–2.34 | 2.41–2.43 / 3.13–3.27 / 2.23–2.29 |
+| Chrome GPU at vsync, alternating runs | 5.10, 5.23, 6.50, 6.52 | 6.00, 6.35, 6.37, 6.39 (one outlier at 10.55) |
+| iPad simulator frame, mean (Safari's timer is 1 ms coarse) | 16.66 | 16.84 |
+| iPad simulator render, mean | 2.17 | 2.21 |
+
+Both simulator runs settled at a ratio of 1.75 (`dpr`). The frame cost doesn't change measurably: the sky and ground are sampled as before, from compressed data.
+
+**Found on the way:**
+- `ktx2-encoder` marks every texture sRGB unless told otherwise. three then decoded the packed AO / roughness map as colour, and the asphalt drew 13% darker. `scripts/assets.config.js` now sets the transfer function per kind of map.
+- KTX2 textures can't be flipped on upload, so the pipeline flips standalone pictures when encoding. Otherwise the sky showed its lower half.
+- When the sky is scaled into half-float range, Basis records the scale in the `KTXmapRange` key, which three ignores. The 2k sky's brightest value (the sun, 73,216) is beyond that range, so the encoder scaled the whole sky by 0.89. The pipeline writes the scale to `src/assetInfo.json`, and the renderer applies it.
+- three r186's `WebGPURenderer` can't upload `KTX2Loader`'s uncompressed half-float fallback, on either backend. The sky and everything hazed went black on the iPad simulator. The renderer rewraps it as a `DataTexture` (a `shortcut:` in `renderer.js`).
+
+**Verdict:**
+- *Budget:* 5.0 MB of the 12 MB under `public/`, checked in `npm test`. 7 MB is left for #39–#42.
+- *First playable frame:* 2.7–2.8 s at 10 Mbit/s, under the 3 s target, with about 0.25 s to spare. Later assets the first frame needn't wait for (props, far copies, tree pictures) should load after it, as the 2k sky does.
+- *60 fps:* holds in Chrome and in the simulator, at the same frame cost as before. The real iPad's numbers, including the sky's 21 MB of half-float texture there, remain for the owner's run.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
