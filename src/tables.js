@@ -368,12 +368,16 @@ export const streets = {
   // Along road tiles beside a building or spot tile, raised, over the road models' own pavement band, which the
   // Sim keeps clear of the lanes (city.obstacles); none in front of a dock, where trucks back across it. The kerb
   // is a stone strip `kerb` wide along the pavement's road edge, its face down to the road.
-  pavement: { width: 1.4, height: 0.15, texture: 'floor_pavement', repeat: 1.5, kerb: 0.15, kerbColour: 0xd8d2c4 },
+  // `height` is above the ground: the road surface is 3 cm up (renderer.js roadHeight), so the kerb stands 15 cm.
+  pavement: { width: 1.4, height: 0.18, texture: 'floor_pavement', repeat: 1.5, kerb: 0.15, kerbColour: 0xd8d2c4 },
   // Lanterns (Poly Haven street_lamp_02) on street-facing walls about every `spacing` m and on the poles, their
   // foot `height` up. Within `near` m of the camera the full model (20k triangles), then its far copy (1.2k) up to
   // `cull`, then none; with near 20 m and cull 150 m the iPad simulator dropped to its lowest resolution.
-  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 10, cull: 100, post: 0.09, postColour: 0x2b2d33 },
+  // On walls `corner` m clear of a corner and `clear` m clear of a pole's lantern or a speed sign.
+  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 10, cull: 100, corner: 1, clear: 3, post: 0.09, postColour: 0x2b2d33 },
   // Crossed-quad trees from pictures (`npm run assets`): species picked per tree, `size` m across, mirrored at random.
+  // The Werkstatt and chase cameras keep `canopy` m from a trunk, so they don't end up inside the leaves.
+  canopy: 4,
   trees: [
     { picture: 'jacaranda_tree', size: [8, 11] },
     { picture: 'tree_small_02', size: [6, 8] },

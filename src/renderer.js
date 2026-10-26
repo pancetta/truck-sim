@@ -701,7 +701,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const a = heading + Math.PI + 0.7 + orbit; // starts behind the truck, off to one side
       const [dx, dz] = [Math.sin(a), Math.cos(a)];
       // In front of the first building in the way, so no wall fills the picture; easing back out behind it.
-      const room = Math.min(radius, ...blocks.map((b) => rayToBox(x, z, dx, dz, b) - wallGap));
+      const room = Math.min(radius, canopyRoom(x, z, dx, dz), ...blocks.map((b) => rayToBox(x, z, dx, dz, b) - wallGap));
       arm = Math.min(room, arm + armSpeed * dt);
       camera.position.set(x + dx * arm, height, z + dz * arm);
       camera.lookAt(x, lookHeight, z);
@@ -714,7 +714,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       // into a dock) and raised as it does so the truck doesn't fill the view; eases back out, as the Werkstatt's
       // camera does.
       const [dx, dz] = [-Math.sin(heading), -Math.cos(heading)];
-      chaseArm = Math.min(chaseRoom(x, z, dx, dz), chaseArm + tables.showroom.armSpeed * dt);
+      chaseArm = Math.min(chaseRoom(x, z, dx, dz), canopyRoom(x, z, dx, dz), chaseArm + tables.showroom.armSpeed * dt);
       const height = cam.chaseHeight + (cam.chaseDistance - chaseArm) * cam.chaseRise;
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
@@ -759,6 +759,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const [dc, dr] = DIRS[dir];
     return dc ? dc * (x - (dc > 0 ? min.x : max.x)) > 0 : dr * (z - (dr > 0 ? min.z : max.z)) > 0;
   }
+
+  // Tree canopies (tables.streets.canopy round each trunk), which the Werkstatt and chase cameras keep out of like walls.
+  const { canopy } = tables.streets;
+  const canopies = map.colliders.filter((c) => c.kind === 'tree').map((b) => ({ minX: b.minX - canopy, maxX: b.maxX + canopy, minZ: b.minZ - canopy, maxZ: b.maxZ + canopy }));
+  // m along (dx, dz) from (x, z) to `wallGap` before the first canopy, never below 0; one the truck stands under
+  // doesn't count, or the camera would have no room at all.
+  const canopyRoom = (x, z, dx, dz) => Math.max(0, Math.min(...canopies.map((b) => rayToBox(x, z, dx, dz, b) || Infinity)) - tables.showroom.wallGap);
 
   // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most chaseDistance. The ray is
   // walked in 1 m steps through the building tiles, so it can miss a corner it only grazes.

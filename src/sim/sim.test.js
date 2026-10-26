@@ -355,6 +355,20 @@ describe('Sim: city', () => {
       expect(Math.min(...gaps)).toBeCloseTo(inset);
       expect(trees.filter(([tx, tz]) => Math.hypot(tx - x, tz - z) < spacing / 2)).toHaveLength(1);
     }
+    // None stands where trucks pull out of a dock bay: in a corridor straight out from each dock, as wide as the bay
+    // with room to swing, over the road and the next tile (dock F opens across its road onto the open ground).
+    for (const s of map.spots.filter((spot) => spot.dock)) {
+      const [dc, dr] = DIRS[s.dir];
+      const [fx, fz] = [(s.zoneTile.col + 0.5 - dc / 2) * TILE, (s.zoneTile.row + 0.5 - dr / 2) * TILE]; // dock face
+      const reach = 2 * TILE;
+      const half = tables.vehicle.length / 2;
+      const [x0, x1] = [fx + Math.min(0, dc * reach) - Math.abs(dr) * half, fx + Math.max(0, dc * reach) + Math.abs(dr) * half];
+      const [z0, z1] = [fz + Math.min(0, dr * reach) - Math.abs(dc) * half, fz + Math.max(0, dr * reach) + Math.abs(dc) * half];
+      const inCorridor = props.concat(map.colliders.filter((c) => c.kind === 'tree')).filter((c) => c.maxX > x0 && c.minX < x1 && c.maxZ > z0 && c.minZ < z1);
+      expect(inCorridor, `dock ${s.id}`).toEqual([]);
+    }
+    expect(map.spots.find((s) => s.id === 'F').dir).toBe(3); // F opens west, across its road onto the open ground
+
     // A tree stops the truck: one stands in a row along the road to the east.
     const grid = `
       .,,

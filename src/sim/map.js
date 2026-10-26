@@ -78,14 +78,17 @@ export function parseMap(text, tables) {
   });
   if (roads.length === 0) throw new Error('Map has no road');
 
-  // Trees and small props on open ground (tables.city.plaza), solid: a row along each edge it shares with a road.
-  // Where two rows meet at a corner, a tree too close to one already placed is left out, with its prop.
+  // Trees and small props on open ground (tables.city.plaza), solid: a row along each edge it shares with a road,
+  // except across the road from a dock, where trucks pull out of the bay and line up to back into it. Where two rows
+  // meet at a corner, a tree too close to one already placed is left out, with its prop.
   const { inset, spacing, props, size } = tables.city.plaza;
   const trees = [];
   const solid = (kind, x, z) => colliders.push({ kind, ...box(x, z, size[kind] / 2, size[kind] / 2) });
+  const facesDock = (col, row, [dc, dr]) =>
+    spots.some((s) => s.dock && s.zoneTile.col === col && s.zoneTile.row === row && DIRS[s.dir][0] === dc && DIRS[s.dir][1] === dr);
   for (const { col, row } of open) {
     for (const [dc, dr] of DIRS) {
-      if (!isRoad(col + dc, row + dr)) continue;
+      if (!isRoad(col + dc, row + dr) || facesDock(col + dc, row + dr, [-dc, -dr])) continue;
       const alongX = dr !== 0; // a north or south edge runs along x
       const across = alongX ? (row + 0.5) * tileSize + dr * (tileSize / 2 - inset) : (col + 0.5) * tileSize + dc * (tileSize / 2 - inset);
       const start = (alongX ? col : row) * tileSize;

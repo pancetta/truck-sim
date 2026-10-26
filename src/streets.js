@@ -53,18 +53,25 @@ export function pavementLayout(map, width) {
 }
 
 // Where lanterns hang: { x, z, angle, pole }, (x, z) on the wall or the pole's side, turned by `angle` about y so
-// the model's +z points out over the road. On walls, at every `spacing` m along each street-facing side of a block
-// tile (counted from the map's edge, so the rhythm runs on from tile to tile), clear of the corners where a wall
-// turns; and one on each pole, on its road side.
-export function lanternSpots(map, { spacing, post }) {
+// the model's +z points out over the road. One on each pole, on its road side. On walls, at every `spacing` m along
+// each street-facing side of a block tile (counted from the map's edge, so the rhythm runs on from tile to tile),
+// `corner` m clear of where a wall turns, and `clear` m clear of a pole or a speed sign; none over a dock, where a
+// truck backs in under it.
+export function lanternMounts(map, { spacing, post, corner, clear }) {
   const ts = map.tileSize;
   const blocks = blockTiles(map);
-  const spots = [];
-  const margin = 1; // m from a corner
+  const mounts = [];
+  for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
+    const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
+    const angle = Math.atan2((Math.floor(x / ts) + 0.5) * ts - x, (Math.floor(z / ts) + 0.5) * ts - z); // towards the tile's middle
+    mounts.push({ x: x + Math.sin(angle) * post, z: z + Math.cos(angle) * post, angle, pole: true });
+  }
+  const crowded = [...mounts, ...map.signs];
+  const docks = new Set(map.spots.filter((s) => s.dock).map((s) => `${tileKey(s.zoneTile.col - DIRS[s.dir][0], s.zoneTile.row - DIRS[s.dir][1])},${s.dir}`));
   for (const key of blocks) {
     const [col, row] = key.split(',').map(Number);
     for (const [dc, dr] of DIRS) {
-      if (!map.isRoad(col + dc, row + dr)) continue;
+      if (!map.isRoad(col + dc, row + dr) || docks.has(`${key},${DIRS.findIndex(([a, b]) => a === dc && b === dr)}`)) continue;
       const alongX = dr !== 0;
       const wall = alongX ? (row + 0.5 + dr / 2) * ts : (col + 0.5 + dc / 2) * ts;
       // Whether the wall runs on into the tile `step` along, or turns a corner there.
@@ -72,20 +79,17 @@ export function lanternSpots(map, { spacing, post }) {
         const [c, r] = alongX ? [col + step, row] : [col, row + step];
         return blocks.has(tileKey(c, r)) && map.isRoad(c + dc, r + dr);
       };
-      const start = (alongX ? col : row) * ts + (runsOn(-1) ? 0 : margin);
-      const end = (alongX ? col + 1 : row + 1) * ts - (runsOn(1) ? 0 : margin);
+      const start = (alongX ? col : row) * ts + (runsOn(-1) ? 0 : corner);
+      const end = (alongX ? col + 1 : row + 1) * ts - (runsOn(1) ? 0 : corner);
       for (let k = Math.ceil(start / spacing - 0.5); (k + 0.5) * spacing < end; k++) {
         const along = (k + 0.5) * spacing;
-        spots.push({ ...(alongX ? { x: along, z: wall } : { x: wall, z: along }), angle: Math.atan2(dc, dr), pole: false });
+        const [x, z] = alongX ? [along, wall] : [wall, along];
+        if (crowded.some((c) => Math.hypot(c.x - x, c.z - z) < clear)) continue;
+        mounts.push({ x, z, angle: Math.atan2(dc, dr), pole: false });
       }
     }
   }
-  for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
-    const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
-    const angle = Math.atan2((Math.floor(x / ts) + 0.5) * ts - x, (Math.floor(z / ts) + 0.5) * ts - z); // towards the tile's middle
-    spots.push({ x: x + Math.sin(angle) * post, z: z + Math.cos(angle) * post, angle, pole: true });
-  }
-  return spots;
+  return mounts;
 }
 
 // The meshes. `loadTexture` and `loader` are the renderer's KTX2 texture loader and its GLTFLoader (set up for the
@@ -122,13 +126,15 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   // Lanterns: the model's parts, one per material (iron, and glass round the bulb), each as a near and a far instanced
   // mesh, filled every frame with the lanterns in view by distance (update()). The glass part is the one to light up at
   // night (#52).
-  const spots = lanternSpots(map, lantern);
+  const mounts = lanternMounts(map, lantern);
   const lanterns = []; // { near, far } per part: the street lights as one set
   const lanternBounds = new THREE.Sphere(new THREE.Vector3(), 1.2);
   const partMatrix = new THREE.Matrix4();
-  const spotMatrices = spots.map(({ x, z, angle }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, lantern.height, z));
+  const mountMatrices = mounts.map(({ x, z, angle }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, lantern.height, z));
 
   // Props from the Sim's colliders: the poles' posts, bollards, bins and fountains, as one static mesh. Trees load later.
+  // shortcut: drawn at any distance, not culled past 150 m like the lanterns: the map's ~35 props are a few thousand
+  // triangles, less than a cull pass costs; cull them per prop if a map gets many more.
   const propParts = [];
   const prop = (geometry, colour, x, z, angle = 0) => propParts.push(coloured(geometry.applyMatrix4(new THREE.Matrix4().makeRotationY(angle).setPosition(x, 0, z)), colour));
   const { bollard, bin, fountain } = tables.streets;
@@ -176,13 +182,16 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
         return meshes;
       });
       // The model's foot at y = 0; its back is already at z = 0, against the wall. Each part keeps its own transform
-      // (it undoes the geometry's quantisation, so it can't be baked into the integer positions).
+      // (it undoes the geometry's quantisation, so it can't be baked into the integer positions). The glass is the far
+      // copy's at every distance, with the full model's materials: the two looked different, so lanterns changed as
+      // they passed `near`, and plain panes need no detail.
       const foot = new THREE.Box3().setFromObject(near.scene).min.y;
       parts[0].forEach((part, i) => {
-        const [n, f] = [part, parts[1][i]].map((o, k) => {
-          // Premultiplied, as DirectRenderPipeline's output step expects (see the renderer's zone marker).
-          if (o.material.transparent) o.material.premultipliedAlpha = true;
-          const mesh = new THREE.InstancedMesh(o.geometry, o.material, spots.length);
+        const glass = part.material.transparent;
+        // Premultiplied, as DirectRenderPipeline's output step expects (see the renderer's zone marker).
+        if (glass) part.material.premultipliedAlpha = true;
+        const [n, f] = [glass ? parts[1][i] : part, parts[1][i]].map((o) => {
+          const mesh = new THREE.InstancedMesh(o.geometry, part.material, mounts.length);
           mesh.userData.base = new THREE.Matrix4().makeTranslation(0, -foot, 0).multiply(o.matrixWorld);
           mesh.frustumCulled = false; // update() picks the lanterns in view
           mesh.count = 0;
@@ -239,14 +248,14 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   function update(eye, inView) {
     if (!lanterns.length) return;
     const counts = lanterns.map(() => [0, 0]);
-    spots.forEach(({ x, z }, i) => {
+    mounts.forEach(({ x, z }, i) => {
       const d = Math.hypot(x - eye.x, z - eye.z);
       lanternBounds.center.set(x, lantern.height + 0.8, z);
       if (d > lantern.cull || !inView(lanternBounds)) return;
       const k = d < lantern.near ? 0 : 1;
       lanterns.forEach(({ near, far }, p) => {
         const mesh = k ? far : near;
-        mesh.setMatrixAt(counts[p][k]++, partMatrix.multiplyMatrices(spotMatrices[i], mesh.userData.base));
+        mesh.setMatrixAt(counts[p][k]++, partMatrix.multiplyMatrices(mountMatrices[i], mesh.userData.base));
       });
     });
     lanterns.forEach(({ near, far }, p) => {
