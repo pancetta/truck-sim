@@ -1,0 +1,27 @@
+src/sim/sim.test.js
+  s_81963444b8e450::t_19c41cdd5871d3 1302-1314
+src/sim/sim.js
+  s_81963444b8e450::t_849e820a2833a0 33-34,49,179-183
+src/truckLook.js
+  s_81963444b8e450::t_856a88021a4191 1
+src/renderer.js
+  s_81963444b8e450::t_856a88021a4191 1,25-27,68-70,94,182,218,221-222,301,414-415
+README.md
+  s_81963444b8e450::t_44bd3bf9da73f9 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c837cdf57aaa6488ff58891e88dac4d8e8452e3e",
+  "prompts": {},
+  "sessions": {
+    "s_81963444b8e450": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ee8343f-7672-4475-be62-0926a1cf7e55",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
