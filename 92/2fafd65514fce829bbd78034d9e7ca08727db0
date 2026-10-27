@@ -1,0 +1,24 @@
+src/vehicles.test.js
+  s_a6ad3b93c73ebe::t_d779b5aa9b07f7 30-81
+  s_a6ad3b93c73ebe::t_5b1f5d528da0ae 2
+src/vehicles.js
+  s_a6ad3b93c73ebe::t_322f7c8aa2a2af 84
+  s_a6ad3b93c73ebe::t_0b12459bd6b6e2 172
+  s_a6ad3b93c73ebe::t_37dc95c66de16c 80-83,85-89,138-139,141-142,153-154,173-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "922fafd65514fce829bbd78034d9e7ca08727db0",
+  "prompts": {},
+  "sessions": {
+    "s_a6ad3b93c73ebe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4bd25916-0e4d-42fa-b31c-a91a14eaed3d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
