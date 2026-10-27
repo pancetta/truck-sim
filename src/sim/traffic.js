@@ -1032,6 +1032,7 @@ export function createTraffic(tables, map, random) {
         if (car.passed && car.prev.kind === 'turn') car.passed[car.turns++ % PASSED] = car.prev.node;
         extend(car.route, car);
         car.lane = car.route[0];
+        if (car.lane === car.stopped) car.stopped = null; // done with that stop: next time by it, it stops again
         if (groupAt[car.lane.id] && approachAt[car.lane.id] >= 0) car.via = car.lane;
       }
       if (!car.gone) place(car);

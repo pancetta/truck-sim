@@ -883,6 +883,7 @@ describe('Sim: traffic on the road graph', () => {
       }
       expect(stoppedAt).toBeCloseTo(tables.traffic.stopGap, 0);
       expect(car.lane.kind).toBe('turn');
+      expect(car.stopped).toBe(null); // the next time by this stop sign it stops again
       // Stopped at the line while a car on the secondary street comes: that one goes first.
       const { sim, centre } = stopCross();
       const stopping = through(sim, centre, 1, 1, 3, centre.slots[1].in.length - 10 - CAR.length / 2, 6);

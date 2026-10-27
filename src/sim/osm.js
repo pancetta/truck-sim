@@ -143,12 +143,13 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       const others = arms[n].filter((b) => b !== a);
       const top = Math.max(...others.filter((b) => b.in).map(rank));
       if (!a.in || !(top > rank(a))) continue;
-      const along = mouth(a, others) + tables.signs.along;
+      const stop = top - rank(a) >= tables.stopSign.gap;
+      // A stop sign stands before the junction's box too, where the truck must stand still (tables.stopSign.reach).
+      const along = Math.max(mouth(a, others), stop ? graph.nodes[n].radius : 0) + tables.signs.along;
       const p = beside(n, a, along, -(a.e.width / 2 + o.pavement / 2)); // travel is against u
       // A short arm's would stand past its far end, on the next road, or in the next junction, whose rule the HUD shows there.
       const inJunction = graph.nodes.some((m, k) => k !== n && m.arms.length >= 3 && Math.hypot(m.x - p.x, m.z - p.z) < m.radius);
       if (along > a.e.length || graph.onRoad(p.x, p.z) || inJunction) continue;
-      const stop = top - rank(a) >= tables.stopSign.gap;
       if (stop) graph.nodes[n].slots[arms[n].indexOf(a)].stop = true; // arms[n] runs in the order of the slots
       signs.push({ kind: stop ? 'stop' : 'giveWay', ...p, angle: Math.atan2(a.u[0], a.u[1]) });
     }

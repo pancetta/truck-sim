@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import * as tables from '../tables.js';
 import { buildOsmMap, parkedCars } from './osm.js';
 import { createSim, freshProfile, inside } from './sim.js';
-import { seeded, way, building, bounds } from './fixtures.js';
+import { seeded, way, building, bounds, monti } from './fixtures.js';
 
 const build = (...ways) => buildOsmMap({ bounds, ways }, tables);
 const { classes, pavement } = tables.osm;
@@ -202,6 +202,13 @@ describe('OSM map: lights and signs', () => {
     const stops = (map) => map.graph.nodes.flatMap((n) => n.slots.filter((s) => s.stop).map((s) => s.edge.class));
     expect([kinds(tee('residential')), stops(tee('residential'))]).toEqual([['stop'], ['residential']]);
     expect([kinds(tee('tertiary')), stops(tee('tertiary'))]).toEqual([['giveWay'], []]);
+    // On Monti each stands before its junction's box, within reach of it: a truck stopping at the sign may drive in.
+    const map = monti();
+    for (const n of map.graph.nodes.filter((n) => n.slots.some((s) => s.stop))) {
+      const d = Math.min(...map.signs.filter((s) => s.kind === 'stop').map((s) => Math.hypot(s.x - n.x, s.z - n.z)));
+      expect(d - n.radius).toBeGreaterThan(0);
+      expect(d - n.radius).toBeLessThan(tables.stopSign.reach);
+    }
   });
 });
 
