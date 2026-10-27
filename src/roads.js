@@ -81,11 +81,12 @@ export function roadSurface(pieces, y) {
   return geometry;
 }
 
-// The pavements: `tables.osm.pavement` m wide strips along both sides of every edge and round its points, and the
-// pedestrian ways (`tables.osm.pedestrian` m wide) and squares, less the road `pieces`. Returns `tops`, rings of [x, z]
-// counter-clockwise seen from above (they overlap where strips meet, and draw alike there), and their outline's
-// `kerbs`, the sides along the road, and `backs`, the sides on open ground, each { a, b, out } with `out` the unit
-// normal away from the pavement. Sides inside another top are neither.
+// The pavements: `tables.osm.pavement` m wide strips along both sides of every edge and round its points, less the road
+// `pieces`. Returns `tops`, rings of [x, z] counter-clockwise seen from above (they overlap where strips meet, and draw
+// alike there), and their outline's `kerbs`, the sides along the road, and `backs`, the sides on open ground, each
+// { a, b, out } with `out` the unit normal away from the pavement; sides inside another top are neither. Also `flush`,
+// the pedestrian ways (`tables.osm.pedestrian` m wide) and squares less the road, paved level with it: OSM's squares
+// stop short of our pavements, and raised they left a trench of bare ground between the two.
 export function osmPavements(map, pieces, tables) {
   const { pavement: width, pedestrian } = tables.osm;
   const { cell } = tables.city;
@@ -97,22 +98,21 @@ export function osmPavements(map, pieces, tables) {
     sources.push(disc(points[0], half + width), disc(points.at(-1), half + width));
     for (let k = 1; k < points.length - 1; k++) sources.push(wedge(points[k - 1], points[k], points[k + 1], half + width));
   }
-  for (const line of map.pedestrian.lines) sources.push(...ribbon(line, pedestrian / 2));
-  for (const square of map.pedestrian.squares) sources.push(square.map(({ x, z }) => [x, z]));
+  const squares = [...map.pedestrian.lines.flatMap((line) => ribbon(line, pedestrian / 2)), ...map.pedestrian.squares.map((square) => square.map(({ x, z }) => [x, z]))];
 
   const roads = createCells(cell);
   for (const piece of pieces) roads.add(piece, ...bounds(piece.ring));
   const onRoad = (x, z) => roads.some(x, z, x, z, (r) => inside(x, z, r.points));
-  const tops = [];
-  for (const source of sources.filter(Boolean)) {
+  const offRoad = (list) => list.filter(Boolean).flatMap((source) => {
     const near = new Set();
     roads.some(...bounds(source), (r) => void near.add(r));
     // Boxes first: a disc wholly inside what is left of a strip would leave a hole (see minus), which a box through
     // it first prevents.
     let parts = [source];
     for (const r of [...near].sort((p, q) => p.round - q.round)) parts = parts.flatMap((p) => minus(p, r));
-    tops.push(...parts.filter((p) => p.length > 2 && Math.abs(area2(p)) > 1e-4).map((p) => (area2(p) < 0 ? p.toReversed() : p)));
-  }
+    return parts.filter((p) => p.length > 2 && Math.abs(area2(p)) > 1e-4).map((p) => (area2(p) < 0 ? p.toReversed() : p));
+  });
+  const tops = offRoad(sources);
 
   const paved = createCells(cell);
   const topPoints = tops.map(xz);
@@ -131,7 +131,7 @@ export function osmPavements(map, pieces, tables) {
       else if (!paved.some(x, z, x, z, (points) => points !== topPoints[i] && inside(x, z, points))) backs.push(side);
     });
   });
-  return { tops, kerbs, backs };
+  return { tops, kerbs, backs, flush: offRoad(squares) };
 }
 
 // Ring p less the convex road piece r. A p within r is gone, even where its corners lie on r's outline (subtract()
@@ -152,15 +152,17 @@ function minus(p, { ring: r }) {
   return [box(minZ - 1, middle), box(middle, maxZ + 1)].flatMap((half) => subtract(p, half)).flatMap((h) => subtract(h, r));
 }
 
-// The pavements' meshes' geometries: `top`, the paving at `height` with UVs from world x and z (`repeat` m per copy),
-// and `stones`, a kerb strip `kerb` m wide along each kerb just above it, with each kerb's face down to the road and
+// The pavements' meshes' geometries: `top`, the paving at `height` and the flush paving at `level`, with UVs from world
+// x and z (`repeat` m per copy), and `stones`, a kerb strip `kerb` m wide along each kerb just above it, with each kerb's face down to the road and
 // each back's face down to the ground.
-export function pavementGeometry({ tops, kerbs, backs }, { height, repeat, kerb }) {
+export function pavementGeometry({ tops, kerbs, backs, flush }, { height, repeat, kerb }, level) {
   const pos = [];
-  for (const ring of tops) {
-    for (const corners of ShapeUtils.triangulateShape(ring.map(([x, z]) => new THREE.Vector2(x, z)), [])) {
-      const [a, b, c] = corners.map((i) => ring[i]);
-      for (const p of area2([a, b, c]) < 0 ? [a, b, c] : [a, c, b]) pos.push(p[0], height, p[1]); // facing up
+  for (const [rings, y] of [[tops, height], [flush, level]]) {
+    for (const ring of rings) {
+      for (const corners of ShapeUtils.triangulateShape(ring.map(([x, z]) => new THREE.Vector2(x, z)), [])) {
+        const [a, b, c] = corners.map((i) => ring[i]);
+        for (const p of area2([a, b, c]) < 0 ? [a, b, c] : [a, c, b]) pos.push(p[0], y, p[1]); // facing up
+      }
     }
   }
   const top = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));

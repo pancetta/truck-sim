@@ -300,13 +300,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const skylineWalls = new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 });
     loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, { walls: skylineWalls, roof: buildingMaterials.roof }))));
   } else {
-    // Raised pavements with kerbs along the roads, and over the pedestrian ways and squares (roads.js), built with the
-    // buildings, a few hundred ms too. The paving's texture loads after the first frame.
+    // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
+    // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
     const { pavement } = tables.streets;
     const pavers = groundMaterial(pavement, {}, true);
     const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
     loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
-      const { top, stones } = pavementGeometry(osmPavements(map, pieces, tables), pavement);
+      const { top, stones } = pavementGeometry(osmPavements(map, pieces, tables), pavement, roadHeight / 2);
       for (const mesh of [new THREE.Mesh(top, pavers), new THREE.Mesh(stones, kerbs)]) {
         mesh.receiveShadow = true;
         scene.add(mesh);

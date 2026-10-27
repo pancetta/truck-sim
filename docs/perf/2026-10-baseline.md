@@ -820,7 +820,7 @@ No frame was over 25 ms from the turns (max 18.8 ms; one 34 ms frame in 4,000, n
 
 ## Monti look (#65)
 
-With `?map=monti`, Monti gets the realistic look. Roads are ribbons along the graph's edges with a disc on each junction, in #37's asphalt. Raised pavements with stone kerbs (#40's materials) run along every road edge and over the pedestrian ways and squares (`src/roads.js`). Buildings use #39's facades on the real outlines (`planBuildings` in `src/buildings.js`): one facade run per wall, with party walls left blank. No textures are added.
+With `?map=monti`, Monti gets the realistic look. Roads are ribbons along the graph's edges with a disc on each junction, in #37's asphalt. Raised pavements with stone kerbs (#40's materials) run along every road edge, and the pedestrian ways and squares are paved level with the road (`src/roads.js`). Buildings use #39's facades on the real outlines (`planBuildings` in `src/buildings.js`): one facade run per wall, with party walls left blank. No textures are added.
 
 - *Pavements:* each is a strip along a road, less every convex road piece cut out of it with `subtract` from the map builder, so it stops exactly where the road surface starts. A test on the real extract checks that no paving covers a road piece by more than 1 cm and that no lane runs under paving. They come to 18k triangles of paving and 61k of kerb stones, in two meshes, built in about 330 ms with the buildings, after the first requests go out.
 - *Close-up detail:* Monti's facades face every way, so their close-up meshes are bucketed by the nearest of the four directions, as on the grid, and also cut into `tables.buildings.nearChunk` (49 m) squares. With whole 196 m chunks, the cab view drew 513k triangles; with 49 m squares it draws 340k.

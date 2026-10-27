@@ -38,7 +38,7 @@ describe('Monti roads and pavements (#65)', () => {
   const road = pieces.map((p) => p.ring);
 
   test('the road surface and the paving face up everywhere, bends and junctions included', () => {
-    const faces = [...normals(roadSurface(pieces, 0.03)), ...normals(pavementGeometry(layout, tables.streets.pavement).top)];
+    const faces = [...normals(roadSurface(pieces, 0.03)), ...normals(pavementGeometry(layout, tables.streets.pavement, 0.03).top)];
     expect(faces.length).toBeGreaterThan(0);
     expect(faces.filter(({ n }) => n[1] <= 0)).toEqual([]);
   });
@@ -62,17 +62,17 @@ describe('Monti roads and pavements (#65)', () => {
   });
 
   test('pedestrian ways and squares are paved, not where they meet the road', () => {
-    expect(on(layout.tops, -40, 40)).toBe(true); // the way
-    expect(on(layout.tops, 40, -40)).toBe(true); // the square
-    expect(on(layout.tops, -22, 40)).toBe(true);
+    expect(on(layout.flush, -40, 40)).toBe(true); // the way
+    expect(on(layout.flush, 40, -40)).toBe(true); // the square
+    expect(on(layout.flush, -22, 40)).toBe(true);
   });
 
   test('on the real extract, no pavement covers a road piece or a lane', () => {
     const data = JSON.parse(fs.readFileSync(new URL('../public/maps/monti.json', import.meta.url)));
     const map = buildOsmMap(data, tables);
     const all = roadPieces(map.graph);
-    const { tops } = osmPavements(map, all, tables);
-    const top = pavementGeometry({ tops, kerbs: [], backs: [] }, tables.streets.pavement).top.getAttribute('position').array;
+    const { tops, flush } = osmPavements(map, all, tables);
+    const top = pavementGeometry({ tops, kerbs: [], backs: [], flush }, tables.streets.pavement, 0.03).top.getAttribute('position').array;
     // Each paving triangle's middle, off every road piece by more than a centimetre (the cut's tolerance leaves slivers
     // thinner than that, under the kerb strip).
     const segment = (x, z, a, b) => {
@@ -99,7 +99,7 @@ describe('Monti roads and pavements (#65)', () => {
     }
     expect(covered).toBe(0);
     // Every lane, sampled every 2 m, is off the paving.
-    const pavedAt = index(tops.map((ring) => ring.map(([x, z]) => ({ x, z }))));
+    const pavedAt = index([...tops, ...flush].map((ring) => ring.map(([x, z]) => ({ x, z }))));
     let lanePoints = 0;
     for (const { points } of map.graph.edges.flatMap((e) => e.lanes)) {
       points.slice(1).forEach((b, k) => {
