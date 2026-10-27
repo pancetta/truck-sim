@@ -1,0 +1,82 @@
+src/buildings.js
+  s_337d18c54f4335::t_bedef54c1aeaca 136-137
+src/autopilot.test.js
+  s_337d18c54f4335::t_01edbab3482821 69-70,78,81
+  s_337d18c54f4335::t_5e20807186500a 111-131
+  s_337d18c54f4335::t_43b6c7e10a7dbf 1-2,6,46-68,71-77,79-80,82-110
+src/sim/graph.test.js
+  s_337d18c54f4335::t_2ca706404a5e18 72-84
+src/tables.js
+  s_337d18c54f4335::t_0ef2f5653b2091 283-285
+  s_337d18c54f4335::t_9f07472bf3ad78 301,394
+  s_337d18c54f4335::t_07bb5b5a71e089 293-294,296-300,303-306,308-310
+  s_337d18c54f4335::t_b0e299ed0b4f84 286-292
+  s_337d18c54f4335::t_5e20807186500a 431
+  s_337d18c54f4335::t_7e84aa9ab9bcb2 442,448-450
+  s_337d18c54f4335::t_48480014622eee 295,302,307
+  s_337d18c54f4335::t_ef92660732b91a 440-441
+  s_337d18c54f4335::t_014e093f9c9cba 433
+  s_337d18c54f4335::t_189ce20e815fd4 393
+GLOSSARY.md
+  s_337d18c54f4335::t_bedef54c1aeaca 212-216
+src/minimap.js
+  s_337d18c54f4335::t_189ce20e815fd4 3-4,7,41,46,58,65-66,69-70,72,76,78-96
+  s_337d18c54f4335::t_9f07472bf3ad78 67-68,71,73-75,77
+  s_337d18c54f4335::t_d889da8547b2ea 97
+src/orders.js
+  s_337d18c54f4335::t_2e37c4a2e2d548 22-26,28-29,126
+src/strings.js
+  s_337d18c54f4335::t_debd57f72d6faf 89
+src/sim/graph.js
+  s_337d18c54f4335::t_f2ca59adc2250e 131
+  s_337d18c54f4335::t_eae947f2cead67 139-140
+  s_337d18c54f4335::t_52ef586319fb66 114-116,123
+src/hud.js
+  s_337d18c54f4335::t_debd57f72d6faf 2-3,21,35,47,64
+  s_337d18c54f4335::t_4174d66a0dd416 63
+src/autopilot.js
+  s_337d18c54f4335::t_a5b752c6aee5a7 17-19,23
+  s_337d18c54f4335::t_ef92660732b91a 81
+  s_337d18c54f4335::t_7e84aa9ab9bcb2 8-9,20,24-29,117-167
+  s_337d18c54f4335::t_812487c3378a21 1-7,22,33-36,38-40,42-43
+  s_337d18c54f4335::t_c88115cec9034d 10-16,21
+  s_337d18c54f4335::t_ef394dae402fde 168
+src/sim/sim.js
+  s_337d18c54f4335::t_cf5c46c40fb9bc 39-40,59,74,330,337,422,435-442,636-638
+src/renderer.js
+  s_337d18c54f4335::t_b93d2610f5c931 365-368,373-380,382-383,557-559,565,568
+  s_337d18c54f4335::t_68209d7ac71fe6 578
+src/sim/osm.js
+  s_337d18c54f4335::t_cbc3383c6dae6d 232-237
+  s_337d18c54f4335::t_1a3c5ff2601273 16-18
+  s_337d18c54f4335::t_9a8e1a94406164 69
+  s_337d18c54f4335::t_3b7ebdccd37e2d 211-212,214-225,228-231,238-242,246-259
+  s_337d18c54f4335::t_ae17b5e2c40fb8 226-227
+  s_337d18c54f4335::t_0ef2f5653b2091 266-267,281,304
+src/sim/map.js
+  s_337d18c54f4335::t_cf5c46c40fb9bc 51-55
+src/style.css
+  s_337d18c54f4335::t_02d62f3d00a868 508-509
+  s_337d18c54f4335::t_debd57f72d6faf 510-522
+src/sim/osm.test.js
+  s_337d18c54f4335::t_2455a69d1bc887 193-196,199-223,226-229,231-269,526-535
+  s_337d18c54f4335::t_bab7b8d6a29030 197-198,230
+  s_337d18c54f4335::t_254382d09ba378 224-225
+  s_337d18c54f4335::t_0f801d22316b41 536
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "354ebac13d30cd9dc0b99d2e3611ca1ea64d2c8f",
+  "prompts": {},
+  "sessions": {
+    "s_337d18c54f4335": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bac4fee2-4e9d-4293-8b25-c48841f978d4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
