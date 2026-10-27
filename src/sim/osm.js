@@ -101,7 +101,8 @@ export function buildOsmMap(data, tables) {
       const r = mouth(a, arms[n].filter((b) => b !== a)) - inset;
       const p = beside(n, a, r, -(a.e.width / 2 + inset)); // travel is against u, so its right is left of u
       const line = beside(n, a, r + tables.lights.stopLine, 0);
-      lights.push({ junction, axis: crossing[0].includes(a) ? 0 : 1, x: line.x, z: line.z, dx: -a.u[0], dz: -a.u[1], half: a.e.width / 2, post: p });
+      // `node` and `slot`: its junction and arm on the graph (arms[n] runs in the order of the node's slots, lanes.js)
+      lights.push({ junction, node: n, slot: arms[n].indexOf(a), axis: crossing[0].includes(a) ? 0 : 1, x: line.x, z: line.z, dx: -a.u[0], dz: -a.u[1], half: a.e.width / 2, post: p });
       colliders.push({ kind: 'signal', ...outline(rect(p, a.u, post / 2, post / 2)) });
     }
   });

@@ -1,9 +1,19 @@
 import { describe, expect, test } from 'vitest';
-import { createSim, freshProfile } from './sim.js';
+import { createSim as newSim, freshProfile } from './sim.js';
 import * as tables from '../tables.js';
 import { DIRS, parseMap } from './map.js';
 import city from '../city.txt?raw';
 import { createAutopilot } from '../autopilot.js';
+import { poseAt } from './lanes.js';
+import { createGraph } from './graph.js';
+
+// Each Sim's map, so addCar() can find its lane paths.
+const maps = new WeakMap();
+function createSim(tablesUsed, map, ...rest) {
+  const sim = newSim(tablesUsed, map, ...rest);
+  maps.set(sim, map);
+  return sim;
+}
 
 const DT = 1 / 60;
 const GAS = { steer: 0, gas: 1, brake: 0 };
@@ -249,12 +259,36 @@ function simOn(grid) {
 }
 
 // Adds a standing AI car (a police car if `police`) that drives through `tiles` ([col, row] neighbours in order)
-// and on from the start of the first, entering it towards the second. Then places it with a step that takes no time.
+// and on from the start of the first, entering it towards the second: on the lane path through them, in their right-hand
+// lane. Then places it with a step that takes no time.
 function addCar(sim, id, tiles, police = false) {
-  const dir = (a, b) => DIRS.findIndex(([dc, dr]) => b[0] - a[0] === dc && b[1] - a[1] === dr);
-  const dirs = tiles.slice(1).map((t, i) => dir(tiles[i], t));
-  const route = tiles.map(([col, row], i) => ({ col, row, from: dirs[Math.max(0, i - 1)], to: dirs[Math.min(i, dirs.length - 1)] }));
-  const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: 0, police };
+  const { graph } = maps.get(sim);
+  const centre = ([col, row]) => ({ x: (col + 0.5) * TILE, z: (row + 0.5) * TILE });
+  const [a, b] = tiles.slice(0, 2).map(centre);
+  const [dx, dz] = [Math.sign(b.x - a.x), Math.sign(b.z - a.z)];
+  const start = { x: a.x - (dx * TILE) / 2 - dz * tables.traffic.laneOffset, z: a.z - (dz * TILE) / 2 + dx * tables.traffic.laneOffset };
+  // The lane run nearest the start that runs that way, then at each node on the way the turn towards the next tile.
+  const runs = graph.paths.filter((p) => p.kind === 'run' && p.edge.points.length > 1);
+  const away = (p) => {
+    const at = { x: 0, z: 0, heading: 0 };
+    let best = Infinity;
+    for (let u = 0; u <= p.length; u += 0.05) {
+      poseAt(p, u, at);
+      if (Math.abs(Math.sin(at.heading) - dx) + Math.abs(Math.cos(at.heading) - dz) < 1e-6) best = Math.min(best, Math.hypot(at.x - start.x, at.z - start.z));
+    }
+    return best;
+  };
+  const route = [runs.reduce((best, p) => (away(p) < away(best) ? p : best))];
+  const s = Math.abs((start.x - route[0].prims[0].x) * dx + (start.z - route[0].prims[0].z) * dz);
+  for (;;) {
+    const node = graph.nodes[route.at(-1).to];
+    const k = tiles.findIndex((t) => centre(t).x === node.x && centre(t).z === node.z);
+    const next = k >= 0 && tiles[k + 1] && centre(tiles[k + 1]);
+    const turn = next && route.at(-1).next.find(({ out }) => out.startDir.x * (next.x - node.x) + out.startDir.z * (next.z - node.z) > 0.9 * TILE);
+    if (!turn) break;
+    route.push(turn, turn.out);
+  }
+  const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s, police };
   sim.state.traffic.push(car);
   sim.step(0, IDLE);
   return car;
@@ -1736,7 +1770,7 @@ describe('Sim: traffic lights', () => {
       const t = { ...noPolice, police: { ...noPolice.police, radius } };
       const sim = createSim(t, parseMap(STREETS, t), seeded(1), profile);
       Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - tables.vehicle.length / 2 - 0.5, z: 2.5 * TILE + laneOffset, heading: EAST, speed: 5 });
-      addCar(sim, 99, police, true).s = s;
+      addCar(sim, 99, police, true).s += s;
       sim.step(0, IDLE);
       expect(lightFor(sim, 1).phase).toBe('red');
       const sees = sim.state.policeSees;
@@ -1860,16 +1894,24 @@ describe('Sim: traffic', () => {
     if (behind[1]) expect(behind[0].x - behind[1].x - CAR.length).toBeGreaterThanOrEqual(followGap - 0.05);
   });
 
+  // How far the car's front bumper is short of the light's stop line along its route (the line `lineBack` before the
+  // turn into the junction); null if its route doesn't drive in there.
+  const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset;
+  function short(car, l) {
+    let dist = car.lane.length - car.s; // centre to the start of the next path
+    for (const p of car.route.slice(1)) {
+      if (p.kind === 'turn' && p.node === l.node && p.slot === l.slot) return dist - lineBack - CAR.length / 2;
+      dist += p.length;
+    }
+    return null;
+  }
+
   test('an AI car stops at the stop line of a red light and drives on at green', () => {
     const sim = trafficSim(THETA, 2);
-    // How far the car's front bumper is short of the light's stop line, along the light's direction.
-    const short = (car, l) => (l.x - car.x) * DIRS[l.dir][0] + (l.z - car.z) * DIRS[l.dir][1] - CAR.length / 2;
-    const approaching = (car, l) =>
-      car.lane.col === l.col - DIRS[l.dir][0] && car.lane.row === l.row - DIRS[l.dir][1] && car.lane.to === l.dir;
     let car;
     let light;
     timeUntil(sim, IDLE, () => {
-      light = sim.state.lights.find((l) => l.phase === 'red' && (car = sim.state.traffic.find((c) => approaching(c, l) && c.speed === 0 && short(c, l) < 3)));
+      light = sim.state.lights.find((l) => l.phase === 'red' && (car = sim.state.traffic.find((c) => c.speed === 0 && short(c, l) > 0 && short(c, l) < 3)));
       return light;
     }, 300);
     expect(light).toBeTruthy();
@@ -1879,13 +1921,12 @@ describe('Sim: traffic', () => {
     drive(sim, 5, IDLE);
 
     expect(sim.state.traffic).toContain(car);
-    expect(short(car, light)).toBeLessThan(0);
+    expect(short(car, light) ?? -1).toBeLessThan(0); // over the line, or through the junction
   });
 
   test('an AI car that meets an amber light it can stop for stops at the stop line', () => {
     const sim = trafficSim(THETA, 2);
-    const short = (car, l) => (l.x - car.x) * DIRS[l.dir][0] + (l.z - car.z) * DIRS[l.dir][1] - CAR.length / 2;
-    const heading = (car, l) => car.route.some((p) => p.col === l.col && p.row === l.row && p.from === l.dir);
+    const heading = (car, l) => short(car, l) !== null;
     // The first car heading for an amber light, 15–30 m short of its line: room to stop at `brake`.
     let car;
     let light;
@@ -1911,8 +1952,8 @@ describe('Sim: traffic', () => {
     const fastest = { straight: 0, right: 0, left: 0 };
     for (let t = 0; t < 120; t += DT) {
       sim.step(DT, IDLE);
-      for (const { lane, speed } of sim.state.traffic) {
-        const kind = lane.from === lane.to ? 'straight' : lane.to === (lane.from + 1) % 4 ? 'right' : 'left';
+      for (const { prim, speed } of sim.state.traffic) {
+        const kind = !prim.r ? 'straight' : prim.r < TILE / 2 ? 'right' : 'left'; // a right turn hugs the inner corner
         fastest[kind] = Math.max(fastest[kind], speed);
       }
     }
@@ -1922,7 +1963,12 @@ describe('Sim: traffic', () => {
     expect(fastest.left).toBeGreaterThan(fastest.right);
   });
 
-  test("new cars appear out of the truck's view: on a tile far enough away and off the truck's street", () => {
+  // How far a car is from the truck, and whether it is out of the truck's view: off the line its heading runs along.
+  const away = (car, truck) => Math.hypot(car.x - truck.x, car.z - truck.z);
+  const offView = (car, truck) =>
+    Math.abs((car.x - truck.x) * Math.sin(truck.heading) + (car.z - truck.z) * Math.cos(truck.heading)) < away(car, truck) * Math.cos(tables.traffic.spawnView);
+
+  test("new cars appear out of the truck's view: far enough away and off the line it looks along, ahead or behind", () => {
     const sim = trafficSim(GRID, 4);
     const [near, far] = tables.traffic.spawnDistance;
     const seen = new Set();
@@ -1930,13 +1976,12 @@ describe('Sim: traffic', () => {
       // Move the truck to a corner after a while, so cars left far behind give way to new ones.
       if (t > 30 && t < 30 + DT) Object.assign(sim.state.truck, { x: 1.5 * TILE, z: 1.5 * TILE });
       sim.step(DT, IDLE);
-      const { x, z } = sim.state.truck;
-      for (const { id, lane } of sim.state.traffic.filter((c) => !c.police && !seen.has(c.id))) {
-        seen.add(id);
-        const away = Math.hypot((lane.col + 0.5) * TILE - x, (lane.row + 0.5) * TILE - z);
-        expect(away).toBeGreaterThanOrEqual(near);
-        expect(away).toBeLessThanOrEqual(far);
-        expect(lane.col === Math.floor(x / TILE) || lane.row === Math.floor(z / TILE)).toBe(false);
+      const { truck } = sim.state;
+      for (const car of sim.state.traffic.filter((c) => !c.police && !seen.has(c.id))) {
+        seen.add(car.id);
+        expect(away(car, truck)).toBeGreaterThanOrEqual(near);
+        expect(away(car, truck)).toBeLessThanOrEqual(far);
+        expect(offView(car, truck)).toBe(true);
       }
     }
     expect(seen.size).toBeGreaterThan(tiers[0].traffic); // some cars left and new ones came
@@ -1944,12 +1989,12 @@ describe('Sim: traffic', () => {
 
   test('police cars come on top of the tier\'s, out of view anywhere in the city, and stay when the truck drives off', () => {
     const sim = trafficSim(GRID, 4);
-    const near = tables.traffic.spawnDistance[0];
-    const { x, z } = sim.state.truck;
+    const near = Math.max(tables.traffic.spawnDistance[0], tables.police.radius);
+    const { truck } = sim.state;
     for (let i = 0; i < 2; i++) {
-      for (const { lane } of sim.state.traffic.filter((c) => c.police)) {
-        expect(Math.hypot((lane.col + 0.5) * TILE - x, (lane.row + 0.5) * TILE - z)).toBeGreaterThanOrEqual(near);
-        expect(lane.col === Math.floor(x / TILE) || lane.row === Math.floor(z / TILE)).toBe(false);
+      for (const car of sim.state.traffic.filter((c) => c.police)) {
+        expect(away(car, truck)).toBeGreaterThanOrEqual(near);
+        expect(offView(car, truck)).toBe(true);
       }
       sim.step(DT, IDLE);
     }
@@ -2005,7 +2050,7 @@ describe('Sim: right of way and collisions', () => {
     [SOUTH]: [[3, 1], [3, 2], [3, 3], [3, 4], [3, 5]],
     [EAST]: [[1, 3], [2, 3], [3, 3], [4, 3], [5, 3]],
   };
-  const inCrossing = (car) => car.lane.col === 3 && car.lane.row === 3;
+  const inCrossing = (car) => car.lane.kind === 'turn'; // on its way through the one junction
   // How far the front bumper of a northbound car is short of the crossing.
   const shortOfCrossing = (car) => car.z - CAR.length / 2 - 4 * TILE;
 
@@ -2480,6 +2525,127 @@ describe('Sim: right of way and collisions', () => {
   });
 });
 
+describe('Sim: traffic on the road graph', () => {
+  // No cars or police of their own: each test adds the ones it needs.
+  const quiet = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
+
+  // A map of one junction at (0, 0) with arms out to dead ends 60 m off, at `arms` angles (degrees, atan2(dz, dx): 90
+  // runs south, 0 east), of the road classes in `classes` (residential by default) and one-way out of the junction
+  // where `oneWay` holds. The truck stands off the road in a corner.
+  function star(arms, classes = [], oneWay = []) {
+    const out = (a, m) => ({ x: Math.cos((a * Math.PI) / 180) * m, z: Math.sin((a * Math.PI) / 180) * m });
+    const nodes = [{ x: 0, z: 0 }, ...arms.map((a) => out(a, 60))];
+    const edges = arms.map((a, i) => ({ from: 0, to: i + 1, class: classes[i] ?? 'residential', width: TILE, name: '', oneWay: !!oneWay[i], points: [nodes[0], nodes[i + 1]] }));
+    const graph = createGraph(nodes, edges, tables.traffic.laneOffset, tables.city.cell);
+    const map = { bounds: { minX: -80, minZ: -80, maxX: 80, maxZ: 80 }, colliders: [], spots: [], lights: [], signs: [], graph };
+    const sim = createSim(quiet, map, seeded(1));
+    Object.assign(sim.state.truck, { x: -75, z: -75, heading: 0 });
+    expect(graph.onRoad(-75, -75)).toBe(false);
+    return { sim, centre: graph.nodes[0] };
+  }
+
+  // Adds a standing AI car that drives in by arm `from` of the junction and out by arm `to`.
+  function through(sim, centre, id, from, to) {
+    const run = centre.slots[from].in;
+    const turn = run.next.find((t) => t.outSlot === to);
+    const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run, turn, turn.out], s: 0, police: false };
+    sim.state.traffic.push(car);
+    sim.step(0, IDLE);
+    return car;
+  }
+
+  // The ids of the cars in the order they drove into the junction, at most `seconds` s on.
+  function order(sim, cars, seconds = 20) {
+    const entered = [];
+    for (let t = 0; t < seconds && entered.length < cars.length; t += DT) {
+      sim.step(DT, IDLE);
+      for (const c of cars) if (c.lane.kind === 'turn' && !entered.includes(c.id)) entered.push(c.id);
+    }
+    return entered;
+  }
+
+  // Per junction: its arms, an arm, the arm on the right of a driver coming in by it (the next one counter-clockwise
+  // seen from above, 45°–135° round) and an arm each goes out by, so that their ways cross.
+  const junctions = {
+    '3 arms (a T, the arm on the right one end of its bar)': { arms: [90, 0, 180], car: 0, right: 1, ways: [2, 2] },
+    '4 arms': { arms: [90, 0, -90, 180], car: 0, right: 1, ways: [2, 3] },
+    '5 arms': { arms: [90, 18, -54, -126, 162], car: 0, right: 1, ways: [3, 4] },
+  };
+
+  test.each(Object.entries(junctions))('right before left at %s: of two cars arriving at once, the one on the right goes first', (_, j) => {
+    for (const [carId, rightId] of [[1, 2], [2, 1]]) {
+      const { sim, centre } = star(j.arms);
+      const a = through(sim, centre, carId, j.car, j.ways[0]);
+      const b = through(sim, centre, rightId, j.right, j.ways[1]);
+
+      expect(order(sim, [a, b])).toEqual([b.id, a.id]);
+    }
+  });
+
+  test.each(Object.entries(junctions))('priority by road class at %s: the car on the higher class goes first, from the left too', (_, j) => {
+    const classes = j.arms.map((_, i) => (i === j.car ? 'tertiary' : 'residential'));
+    const { sim, centre } = star(j.arms, classes);
+    const a = through(sim, centre, 1, j.car, j.ways[0]);
+    const b = through(sim, centre, 2, j.right, j.ways[1]);
+
+    expect(order(sim, [a, b])).toEqual([a.id, b.id]);
+  });
+
+  test('at the stem of a T nobody is on the right: the car there goes before the one coming along the bar', () => {
+    const { sim, centre } = star([90, 0, 180]);
+    const stem = through(sim, centre, 1, 0, 2); // north up the stem, then west
+    const bar = through(sim, centre, 2, 2, 1); // from the west end along the bar, on the stem's left
+
+    expect(order(sim, [stem, bar])).toEqual([stem.id, bar.id]);
+  });
+
+  test('oncoming cars whose ways don\'t cross go together: both straight on, or both turning right', () => {
+    for (const ways of [[2, 0], [1, 3]]) {
+      const { sim, centre } = star([90, 0, -90, 180]);
+      const cars = [through(sim, centre, 1, 0, ways[0]), through(sim, centre, 2, 2, ways[1])];
+      let together = false;
+      for (let t = 0; t < 15; t += DT) {
+        sim.step(DT, IDLE);
+        together ||= cars.every((c) => c.lane.kind === 'turn');
+      }
+      expect(together).toBe(true);
+    }
+  });
+
+  test('AI cars drive one-way edges only their way; the truck may drive against them, unfined', () => {
+    // A crossing whose east arm is one-way out of it and west arm one-way into it, busy with cars.
+    const busy = { ...noPolice, traffic: { ...tables.traffic, spawnDistance: [20, 500] }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 8 })) } };
+    const out = (a) => ({ x: Math.cos((a * Math.PI) / 180) * 60, z: Math.sin((a * Math.PI) / 180) * 60 });
+    const nodes = [{ x: 0, z: 0 }, ...[90, 0, -90, 180].map(out)];
+    const edges = [
+      { from: 0, to: 1 }, { from: 0, to: 2, oneWay: true }, { from: 0, to: 3 }, { from: 4, to: 0, oneWay: true },
+    ].map((e) => ({ class: 'residential', width: TILE, name: '', oneWay: false, ...e, points: [nodes[e.from], nodes[e.to]] }));
+    const graph = createGraph(nodes, edges, tables.traffic.laneOffset, tables.city.cell);
+    const map = { bounds: { minX: -80, minZ: -80, maxX: 80, maxZ: 80 }, colliders: [], spots: [], lights: [], signs: [], graph };
+    const sim = createSim({ ...busy, orders: { ...tables.orders } }, map, seeded(3), { ...freshProfile(), money: 500 });
+    Object.assign(sim.state.truck, { x: -75, z: -75, heading: 0 });
+
+    const seen = new Set();
+    for (let t = 0; t < 120; t += DT) {
+      sim.step(DT, IDLE);
+      for (const c of sim.state.traffic) {
+        if (!c.lane.edge?.oneWay) continue;
+        seen.add(c.lane.edge.to);
+        const way = Math.atan2(nodes[c.lane.edge.to].x - nodes[c.lane.edge.from].x, nodes[c.lane.edge.to].z - nodes[c.lane.edge.from].z);
+        expect(Math.cos(c.heading - way)).toBeCloseTo(1, 6);
+      }
+    }
+    expect([...seen].sort()).toEqual([0, 2]); // cars drove both one-ways
+
+    // The truck drives the east one-way the wrong way, into the crossing.
+    sim.state.traffic.length = 0;
+    Object.assign(sim.state.truck, { x: 50, z: 0, heading: -Math.PI / 2, speed: 0 });
+    drive(sim, 4, GAS);
+    expect(sim.state.truck.x).toBeLessThan(35);
+    expect(sim.state.lastFine).toBe(null);
+  });
+});
+
 describe('Sim: collider broad phase', () => {
   test('the indexed collision check agrees with testing every collider, on tile borders, corners and turned', () => {
     const noCars = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
@@ -2688,8 +2854,8 @@ describe('Sim: traffic gridlock soak', () => {
     let dist = -car.s;
     for (const p of car.route) {
       if (ok || dist > 40) break;
-      ok = lights.some((l) => l.col === p.col && l.row === p.row && l.dir === p.from && l.phase !== 'green');
-      dist += TILE;
+      ok = p.kind === 'turn' && lights.some((l) => l.node === p.node && l.slot === p.slot && l.phase !== 'green');
+      dist += p.length;
     }
     if (!ok) {
       const [fx, fz] = [Math.sin(car.heading), Math.cos(car.heading)];

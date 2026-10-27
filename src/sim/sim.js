@@ -305,23 +305,20 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return true;
   }
 
-  // The rule (map.rule) of the next junction along the road axis the truck drives closest to (backwards when
-  // reversing), its leading bumper in it or within tables.signs.hint m of it; null if the road ends or the truck
-  // isn't on one.
+  // The rule of the next junction (a node of three or more arms) along the edge the truck's leading bumper is on
+  // (backwards when reversing), its bumper in it or within tables.signs.hint m of its box: 'light' or
+  // 'rightBeforeLeft'; null if the edge ends otherwise or the truck isn't on the road or along it within 45°.
+  const lit = new Set(map?.lights.map((l) => l.node));
+  const ruleOf = (n) => (map.graph.nodes[n].arms.length < 3 ? null : lit.has(n) ? 'light' : 'rightBeforeLeft');
   function junctionAhead() {
     const back = truck.speed < -v.stopSpeed ? -1 : 1;
     const fx = Math.sin(truck.heading) * back;
     const fz = Math.cos(truck.heading) * back;
-    const [dc, dr] = DIRS.reduce((a, d) => (d[0] * fx + d[1] * fz > a[0] * fx + a[1] * fz ? d : a));
-    const x = truck.x + (fx * v.length) / 2;
-    const z = truck.z + (fz * v.length) / 2;
-    const ts = map.tileSize;
-    for (let col = Math.floor(x / ts), row = Math.floor(z / ts); map.isRoad(col, row); col += dc, row += dr) {
-      if (((col + 0.5) * ts - x) * dc + ((row + 0.5) * ts - z) * dr - ts / 2 > tables.signs.hint) return null; // to its near edge
-      const rule = map.rule(col, row);
-      if (rule) return rule;
-    }
-    return null;
+    const on = map.graph.along(truck.x + (fx * v.length) / 2, truck.z + (fz * v.length) / 2, fx, fz);
+    if (!on) return null;
+    const { nodes } = map.graph;
+    if (on.behind < nodes[on.last].radius && ruleOf(on.last)) return ruleOf(on.last); // the bumper still in the one it is leaving
+    return on.ahead - nodes[on.next].radius <= tables.signs.hint ? ruleOf(on.next) : null;
   }
 
   // The limit of the edge the truck is on: it keeps the one it has while it stays within that edge's width (its end

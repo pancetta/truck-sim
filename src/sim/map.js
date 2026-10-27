@@ -199,6 +199,12 @@ export function parseMap(text, tables) {
     walk(tile);
   }
   const graph = createGraph(nodes, edges, tables.traffic.laneOffset, tables.city.cell);
+  // Each light on the graph: its junction's `node` and the `slot` (lanes.js) of the arm its traffic drives in by.
+  for (const l of lights) {
+    const node = nodeAt.get(key(l));
+    const slot = nodes[node].slots.findIndex(({ angle }) => Math.abs(Math.cos(angle) + l.dx) < 1e-9 && Math.abs(Math.sin(angle) + l.dz) < 1e-9);
+    Object.assign(l, { node, slot });
+  }
   // A spot's place on the graph: the pose nearest its zone's centre.
   for (const s of spots) s.pose = graph.nearest((s.zone.minX + s.zone.maxX) / 2, (s.zone.minZ + s.zone.maxZ) / 2);
   const bounds = { minX: 0, minZ: 0, maxX: cols * tileSize, maxZ: rows * tileSize };

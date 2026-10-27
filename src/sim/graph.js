@@ -3,13 +3,14 @@
 // from the grid city. A graph pose is { edge, s }: s m along the edge from its `from` node.
 
 import { createCells } from './cells.js';
+import { lanePaths } from './lanes.js';
 
 // `nodes`: [{ x, z }]. `edges`: [{ from, to (node indices), class, width (m), name, oneWay, limit (km/h), laneOffset?,
 // points: [{ x, z }] }], the points running from the `from` node to the `to` node. Fills in each node's `arms` (edge
 // indices; a loop counts twice) and each edge's `id`, `length`, `at` (m along it at each point), `laneOffset` (the
 // edge's own, else `laneOffset`) and `lanes` ([{ points }] the way each runs: a one-way edge's one lane on its centre
 // line, else one laneOffset m right of it each way, the forward one first).
-// Edge segments are filed in a spatial cell index of `cellSize` m.
+// Edge segments are filed in a spatial cell index of `cellSize` m. `paths` are the lane paths AI cars drive (lanes.js).
 export function createGraph(nodes, edges, laneOffset, cellSize) {
   const index = createCells(cellSize);
   for (const n of nodes) n.arms = [];
@@ -30,17 +31,25 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
 
   // The pose nearest (x, z) on segment k of edge e, if nearer than `best`, which is updated in place: { edge, k (the
   // segment), s, x, z (the point on the edge), d (m from (x, z)) }.
+  // Plain assignments, no destructuring: it runs for every segment near the truck every step, where arrays would
+  // allocate.
   function closer(e, k, x, z, best) {
     const a = e.points[k];
     const b = e.points[Math.min(k + 1, e.points.length - 1)];
-    const [dx, dz] = [b.x - a.x, b.z - a.z];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
     const len = Math.hypot(dx, dz);
     // m along the segment; divided once, so a point on a grid road lands on whole metres exactly
     const u = len ? Math.max(0, Math.min(len, ((x - a.x) * dx + (z - a.z) * dz) / len)) : 0;
     const t = len ? u / len : 0;
     const d = Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
     if (d >= best.d) return;
-    [best.edge, best.k, best.d, best.s, best.x, best.z] = [e, k, d, e.at[k] + u, a.x + t * dx, a.z + t * dz];
+    best.edge = e;
+    best.k = k;
+    best.d = d;
+    best.s = e.at[k] + u;
+    best.x = a.x + t * dx;
+    best.z = a.z + t * dz;
   }
   const far = () => ({ edge: null, k: 0, s: 0, x: 0, z: 0, d: Infinity });
 
@@ -68,6 +77,21 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   function onRoad(x, z) {
     const p = nearest(x, z);
     return p.d <= p.edge.width / 2;
+  }
+
+  // Where (x, z) lies on the road, facing (fx, fz) within 45° of its edge either way: the `edge`, whether it faces
+  // along it (`forward`, from its `from` node to its `to`), the node `next` it faces and the m to it (`ahead`), and
+  // the node `last` behind it and the m from it (`behind`); null off the road or across it.
+  function along(x, z, fx, fz) {
+    const p = nearest(x, z);
+    const e = p.edge;
+    if (!e || p.d > e.width / 2 || e.points.length < 2) return null;
+    const a = e.points[p.k];
+    const b = e.points[p.k + 1];
+    const c = ((b.x - a.x) * fx + (b.z - a.z) * fz) / Math.hypot(b.x - a.x, b.z - a.z);
+    if (Math.abs(c) <= Math.SQRT1_2) return null;
+    const forward = c > 0;
+    return { edge: e, forward, next: forward ? e.to : e.from, last: forward ? e.from : e.to, ahead: forward ? e.length - p.s : p.s, behind: forward ? p.s : e.length - p.s };
   }
 
   // The point s m along edge e.
@@ -130,7 +154,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
 
   const route = (from, to) => towards(to)(from);
 
-  return { nodes, edges, nearest, project, onRoad, pointAt, towards, route };
+  return { nodes, edges, paths: lanePaths(nodes, edges), nearest, project, onRoad, along, pointAt, towards, route };
 }
 
 // Segments of edge e; an edge of one point (a lone road tile) has one of no length.

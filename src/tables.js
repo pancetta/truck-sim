@@ -185,7 +185,7 @@ export const traffic = {
   lookAhead: 35, // m; stopping from cruise at `brake` takes 24 m, plus the gaps; also the room a new car needs
   // m from an unsignalled crossing within which a car or the truck counts as arriving there, for right of way
   // (and from a light junction, for a car turning left there): more than stopping from cruise at `brake`. The
-  // truck looks two tiles ahead, so more than ~28 m has no effect for it.
+  // truck counts only for the next junction along the edge it is on.
   giveWay: 28,
   // s a truck standing at the line of an unsignalled crossing (its front bumper within `truckLine` m of it) keeps its
   // right of way, so the cars on its left wait for it to drive in or back off; after that it lets them go, so a parked
@@ -194,8 +194,13 @@ export const traffic = {
   truckLine: 6, // m
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
-  spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)
+  spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars
+  // rad either side of the truck's heading, ahead and behind, in which no car appears or leaves: the street the
+  // cameras look along (17° holds the 7 m either side of the truck's line from 23 m out on)
+  spawnView: 0.3,
   despawnDistance: 180, // m from the truck past which a car out of view leaves
+  // Priority at junctions without lights by road class, higher first; right before left between equal ones
+  priority: { secondary: 3, tertiary: 2, residential: 1, unclassified: 1, service: 0 },
 };
 
 // Police cars (#68): AI cars on top of the rank tier's, which patrol the whole city and never leave it. A rule
