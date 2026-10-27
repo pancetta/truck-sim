@@ -7,12 +7,13 @@
 // or 'left'). `prims` are its lines { x, z, dx, dz, at, length, r: 0 } and arcs { cx, cz, r, a, sweep, at, length }
 // (a: the start's angle round the centre, atan2(dz, dx); sweep signed), `at` m along the path where each starts.
 // Each node gets `slots`, one per arm in the order of `arms`: { edge, angle (atan2(dz, dx) of the way the arm leaves
-// the node), in, out (the runs arriving and leaving by it, or null) }, and `radius`, its box's half size.
+// the node), in, out (the runs arriving and leaving by it, or null), stop (a stop approach, set by osm.js) }, and
+// `radius`, its box's half size.
 // Heading 0 faces +z and right of travel (dx, dz) is (-dz, dx), as in the Sim.
 
 export function lanePaths(nodes, edges) {
   const paths = [];
-  for (const n of nodes) n.slots = n.arms.map((id) => ({ edge: edges[id], angle: 0, in: null, out: null }));
+  for (const n of nodes) n.slots = n.arms.map((id) => ({ edge: edges[id], angle: 0, in: null, out: null, stop: false }));
   // The slot of edge e at its `from` (or `to`) end; a loop's from end is its first slot there.
   const slotOf = (n, e, atFrom) => (atFrom ? nodes[n].arms.indexOf(e.id) : nodes[n].arms.lastIndexOf(e.id));
   const drivable = edges.filter((e) => e.points.length > 1); // an edge of one point has nowhere to drive

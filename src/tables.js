@@ -151,6 +151,7 @@ export const fines = {
   speeding: 50, // only while a police car sees the truck, at most once per `speeding.cooldown`
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
   giveWay: 100, // only while a police car sees the truck (see giveWay)
+  stopSign: 100, // only while a police car sees the truck (see stopSign)
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
@@ -202,16 +203,24 @@ export const speeding = { tolerance: 10, cooldown: 30 };
 // step while a police car sees the truck. Once per approach, seen or not.
 export const giveWay = { hardBrake: 7, near: 2, within: 5 };
 
+// Stop signs: a give-way approach becomes a stop approach where the highest arm cars come in by ranks `gap` or more
+// above it (traffic.priority) and its sign stands (osm.js). AI cars come to a full stop at the line before they give
+// way. The truck must stand still with its front bumper within `reach` m of the junction before it drives in; driving
+// in without costs fines.stopSign while a police car sees it, once per pass.
+export const stopSign = { gap: 2, reach: 6 };
+
 // Road signs (map.signs, not solid), on the right-hand pavement facing the traffic (osm.js): speed limit signs where the
-// limit changes and on the way in from an edge exit, give-way signs on the approaches that give way (see giveWay).
+// limit changes and on the way in from an edge exit, give-way or stop signs on the approaches that give way (see giveWay,
+// stopSign).
 export const signs = {
-  along: 3, // m into the street from the junction it begins at, for a speed limit sign or before it, for a give-way sign
+  along: 3, // m into the street from the junction it begins at, for a speed limit sign or before it, for a give-way or stop sign
   height: 2.6, // m, middle of the plate
   radius: 0.45, // m, the plate; the red ring is the outer `ring` of it
   ring: 0.09, // m
   post: 0.08, // m square
   side: 1, // m, the give-way sign's triangle; its red border is `border` of it, measured square to each side
   border: 0.12, // m
+  rim: 0.03, // m, the stop sign's white rim round its red octagon (`radius` to a corner)
   hint: 50, // m from the truck's front bumper to the next junction ahead within which the HUD shows its rule
 };
 

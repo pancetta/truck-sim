@@ -115,6 +115,10 @@ function readPixels(image) {
   return pixelCache.get(image);
 }
 
+// Seven-segment characters, digits and the letters of STOP, by segment: top, upper right, lower right, bottom, lower
+// left, upper left, middle, and a bar down the middle (for T).
+const SEGMENTS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', S: 'acdfg', T: 'ah', O: 'abcdef', P: 'abefg' };
+
 // Draws Sim state; never writes to it. `onProgress` gets the loaded share of the models and textures (0..1);
 // the returned `ready` resolves once all of them are in the scene.
 export function createRenderer(canvas, tables, map, onProgress) {
@@ -313,10 +317,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return { x, z, heading, kind: covered ? carTypes.length : Math.floor(hash(x, z) * 9973) % carTypes.length, paint: pick(paints, z, x) };
   });
 
-  // The road signs, our own geometry, in one batch so they are culled together; a speed sign per limit, and give-way signs.
+  // The road signs, our own geometry, in one batch so they are culled together; a speed sign per limit, give-way and stop
+  // signs.
   const signsOf = (kind, limit) => map.signs.filter((s) => s.kind === kind && s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
   const limits = new Set(map.signs.filter((s) => s.kind === 'speed').map((s) => s.limit));
-  addSigns([...[...limits].map((limit) => [speedSign(limit), signsOf('speed', limit)]), [giveWaySign(), signsOf('giveWay')]]);
+  addSigns([...[...limits].map((limit) => [speedSign(limit), signsOf('speed', limit)]), [giveWaySign(), signsOf('giveWay')], [stopSign(), signsOf('stop')]]);
   addBoxes(palette.zone, map.spots.filter((s) => !s.station).map((s) => s.zone), 0.04);
   addBoxes(palette.station, map.spots.filter((s) => s.station).map((s) => s.zone), 0.04);
 
@@ -491,10 +496,37 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return geometry;
   }
 
-  // A layer of a sign's plate: `n` sides, `r` m from its middle to a corner (one pointing up, or down if `down`), centred
-  // on the sign's height, 1.5 cm deep with its front `front` m out.
-  function plate(n, r, front, down = false) {
-    return new THREE.CylinderGeometry(r, r, 0.015, n).rotateX(-Math.PI / 2).rotateZ(down ? Math.PI : 0).translate(0, tables.signs.height, front - 0.0075);
+  // A layer of a sign's plate: `n` sides, `r` m from its middle to a corner (one pointing up, turned `turn` from there),
+  // centred on the sign's height, 1.5 cm deep with its front `front` m out.
+  function plate(n, r, front, turn = 0) {
+    return new THREE.CylinderGeometry(r, r, 0.015, n).rotateX(-Math.PI / 2).rotateZ(turn).translate(0, tables.signs.height, front - 0.0075);
+  }
+
+  // Seven-segment characters (SEGMENTS) on a plate, `w` × `h`, bars `t` thick, `gap` apart and centred on the sign's
+  // height, 3.75 cm out from `face`.
+  function characters(add, text, face, [w, h, t, gap], colour) {
+    const { height } = tables.signs;
+    const bars = { a: [0, h / 2, 1], b: [w / 2, h / 4, 0], c: [w / 2, -h / 4, 0], d: [0, -h / 2, 1], e: [-w / 2, -h / 4, 0], f: [-w / 2, h / 4, 0], g: [0, 0, 1], h: [0, 0, 2] };
+    [...text].forEach((char, i) => {
+      const cx = (i - (text.length - 1) / 2) * (w + t + gap);
+      for (const s of SEGMENTS[char]) {
+        const [x, y, across] = bars[s];
+        const bar = across === 1 ? new THREE.BoxGeometry(w + t, t, 0.015) : new THREE.BoxGeometry(t, across ? h + t : h / 2 + t, 0.015);
+        add(bar.translate(cx + x, height + y, face + 0.0375), colour);
+      }
+    });
+  }
+
+  // A stop sign, our own drawing: an octagon, a side at the top, grey at the back, its face red inside a thin white rim,
+  // with STOP in white.
+  function stopSign() {
+    const { radius, rim } = tables.signs;
+    return roadSign((add, face) => {
+      add(plate(8, radius, face, Math.PI / 8), palette.signal);
+      add(plate(8, radius, face + 0.015, Math.PI / 8), palette.stopLine);
+      add(plate(8, radius - rim, face + 0.03, Math.PI / 8), palette.red);
+      characters(add, 'STOP', face, [0.1, 0.2, 0.035, 0.04], palette.stopLine);
+    });
   }
 
   // A give-way sign, our own drawing: a triangle, point down and centred on the sign's height, grey at the back, its face
@@ -503,33 +535,21 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const { side, border } = tables.signs;
     const r = side / Math.sqrt(3); // middle to corner
     return roadSign((add, face) => {
-      add(plate(3, r, face, true), palette.signal);
-      add(plate(3, r, face + 0.015, true), palette.red);
-      add(plate(3, r - 2 * border, face + 0.03, true), palette.stopLine); // `border` in from each side is 2 × as far from the corners
+      add(plate(3, r, face, Math.PI), palette.signal);
+      add(plate(3, r, face + 0.015, Math.PI), palette.red);
+      add(plate(3, r - 2 * border, face + 0.03, Math.PI), palette.stopLine); // `border` in from each side is 2 × as far from the corners
     });
   }
 
   // A speed limit sign for `limit` km/h: a round plate, grey at the back, its face a red ring round a white disc with the
   // limit in dark seven-segment bars.
   function speedSign(limit) {
-    const { height, radius, ring } = tables.signs;
+    const { radius, ring } = tables.signs;
     return roadSign((add, face) => {
       add(plate(20, radius, face), palette.signal);
       add(plate(20, radius, face + 0.015), palette.red);
       add(plate(20, radius - ring, face + 0.03), palette.stopLine);
-      // Segments a–g of a digit w × h, bars t thick: top, upper right, lower right, bottom, lower left, upper left, middle.
-      const [w, h, t] = [0.16, 0.32, 0.045];
-      const SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
-      const bars = { a: [0, h / 2, 1], b: [w / 2, h / 4, 0], c: [w / 2, -h / 4, 0], d: [0, -h / 2, 1], e: [-w / 2, -h / 4, 0], f: [-w / 2, h / 4, 0], g: [0, 0, 1] };
-      const digits = String(limit);
-      [...digits].forEach((digit, i) => {
-        const cx = (i - (digits.length - 1) / 2) * (w + t + 0.08);
-        for (const s of SEGMENTS[digit]) {
-          const [x, y, across] = bars[s];
-          const bar = across ? new THREE.BoxGeometry(w + t, t, 0.015) : new THREE.BoxGeometry(t, h / 2 + t, 0.015);
-          add(bar.translate(cx + x, height + y, face + 0.0375), palette.trim);
-        }
-      });
+      characters(add, String(limit), face, [0.16, 0.32, 0.045, 0.08], palette.trim);
     });
   }
 

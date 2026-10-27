@@ -146,10 +146,15 @@ An **AI car** doesn't drive into a **Junction** it can't leave again.
 
 **Junction rule**:
 The rule of the next **Junction** ahead for the truck's **Approach**, shown on the HUD: "Ampel", "Vorfahrt achten"
-(**Give way**), "Vorfahrtstraße" (its street has **Priority** over a lower one) or "Rechts vor links".
+(**Give way**), "Stop" (**Stop**), "Vorfahrtstraße" (its street has **Priority** over a lower one) or "Rechts vor
+links".
 
 **Give way** ("Vorfahrt achten"):
 An **Approach** to a **Crossing** where another street of a higher **Road class** comes in; it has a give-way sign.
+
+**Stop** ("Stop"):
+A **Give way** **Approach** where that street ranks two **Road classes** higher; it has a stop sign instead. Vehicles
+come to a full stop at the **Crossing** before they give way.
 
 **Speed limit** ("Höchstgeschwindigkeit"):
 The fastest the truck may drive where it is.
@@ -166,11 +171,12 @@ Money taken for breaking a rule or for a **Contact** the truck made.
 _Avoid_: penalty, ticket
 
 **Rule fine**:
-A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are three:
+A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are four:
 the red light (entering a **Light junction** on red, having crossed its **Stop line** on red too, after a short grace
 at the start of red), speeding (over the **Speed limit** by more than a tolerance; at most one
 **Fine** per cooldown) and give way (driving into a **Crossing** from a **Give way** **Approach** so that an **AI car**
-with **Priority** brakes hard; once per **Junction**).
+with **Priority** brakes hard; once per **Junction**) and stop (driving into a **Crossing** from a **Stop**
+**Approach** without having stood still just before it; once per pass).
 
 **Witness**:
 A **Police car** within range of the truck with a clear line of sight at the moment of a rule break.

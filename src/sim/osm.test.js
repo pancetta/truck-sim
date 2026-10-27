@@ -195,6 +195,14 @@ describe('OSM map: lights and signs', () => {
     expect(giveWay(build(...cross('residential', 'residential')))).toEqual([]);
     expect(giveWay(build(...cross('tertiary', 'secondary')))).toEqual([]);
   });
+
+  test('a stop sign stands in place of the give-way sign where the side street ranks two classes lower, and marks its slot', () => {
+    const tee = (side) => build(via('Via A', 'secondary', [[-50, 0], [0, 0], [50, 0]]), way(side, [[0, 0], [0, 50]]));
+    const kinds = (map) => map.signs.filter((s) => s.kind !== 'speed').map((s) => s.kind);
+    const stops = (map) => map.graph.nodes.flatMap((n) => n.slots.filter((s) => s.stop).map((s) => s.edge.class));
+    expect([kinds(tee('residential')), stops(tee('residential'))]).toEqual([['stop'], ['residential']]);
+    expect([kinds(tee('tertiary')), stops(tee('tertiary'))]).toEqual([['giveWay'], []]);
+  });
 });
 
 describe('OSM map: spots', () => {

@@ -862,6 +862,61 @@ describe('Sim: traffic on the road graph', () => {
     // right; coming west, none does.
     const tee = star([90, 0, 180], ['tertiary', 'tertiary', 'residential']);
     expect([0, 1, 2].map((arm) => ruleFrom(tee, arm))).toEqual(['rightBeforeLeft', 'priority', 'giveWay']);
+    // Residential streets meeting a secondary one, two classes up, have stop signs.
+    const stops = star([90, 0, -90, 180], ['secondary', 'residential', 'secondary', 'residential']);
+    expect([0, 1, 2, 3].map((arm) => ruleFrom(stops, arm))).toEqual(['priority', 'stop', 'priority', 'stop']);
+  });
+
+  describe('stop signs', () => {
+    // A secondary street north–south crossed by a residential one, which has stop signs.
+    const stopCross = () => star([90, 0, -90, 180], ['secondary', 'residential', 'secondary', 'residential']);
+    const short = (car) => car.lane.length - car.s - CAR.length / 2; // front bumper to the end of its run
+
+    test('an AI car comes to a full stop at the line, then gives way', () => {
+      // Alone, coming west at 8 m/s: it stands still at the line, then drives on.
+      const alone = stopCross();
+      const car = through(alone.sim, alone.centre, 1, 1, 3, 20, 8);
+      let stoppedAt = null;
+      for (let t = 0; t < 15 && car.lane.kind === 'run'; t += DT) {
+        alone.sim.step(DT, IDLE);
+        if (car.lane.kind === 'run' && car.speed === 0) stoppedAt ??= short(car);
+      }
+      expect(stoppedAt).toBeCloseTo(tables.traffic.stopGap, 0);
+      expect(car.lane.kind).toBe('turn');
+      // Stopped at the line while a car on the secondary street comes: that one goes first.
+      const { sim, centre } = stopCross();
+      const stopping = through(sim, centre, 1, 1, 3, centre.slots[1].in.length - 10 - CAR.length / 2, 6);
+      const priority = through(sim, centre, 2, 0, 2, centre.slots[0].in.length - 40 - CAR.length / 2, 11);
+      expect(order(sim, [stopping, priority])).toEqual([2, 1]);
+    });
+
+    // The truck coming west on the residential street, its front bumper `back` m short of the junction at `speed`, with
+    // a police car behind it if `seen`: the stop-sign fines in the next 4 s at full gas.
+    function rollIn(back, speed, seen = true) {
+      const { sim, centre } = stopCross();
+      if (seen) through(sim, centre, 99, 1, 3).police = true;
+      truckOn(sim, centre, 1, centre.radius + tables.vehicle.length / 2 + back, speed);
+      sim.step(DT, IDLE);
+      let [fines, last, front] = [0, sim.state.lastFine, Infinity];
+      for (let t = 0; t < 4; t += DT) {
+        sim.step(DT, GAS);
+        if (sim.state.lastFine !== last && sim.state.lastFine.reason === 'stopSign') fines++;
+        last = sim.state.lastFine;
+        front = Math.min(front, sim.state.truck.x - tables.vehicle.length / 2);
+      }
+      expect(front).toBeLessThan(centre.radius); // it drove in
+      return fines;
+    }
+
+    test('the truck rolling through is fined once, while a police car sees it', () => {
+      expect(rollIn(10, 6)).toBe(1);
+      expect(rollIn(10, 6, false)).toBe(0);
+      expect(rollIn(tables.stopSign.reach + 2, 0)).toBe(1); // it stood still, but too far back
+    });
+
+    test('stopping at the line first is free', () => {
+      expect(rollIn(3, 0)).toBe(0);
+    });
   });
 
   describe('the give-way fine', () => {

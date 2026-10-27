@@ -6,10 +6,11 @@
 // A car's `route` is its way ahead as lane paths, `lane` the one it is on (route[0]), `s` the m driven along it and
 // `prev` the path before; `prim` the line or arc of `lane` it is on (lanes.js); `via` the turn it drove into its
 // crossing by; `at`, `seen` and `since` the crossing it was last the first car of an approach to, the last step it was
-// and the step it became that (`first`: the step it first did, at that crossing; see rightOfWay); `passed` the nodes of its last PASSED turns, `turns` how many it took.
+// and the step it became that (`first`: the step it first did, at that crossing; see rightOfWay); `passed` the nodes of its last PASSED turns, `turns` how many it took;
+// `stopped` the turn off a stop approach it last came to a full stop before (see targetSpeed).
 // Junctions are graph nodes of three or more arms. At unsignalled crossings the approaches drive in by priority (see
-// rightOfWay): the higher road class, and right before left between equal ones; oncoming cars whose ways don't cross
-// go together. At light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No
+// rightOfWay): the higher road class, and right before left between equal ones; at a stop sign only after a full stop.
+// Oncoming cars whose ways don't cross go together. At light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No
 // car drives into a crossing or junction whose exit lane is queued up (see exitBlocked), or where the truck stands in
 // its way (see truckBlocks).
 // The step allocates next to nothing (#31): footprints, poses and the neighbour grid are scratch that is
@@ -163,6 +164,9 @@ export function createTraffic(tables, map, random) {
   map.lights.forEach((l, i) => {
     for (const turn of nodes[l.node].slots[l.slot].in?.next ?? []) lightAt[turn.id] = i;
   });
+  // Turns off a stop approach (osm.js): a car comes to a full stop before one, once, before it gives way (see targetSpeed).
+  const stopAt = new Uint8Array(paths.length); // path id → 1 for such a turn
+  for (const n of nodes) for (const { in: run, stop } of n.slots) if (stop) for (const turn of run?.next ?? []) stopAt[turn.id] = 1;
   // The box a path is in, if any: its crossing's group (touching crossings share one) or its light junction.
   const boxOf = (p) => groupAt[p.id] ?? junctionAt[p.id];
 
@@ -382,7 +386,7 @@ export function createTraffic(tables, map, random) {
     const { path, s } = at;
     const route = [path];
     extend(route);
-    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0 };
+    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null };
     place(car);
     cars.push(car);
   }
@@ -908,6 +912,11 @@ export function createTraffic(tables, map, random) {
       // line (it stopped there for the box) waits at the junction. Turning left on green, it yields at the line too:
       // from the junction (#70 review) the autopilot run met 4 cars instead of none.
       if (held && stoppable(car, short - lineBack)) speed = Math.min(speed, limit(short - lineBack - t.stopGap));
+      // At a stop approach it stands still at the line (within tables.stopSign.reach of the junction) once, then goes on.
+      if (stopAt[p.id] && car.stopped !== p) {
+        if (car.speed === 0 && short <= tables.stopSign.reach) car.stopped = p;
+        else if (stoppable(car, short)) speed = Math.min(speed, limit(short - t.stopGap));
+      }
       dist += p.length;
     }
     targets[ci] = speed;

@@ -52,7 +52,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
-  // 'light', 'giveWay', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
+  // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres).
@@ -227,6 +227,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
     if (map) checkGiveWay(dt);
+    if (map) checkStop();
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -398,7 +399,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // The rule at junction n (a node of three or more arms; null for any other) for the truck coming in by `edge`:
-  // 'light'; 'giveWay' when another arm cars come in by ranks higher (tables.traffic.priority, as the AI cars go);
+  // 'light'; 'giveWay' when another arm cars come in by ranks higher (tables.traffic.priority, as the AI cars go), 'stop'
+  // if the truck's arm is a stop approach too (osm.js);
   // 'priority' when none does, one ranks lower and none of the same rank comes in from the right (45°–135° round, as
   // traffic.js has it); else 'rightBeforeLeft'.
   const lit = new Set(map?.lights.map((l) => l.node));
@@ -417,7 +419,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     for (const s of slots) {
       if (s === own) continue;
       if (rank(s.edge) < rank(edge)) lower = true;
-      else if (s.in && rank(s.edge) > rank(edge)) return 'giveWay';
+      else if (s.in && rank(s.edge) > rank(edge)) return own?.stop ? 'stop' : 'giveWay';
       else if (s.in && own) right ||= fromRight(own, s);
     }
     return lower && !right ? 'priority' : 'rightBeforeLeft';
@@ -466,7 +468,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let owedNode = -1; // the junction they are owed at
   function checkGiveWay(dt) {
     const { hardBrake, near, within } = tables.giveWay;
-    const giving = truck.speed > -v.stopSpeed && state.junctionRule === 'giveWay'; // junctionAhead() looked ahead
+    const giving = truck.speed > -v.stopSpeed && (state.junctionRule === 'giveWay' || state.junctionRule === 'stop'); // junctionAhead() looked ahead
     // Only while driving in: a truck waiting at the line has given way.
     if (giving && truck.speed > v.stopSpeed && (boxNode >= 0 || approachShort <= near)) owedUntil = clock + within;
     for (const o of owed) {
@@ -484,6 +486,20 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     } else if (clock > owedUntil) {
       owed = [];
       settled = false;
+    }
+  }
+
+  // At a stop approach the truck must stand still with its front bumper within tables.stopSign.reach m of the junction's
+  // box before it drives in; driving in forwards without costs a fine if the police see it, once per pass.
+  let stoppedAt = -1; // the stop junction the truck has stood at, or been fined at, on this pass
+  function checkStop() {
+    if (state.junctionRule !== 'stop') return void (stoppedAt = -1);
+    if (boxNode < 0) {
+      if (approachNode !== stoppedAt) stoppedAt = -1;
+      if (Math.abs(truck.speed) <= v.stopSpeed && approachShort <= tables.stopSign.reach) stoppedAt = approachNode;
+    } else if (boxNode !== stoppedAt && truck.speed > v.stopSpeed) {
+      if (state.policeSees) fine('stopSign');
+      stoppedAt = boxNode;
     }
   }
 
@@ -749,6 +765,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     redLine = null;
     owed = [];
     settled = false;
+    stoppedAt = -1;
     updateRoute();
   }
 
