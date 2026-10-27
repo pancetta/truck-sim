@@ -61,14 +61,18 @@ export function parseMap(text, tables) {
       } else if (t === '+') {
         const approaches = DIRS.filter(([dc, dr]) => isRoad(col - dc, row - dr));
         if (approaches.length < 3) throw new Error(`Map light junction ${where} is not a crossing`);
-        // One light per approach; `dir` is the DIRS index of travel into the junction, (x, z) is the
-        // middle of its stop line, the tile edge the approach crosses, and `post` its signal post, a solid
-        // one on the junction's far right corner (right of travel (dc, dr) is (-dr, dc)).
+        // The stop line is most of a tile back (tables.lights.stopLine), so it must not land in another junction.
+        const roadSides = (c, r) => DIRS.filter(([dc, dr]) => isRoad(c + dc, r + dr)).length;
+        if (approaches.some(([dc, dr]) => roadSides(col - dc, row - dr) >= 3)) throw new Error(`Map light junction ${where} needs a plain road tile before each approach`);
+        // One light per approach, German style; `dir` is the DIRS index of travel into the junction, `post` its
+        // signal post, a solid one on the junction's near right corner where the approach enters it (right of
+        // travel (dc, dr) is (-dr, dc)), and (x, z) the middle of its stop line, tables.lights.stopLine before it.
         const { width, inset } = obstacles.signal;
         const reach = half - inset;
+        const back = reach + tables.lights.stopLine;
         for (const [dc, dr] of approaches) {
-          const post = { x: x + (dc - dr) * reach, z: z + (dr + dc) * reach };
-          lights.push({ junction: junctions, col, row, dir: DIRS.findIndex((d) => d[0] === dc && d[1] === dr), x: x - dc * half, z: z - dr * half, post });
+          const post = { x: x - (dc + dr) * reach, z: z + (dc - dr) * reach };
+          lights.push({ junction: junctions, col, row, dir: DIRS.findIndex((d) => d[0] === dc && d[1] === dr), x: x - dc * back, z: z - dr * back, post });
           colliders.push({ kind: 'signal', ...box(post.x, post.z, width / 2, width / 2) });
         }
         junctions++;

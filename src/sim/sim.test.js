@@ -1375,13 +1375,31 @@ describe('Sim: traffic lights', () => {
     return fines;
   }
 
-  test('a map with light junctions parses into one light per approach, with stop lines at the tile edges', () => {
+  test('a map with light junctions parses into one light per approach, German style: the post on the near right corner, the stop line before it', () => {
     const map = parseMap(CROSSING, tables);
+    const { stopLine } = tables.lights;
+    const { inset } = tables.city.obstacles.signal;
 
     expect(map.isRoad(3, 3)).toBe(true);
     expect(map.lights).toHaveLength(4);
-    expect(map.lights.find((l) => l.dir === 1)).toMatchObject({ col: 3, row: 3, x: 3 * TILE, z: 3.5 * TILE });
-    expect(map.lights.find((l) => l.dir === 2)).toMatchObject({ col: 3, row: 3, x: 3.5 * TILE, z: 3 * TILE });
+    // Eastbound: the post just inside the junction's south-west corner, the line stopLine before it.
+    const east = map.lights.find((l) => l.dir === 1);
+    expect(east).toMatchObject({ col: 3, row: 3, post: { x: 3 * TILE + inset, z: 4 * TILE - inset } });
+    expect(east.x).toBeCloseTo(east.post.x - stopLine);
+    expect(east.z).toBe(3.5 * TILE);
+    // Southbound: the post on the north-west corner.
+    const south = map.lights.find((l) => l.dir === 2);
+    expect(south).toMatchObject({ post: { x: 3 * TILE + inset, z: 3 * TILE + inset } });
+    expect([south.x, south.z]).toEqual([3.5 * TILE, south.post.z - stopLine]);
+    // In the city and at a T, every post stands on its approach's near right corner, so none on the far side.
+    const T = '###.###\n###.###\n...+...\n#######';
+    for (const l of [...parseMap(city, tables).lights, ...parseMap(T, tables).lights]) {
+      const [dc, dr] = DIRS[l.dir];
+      const [px, pz] = [l.post.x - (l.col + 0.5) * TILE, l.post.z - (l.row + 0.5) * TILE];
+      expect(px * dc + pz * dr).toBeLessThan(0); // near side
+      expect(px * -dr + pz * dc).toBeGreaterThan(0); // right
+    }
+    expect(() => parseMap('...\n.+.\n...', tables)).toThrow(/plain road tile/); // the arms are junctions themselves
     expect(() => parseMap('.+.', tables)).toThrow(/not a crossing/);
   });
 
@@ -1459,13 +1477,13 @@ describe('Sim: traffic lights', () => {
     expect(sim.state.junctionRule).toBe('rightBeforeLeft');
   });
 
-  test('each axis cycles green, amber, red with the table timings, never green together, offset per junction', () => {
+  test('each axis cycles green, amber, red, red and amber with the table timings, never green together, offset per junction', () => {
     const grid = `
       #.##.#
       .+..+.
       #.##.#`;
     const sim = createSim(tables, parseMap(grid, tables), seeded(1));
-    const { green, amber, junctionOffset } = tables.lights;
+    const { green, amber, redAmber, junctionOffset } = tables.lights;
     const ns = (j) => sim.state.lights.find((l) => l.junction === j && l.dir === 2);
     const ew = (j) => sim.state.lights.find((l) => l.junction === j && l.dir === 1);
     const changes = [[], []]; // per junction: [time, phase] of its north–south light
@@ -1480,9 +1498,10 @@ describe('Sim: traffic lights', () => {
     }
 
     const phases = changes[0].map(([, p]) => p);
-    expect(phases.slice(0, 4)).toEqual(['amber', 'red', 'green', 'amber']);
+    expect(phases.slice(0, 5)).toEqual(['amber', 'red', 'redAmber', 'green', 'amber']);
     expect(changes[0][1][0] - changes[0][0][0]).toBeCloseTo(amber, 1);
-    expect(changes[0][3][0] - changes[0][2][0]).toBeCloseTo(green, 1);
+    expect(changes[0][3][0] - changes[0][2][0]).toBeCloseTo(redAmber, 1);
+    expect(changes[0][4][0] - changes[0][3][0]).toBeCloseTo(green, 1);
     // Junction 1 runs ahead by the offset: it turns amber that much earlier.
     expect(changes[0][0][0] - changes[1][0][0]).toBeCloseTo(junctionOffset, 1);
   });
@@ -1530,7 +1549,7 @@ describe('Sim: traffic lights', () => {
   test('crossing on amber does not fine', () => {
     const sim = crossingSim();
     // Front bumper just short of the west stop line, waiting for the east–west light to turn amber.
-    Object.assign(sim.state.truck, { x: 3 * TILE - tables.vehicle.length / 2 - 0.5, z: 3.5 * TILE, heading: EAST });
+    Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - tables.vehicle.length / 2 - 0.5, z: 3.5 * TILE, heading: EAST });
     timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'amber', 60);
     expect(lightFor(sim, 1).phase).toBe('amber');
 
@@ -1538,6 +1557,18 @@ describe('Sim: traffic lights', () => {
 
     expect(fines).toBe(0);
     expect(sim.state.profile.money).toBe(money);
+  });
+
+  test('crossing on red and amber fines like red', () => {
+    const sim = crossingSim();
+    // Standing 10 cm short of the line, so it crosses well inside the phase's tables.lights.redAmber s.
+    Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - tables.vehicle.length / 2 - 0.1, z: 3.5 * TILE, heading: EAST });
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'redAmber', 60);
+    expect(lightFor(sim, 1).phase).toBe('redAmber');
+    witness(sim);
+
+    expect(driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE)).toBe(1);
+    expect(sim.state.lastFine.reason).toBe('redLight');
   });
 
   test('an unsignalled crossing never fines', () => {
@@ -1562,6 +1593,22 @@ describe('Sim: traffic lights', () => {
     expect(sim.state.profile.money).toBe(0);
   });
 
+  test('the fine comes at the stop line, not at the junction edge behind it', () => {
+    // Eastbound on red at 5 m/s, a police car behind: the front from just short of the line to just short of the
+    // edge is fined; from just past the line into the junction is not.
+    const run = (from, to) => {
+      const sim = crossingSim();
+      Object.assign(sim.state.truck, { x: from - tables.vehicle.length / 2, z: 3.5 * TILE + tables.traffic.laneOffset, heading: EAST, speed: 5 });
+      witness(sim);
+      expect(lightFor(sim, 1).phase).toBe('red');
+      return driveThrough(sim, () => sim.state.truck.x + tables.vehicle.length / 2 > to);
+    };
+    const line = crossingSim().state.lights.find((l) => l.dir === 1).x;
+    expect(line).toBeLessThan(3 * TILE - 1);
+    expect(run(line - 0.5, 3 * TILE - 0.5)).toBe(1);
+    expect(run(line + 0.5, 4.5 * TILE)).toBe(0);
+  });
+
   test('reversing over a stop line on red does not fine; driving forwards back over it does', () => {
     const sim = crossingSim();
     // Facing west on the east arm, then backing west to east through the crossing, front last.
@@ -1573,13 +1620,15 @@ describe('Sim: traffic lights', () => {
       if (sim.state.lastFine !== last) [fines, last] = [fines + 1, sim.state.lastFine];
     };
     drive(sim, 1, BRAKE); // reverse engages
-    timeUntil(sim, BRAKE, () => (count(), sim.state.truck.x > 4.5 * TILE), 30);
-    expect(sim.state.truck.x).toBeGreaterThan(4.5 * TILE);
+    // Past the east arm's stop line, `stopLine` back from the crossing.
+    timeUntil(sim, BRAKE, () => (count(), sim.state.truck.x > 5.5 * TILE), 30);
+    expect(sim.state.truck.x).toBeGreaterThan(5.5 * TILE);
     expect(lightFor(sim, 1).phase).toBe('red');
     expect(fines).toBe(0);
 
     // Now forwards, westbound into the crossing from the east arm while that approach is red, a police car behind.
     timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 5);
+    timeUntil(sim, IDLE, () => lightFor(sim, 3).phase === 'amber', 60); // then a whole red to drive up to the line
     timeUntil(sim, IDLE, () => lightFor(sim, 3).phase === 'red', 60);
     addCar(sim, 99, [[6, 3], [5, 3], [4, 3], [3, 3], [2, 3], [1, 3], [0, 3]], true);
     timeUntil(sim, GAS, () => (count(), sim.state.truck.x < 2.5 * TILE), 20);
@@ -1599,11 +1648,13 @@ describe('Sim: traffic lights', () => {
       ...........`;
     const { laneOffset } = tables.traffic;
 
-    function runRed(police, radius = tables.police.radius) {
+    // `s`: m the police car stands along its first tile.
+    function runRed(police, radius = tables.police.radius, s = 0) {
       const t = { ...noPolice, police: { ...noPolice.police, radius } };
       const sim = createSim(t, parseMap(STREETS, t), seeded(1), profile);
-      Object.assign(sim.state.truck, { x: 3 * TILE - tables.vehicle.length / 2 - 0.5, z: 2.5 * TILE + laneOffset, heading: EAST, speed: 5 });
-      addCar(sim, 99, police, true);
+      Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - tables.vehicle.length / 2 - 0.5, z: 2.5 * TILE + laneOffset, heading: EAST, speed: 5 });
+      addCar(sim, 99, police, true).s = s;
+      sim.step(0, IDLE);
       expect(lightFor(sim, 1).phase).toBe('red');
       const sees = sim.state.policeSees;
       return { sees, fines: driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE), money: sim.state.profile.money };
@@ -1622,8 +1673,9 @@ describe('Sim: traffic lights', () => {
     });
 
     test('on the cross street, seeing the cab come out though the corner hides the rest: fined', () => {
-      // Southbound down the north arm, 38 m off; the corner building is on the line to the truck's centre.
-      expect(runRed([[3, 0], [3, 1], [3, 2], [2, 2], [1, 2]])).toEqual({ sees: true, fines: 1, money: money - tables.fines.redLight });
+      // Southbound on the north arm 4 m short of the junction, 15 m off; the corner building is on the line to the
+      // truck's centre (the place is narrow: 1 m nearer it sees the centre, 1 m farther it misses the front).
+      expect(runRed([[3, 1], [3, 2], [2, 2], [1, 2]], undefined, TILE - 4.3)).toEqual({ sees: true, fines: 1, money: money - tables.fines.redLight });
     });
 
     test('behind a building: not fined', () => {
@@ -1634,8 +1686,8 @@ describe('Sim: traffic lights', () => {
 
   test('a signal post is solid: driving onto the pavement corner stops the truck', () => {
     const map = parseMap(CROSSING, tables);
-    // The post of the southbound approach stands on the crossing's south-west corner.
-    const post = map.lights.find((l) => l.dir === 2).post;
+    // The post of the eastbound approach stands on the crossing's south-west corner.
+    const post = map.lights.find((l) => l.dir === 1).post;
     expect(map.colliders).toContainEqual(expect.objectContaining({ kind: 'signal', minX: post.x - 0.1, maxZ: post.z + 0.1 }));
     const sim = createSim(tables, map, seeded(1), profile);
     // Driving east along the pavement, its right side just over the post's line.
@@ -1745,6 +1797,30 @@ describe('Sim: traffic', () => {
 
     expect(sim.state.traffic).toContain(car);
     expect(short(car, light)).toBeLessThan(0);
+  });
+
+  test('an AI car that meets an amber light it can stop for stops at the stop line', () => {
+    const sim = trafficSim(THETA, 2);
+    const short = (car, l) => (l.x - car.x) * DIRS[l.dir][0] + (l.z - car.z) * DIRS[l.dir][1] - CAR.length / 2;
+    const heading = (car, l) => car.route.some((p) => p.col === l.col && p.row === l.row && p.from === l.dir);
+    // The first car heading for an amber light, 15–30 m short of its line: room to stop at `brake`.
+    let car;
+    let light;
+    timeUntil(sim, IDLE, () => {
+      light = sim.state.lights.find((l) => {
+        if (l.phase !== 'amber') return false;
+        const coming = sim.state.traffic.filter((c) => heading(c, l) && short(c, l) > 0);
+        car = coming.reduce((a, b) => (short(b, l) < short(a, l) ? b : a), coming[0]);
+        return car && short(car, l) > 15 && short(car, l) < 30 && car.speed > 5;
+      });
+      return light;
+    }, 600);
+    expect(light).toBeTruthy();
+
+    timeUntil(sim, IDLE, () => car.speed === 0, 10);
+
+    expect(light.phase).not.toBe('green');
+    expect(short(car, light)).toBeCloseTo(stopGap, 1);
   });
 
   test('AI cars cruise at the speed limit and take right turns slower than left ones, both faster than 4.5 m/s', () => {
@@ -2303,8 +2379,8 @@ describe('Sim: right of way and collisions', () => {
       },
     );
 
-    test('with its nose just past the stop line it holds only the lane it blocks', () => {
-      // On the east arm facing west, standing at red with its front bumper `into` m past the stop line; the
+    test('with its nose just past the junction edge it holds only the lane it blocks', () => {
+      // On the east arm facing west, standing at red with its front bumper `into` m past the junction edge; the
       // north–south axis is green. 1 m in blocks no way through, 5 m in the northbound lane.
       const standing = (into) => {
         const sim = createSim(quiet, parseMap(LIGHT, quiet), seeded(1));

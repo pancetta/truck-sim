@@ -129,13 +129,20 @@ export const visuals = {
   chromeBullBar: { slot: 'chrome', price: 1800, bullBar: true },
 };
 
-// Each light junction runs green → amber → red for one axis while the other is red, then swaps, with a
-// short all-red gap between. Junction n starts its cycle n × junctionOffset seconds ahead of junction 0.
+// Each light junction runs green → amber → red → red and amber (German) for one axis while the other is red,
+// then swaps, with a short all-red gap between. Junction n starts its cycle n × junctionOffset seconds ahead of junction 0.
 export const lights = {
   green: 14, // s
   amber: 3, // s
   allRed: 2, // s, both axes red
+  redAmber: 1, // s, red and amber lit together before green; within allRed, so the other axis is red by then
   junctionOffset: 7, // s
+  // m from an approach's stop line back from its signal post (on the junction's near right corner), German style,
+  // so the first vehicle in the queue still sees the lamps. Germany paints ~3 m, but from the cab the post would
+  // then stand ~44° right, out of the view and under the minimap; at 9 m its lamps show beside the minimap at
+  // tablet size (1180×820) and wider (#70). parseMap wants a plain road tile before each approach; with only one, the
+  // first car queued at the line stands 0.7 m into the junction behind it, so leave two.
+  stopLine: 9,
 };
 
 // € per offence; money never drops below 0, the unpaid rest is dropped.

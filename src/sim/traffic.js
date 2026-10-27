@@ -27,6 +27,7 @@ export function createTraffic(tables, map, random) {
   const ts = map.tileSize;
   const half = ts / 2;
   const size = tables.city.obstacles.car; // AI cars are the size of the parked ones
+  const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
   const truckSize = { length: tables.vehicle.length, width: tables.vehicle.width };
   const cars = [];
   let nextId = 1;
@@ -546,15 +547,20 @@ export function createTraffic(tables, map, random) {
       const p = car.route[i];
       if (p.from !== p.to) speed = Math.min(speed, limit(dist, turnSpeed(p)));
       const light = lightFor(p, lights);
-      const short = dist - size.length / 2; // front bumper to the stop line
+      const short = dist - size.length / 2; // front bumper to the piece's tile edge
       const g = groupOf(p);
       const way = g && g !== groupOf(car.route[i - 1]) && g.stamp === now ? g.way : undefined;
       const box = boxOf(p);
+      const held = light && (light.phase !== 'green' || yields(p));
       const wait =
-        (light && (light.phase !== 'green' || yields(p))) ||
+        held ||
         (way !== undefined && way !== p.from) ||
         (box && box !== boxOf(car.route[i - 1]) && ((box.truck === now && truckBlocks(car, i, truck)) || exitBlocked(car, i, truck)));
       if (wait && stoppable(car, short)) speed = Math.min(speed, limit(short - t.stopGap));
+      // A light holds a car at its stop line, `lineBack` before the tile edge, while it can stop there; one past the
+      // line (it stopped there for the box) waits at the edge. Turning left on green, it yields at the line too: from
+      // the edge (#70 review) the autopilot run met 4 cars instead of none.
+      if (held && stoppable(car, short - lineBack)) speed = Math.min(speed, limit(short - lineBack - t.stopGap));
       dist += laneLength(p);
     }
     targets[ci] = speed;

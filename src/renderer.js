@@ -350,8 +350,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // The box every car fits, for culling: the footprint, as tall as the tallest body type (the van).
   const carSize = new THREE.Vector3(city.obstacles.car.width, Math.max(...Object.values(generated).map((g) => g.fitted.height)), city.obstacles.car.length);
 
-  // Traffic lights, our own boxes: per approach, a post on the junction's far right corner with its lamps
-  // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road.
+  // Traffic lights, our own boxes: per approach, a post on the junction's near right corner with its lamps
+  // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road
+  // tables.lights.stopLine before it.
   // The lamps are one-sided planes, so a light seen from the side or behind shows no colour.
   // The posts stand where parseMap put their colliders. Right of travel direction (dc, dr) is (-dr, dc).
   const LAMP_PHASES = ['red', 'amber', 'green'];
@@ -687,7 +688,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       shownLights = state.lightsVersion;
       const c = new THREE.Color();
       state.lights.forEach((l, i) =>
-        LAMP_PHASES.forEach((p, k) => lamps.setColorAt(i * 3 + k, c.setHex(l.phase === p ? lampColours[k] : palette.lampOff))),
+        LAMP_PHASES.forEach((p, k) => lamps.setColorAt(i * 3 + k, c.setHex(l.phase === p || (l.phase === 'redAmber' && k < 2) ? lampColours[k] : palette.lampOff))),
       );
       lamps.instanceColor.needsUpdate = true;
     }

@@ -30,7 +30,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lastPayment` ({ amount, lines: [{ label, amount }] }, label a key of strings.payLines) is replaced by a
   // new object on every payment, so the UI can tell each one apart;
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
-  // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red');
+  // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber', 'red' or 'redAmber');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
@@ -146,7 +146,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / v.steerFadeSpeed) ** 2);
     const yawRate = -(truck.speed / v.wheelbase) * Math.tan(angle);
     const { x, z, heading } = truck;
-    const frontBefore = frontTile();
+    const frontBefore = front();
     truck.heading += yawRate * dt;
     truck.x += Math.sin(truck.heading) * truck.speed * dt;
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
@@ -163,7 +163,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
-    checkRedLight(frontBefore, frontTile()); // before touchCars, which may stop the truck
+    checkRedLight(frontBefore, front()); // before touchCars, which may stop the truck
     if (traffic) touchCars(met, before, pushed);
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
@@ -197,7 +197,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function updateLights() {
     for (const l of state.lights) {
       const t = (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
-      const phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : 'red';
+      const phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : t < cycle - lt.redAmber ? 'red' : 'redAmber';
       if (phase !== l.phase) {
         l.phase = phase;
         state.lightsVersion++;
@@ -233,24 +233,23 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     contacts = next;
   }
 
-  // Tile under the middle of the truck's front bumper.
-  function frontTile() {
-    if (!map) return null;
+  // Middle of the truck's front bumper.
+  function front() {
     const half = v.length / 2;
-    const col = Math.floor((truck.x + Math.sin(truck.heading) * half) / map.tileSize);
-    const row = Math.floor((truck.z + Math.cos(truck.heading) * half) / map.tileSize);
-    return { col, row };
+    return { x: truck.x + Math.sin(truck.heading) * half, z: truck.z + Math.cos(truck.heading) * half };
   }
 
-  // The front crossing a stop line into a light junction, driving forwards, while that approach is red costs a
-  // fine if the police see it. Reversing over a line is manoeuvring (backing out of a box or into a bay), and its
-  // front bumper is the last part to cross anyway.
+  // The front crossing a light's stop line, driving forwards towards its junction, while that light is red (or red
+  // and amber) costs a fine if the police see it. Reversing over a line is manoeuvring (backing out of a box or into
+  // a bay), and its front bumper is the last part to cross anyway.
   function checkRedLight(from, to) {
-    if (!state.policeSees || !from || truck.speed <= 0 || (from.col === to.col && from.row === to.row)) return;
-    const light = state.lights.find(
-      (l) => l.col === to.col && l.row === to.row && DIRS[l.dir][0] === to.col - from.col && DIRS[l.dir][1] === to.row - from.row,
-    );
-    if (light?.phase === 'red') fine('redLight');
+    if (!state.policeSees || truck.speed <= 0) return;
+    const light = state.lights.find((l) => {
+      const [dc, dr] = DIRS[l.dir];
+      const along = (p) => (p.x - l.x) * dc + (p.z - l.z) * dr; // ahead of the line
+      return along(from) < 0 && along(to) >= 0 && Math.abs((to.x - l.x) * dr - (to.z - l.z) * dc) < map.tileSize / 2; // on the road
+    });
+    if (light?.phase === 'red' || light?.phase === 'redAmber') fine('redLight');
   }
 
   // Whether a police car is within tables.police.radius of the truck with no building tile on the line from it to the
