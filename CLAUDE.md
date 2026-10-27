@@ -9,6 +9,15 @@ Keep review effort in proportion to risk (this overrides the "fix every finding,
 - Run follow-up QA or review only when a fix changes player-visible behaviour or the CI/deploy path, and scope it to that fix.
 - Don't harden test-only guards against hypothetical misuse. Keep them simple and mark their limits with a `shortcut:` comment.
 
+## Testing on iPad
+
+The iPad simulator runs Safari on the Mac's GPU, so its frame times say nothing about a real iPad, and running it slows the owner's machine.
+
+- Default QA: the Vitest seams plus Chrome in the built-in browser. Perf numbers come from Chrome `?perf` and are relative checks only.
+- Boot the simulator only for a ticket that changes touch input, HUD layout, iPad-specific CSS, the loading or home-screen/fullscreen flow, or uses a rendering feature that may behave differently in Safari. Shut it down (`xcrun simctl shutdown all`) right after that check.
+- Never record simulator frame times as iPad performance. Real-iPad numbers come from the owner's `?perf&auto` run.
+- Run one heavy process at a time (simulator, dev server, soak tests), and stop dev servers you started when you're done.
+
 ## Agent skills
 
 ### Issue tracker
