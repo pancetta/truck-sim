@@ -1,0 +1,21 @@
+src/sim/sim.js
+  s_3141a0e21550fa::t_c5c8c6dd43757b 74
+src/sim/osm.js
+  s_3141a0e21550fa::t_2313315347a19e 193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16734e92174c8582a898ae442f10ebad3120d908",
+  "prompts": {},
+  "sessions": {
+    "s_3141a0e21550fa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6aa09c74-b114-4f7a-a008-f00d8d17601f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
