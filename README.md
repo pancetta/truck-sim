@@ -11,7 +11,7 @@ A browser truck-delivery game: drive a heavy truck around a small low-poly city,
 - **Werkstatt:** buy upgrades (motor, brakes, tyres, suspension, cargo bed) and looks (paint, livery, light bar, cab gimmick, rims, chrome), trying looks on before buying. Opens only while standing with no order.
 - **Traffic:** AI cars drive the right-hand lane at the 50 km/h limit, stop at red lights, give way right before left at unsignalled crossings, wait to turn left at lights while traffic comes the other way, and don't drive into a crossing whose exit is queued up or where the truck stands.
 - **Speed limit:** 50 km/h everywhere in town, shown on round signs where streets begin; the speedometer turns red above it. There is no fine for speeding.
-- **Fines:** crossing a stop line forwards on red, or driving into an AI car, costs money (never below 0); the notice shows what was taken. A car that drives into the truck costs nothing.
+- **Fines:** crossing the stop line and entering the light junction on red (a police car must see it; no fine in the first second of red or on red and amber), or driving into an AI car, costs money (never below 0); the notice shows what was taken. A car that drives into the truck costs nothing.
 - **Saving:** money, rank, upgrades, looks and the distance driven save automatically in the browser; *Spielstand zurücksetzen* in the Werkstatt starts over.
 
 On iPad (or Android), use *Zum Home-Bildschirm* to add the game to the home screen; opened from there it runs full screen in landscape. The home-screen app keeps its own save: iOS stores it separately from Safari's, so progress made in Safari doesn't carry over.

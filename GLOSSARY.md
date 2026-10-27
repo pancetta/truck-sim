@@ -148,7 +148,9 @@ Money taken for breaking a rule or for a **Contact** the truck made.
 _Avoid_: penalty, ticket
 
 **Rule fine**:
-A **Fine** for breaking a traffic rule (today a red light), charged only when a **Police car** **Witnesses** it.
+A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today the one rule is
+the red light: entering a **Light junction** on red, having crossed its **Stop line** on red too, after a short grace
+at the start of red.
 
 **Witness**:
 A **Police car** within range of the truck with a clear line of sight at the moment of a rule break.

@@ -137,6 +137,7 @@ export const lights = {
   allRed: 2, // s, both axes red
   redAmber: 1, // s, red and amber lit together before green; within allRed, so the other axis is red by then
   junctionOffset: 7, // s
+  redGrace: 1, // s at the start of red in which entering the junction isn't a red-light fine (see sim.js checkRedLight)
   // m from an approach's stop line back from its signal post (on the junction's near right corner), German style,
   // so the first vehicle in the queue still sees the lamps. Germany paints ~3 m, but from the cab the post would
   // then stand ~44° right, out of the view and under the minimap; at 9 m its lamps show beside the minimap at

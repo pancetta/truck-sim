@@ -64,6 +64,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
+  let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
+  const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
   let routeKey = ''; // start tile and target the current route was found for
   let offersTile = ''; // tile the current offers were made on; their expected times count from there
   const tileKey = () => `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)}`;
@@ -194,9 +196,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // Junction n runs `junctionOffset` s ahead of junction n - 1; the east–west axis runs half a cycle
   // behind the north–south one.
+  const cycleTime = (l) => (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
   function updateLights() {
     for (const l of state.lights) {
-      const t = (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
+      const t = cycleTime(l);
       const phase = t < lt.green ? 'green' : t < lt.green + lt.amber ? 'amber' : t < cycle - lt.redAmber ? 'red' : 'redAmber';
       if (phase !== l.phase) {
         l.phase = phase;
@@ -239,17 +242,24 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return { x: truck.x + Math.sin(truck.heading) * half, z: truck.z + Math.cos(truck.heading) * half };
   }
 
-  // The front crossing a light's stop line, driving forwards towards its junction, while that light is red (or red
-  // and amber) costs a fine if the police see it. Reversing over a line is manoeuvring (backing out of a box or into
-  // a bay), and its front bumper is the last part to cross anyway.
+  // The front entering a light junction, driving forwards, on red past its first tables.lights.redGrace s, having
+  // crossed that light's stop line on red too, costs a fine if the police see it; red and amber, before green, never.
+  // Over the line and stopped before the junction is free, and so is clearing the junction after crossing the line on
+  // green or amber. Reversing over a line is manoeuvring (backing out of a box or into a bay), and its front bumper is
+  // the last part to cross anyway.
   function checkRedLight(from, to) {
-    if (!state.policeSees || truck.speed <= 0) return;
-    const light = state.lights.find((l) => {
+    if (truck.speed <= 0) return;
+    for (const l of state.lights) {
       const [dc, dr] = DIRS[l.dir];
+      if (Math.abs((to.x - l.x) * dr - (to.z - l.z) * dc) >= map.tileSize / 2) continue; // not on its road
       const along = (p) => (p.x - l.x) * dc + (p.z - l.z) * dr; // ahead of the line
-      return along(from) < 0 && along(to) >= 0 && Math.abs((to.x - l.x) * dr - (to.z - l.z) * dc) < map.tileSize / 2; // on the road
-    });
-    if (light?.phase === 'red' || light?.phase === 'redAmber') fine('redLight');
+      const crosses = (at) => along(from) < at && along(to) >= at;
+      if (crosses(0)) redLine = l.phase === 'red' ? l : null;
+      if (!crosses(lineBack)) continue;
+      const graced = cycleTime(l) < lt.green + lt.amber + lt.redGrace;
+      if (redLine === l && l.phase === 'red' && !graced && state.policeSees) fine('redLight');
+      redLine = null;
+    }
   }
 
   // Whether a police car is within tables.police.radius of the truck with no building tile on the line from it to the
@@ -491,6 +501,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     Object.assign(truck, (poses.find(free) ?? poses[0]).pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
     brakeHold = 0;
+    redLine = null;
     updateRoute();
   }
 

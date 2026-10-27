@@ -1364,14 +1364,30 @@ describe('Sim: traffic lights', () => {
   // The light the truck meets driving in direction `dir` (a DIRS index).
   const lightFor = (sim, dir) => sim.state.lights.find((l) => l.dir === dir);
 
-  // Drives with full gas until the truck's rear is past the crossing; returns how many fines were taken.
-  function driveThrough(sim, done) {
+  // Steps with `input` until done() (or 20 s); returns how many fines were taken.
+  function finesUntil(sim, input, done) {
     let fines = 0;
     let last = sim.state.lastFine;
-    timeUntil(sim, GAS, () => {
+    timeUntil(sim, input, () => {
       if (sim.state.lastFine !== last) [fines, last] = [fines + 1, sim.state.lastFine];
       return done();
     }, 20);
+    return fines;
+  }
+
+  // Drives with full gas until done(), e.g. the truck's rear past the crossing; returns how many fines were taken.
+  const driveThrough = (sim, done) => finesUntil(sim, GAS, done);
+
+  // The eastbound truck's front bumper, and the edge of the CROSSING's junction it drives into.
+  const frontX = (sim) => sim.state.truck.x + tables.vehicle.length / 2;
+  const EDGE = 3 * TILE;
+
+  // Eastbound in its lane at 5 m/s from 0.5 m short of the stop line, over it with gas, then braked to a standstill
+  // before the junction and the brake let go (held, it would engage reverse); returns the fines taken.
+  function overTheLine(sim) {
+    Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - 0.5 - tables.vehicle.length / 2, z: 3.5 * TILE + tables.traffic.laneOffset, heading: EAST, speed: 5 });
+    const fines = driveThrough(sim, () => frontX(sim) > lightFor(sim, 1).x + 0.5) + finesUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+    expect(frontX(sim)).toBeLessThan(EDGE);
     return fines;
   }
 
@@ -1519,7 +1535,7 @@ describe('Sim: traffic lights', () => {
     expect(changes).toBeGreaterThan(2);
   });
 
-  test('crossing the stop line on red fines once, seen by a police car', () => {
+  test('over the stop line and into the junction on red fines once, seen by a police car', () => {
     const sim = crossingSim();
     placeAt(sim, 1, 3, EAST);
     witness(sim);
@@ -1546,29 +1562,78 @@ describe('Sim: traffic lights', () => {
     expect(sim.state.profile.money).toBe(money);
   });
 
-  test('crossing on amber does not fine', () => {
+  test('over the stop line on red and stopped before the junction does not fine; driving on into it does', () => {
     const sim = crossingSim();
-    // Front bumper just short of the west stop line, waiting for the east–west light to turn amber.
-    Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - tables.vehicle.length / 2 - 0.5, z: 3.5 * TILE, heading: EAST });
-    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'amber', 60);
-    expect(lightFor(sim, 1).phase).toBe('amber');
-
-    const fines = driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
-
-    expect(fines).toBe(0);
-    expect(sim.state.profile.money).toBe(money);
-  });
-
-  test('crossing on red and amber fines like red', () => {
-    const sim = crossingSim();
-    // Standing 10 cm short of the line, so it crosses well inside the phase's tables.lights.redAmber s.
-    Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - tables.vehicle.length / 2 - 0.1, z: 3.5 * TILE, heading: EAST });
-    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'redAmber', 60);
-    expect(lightFor(sim, 1).phase).toBe('redAmber');
     witness(sim);
+    expect(lightFor(sim, 1).phase).toBe('red');
+
+    expect(overTheLine(sim)).toBe(0);
+    expect(sim.state.policeSees).toBe(true);
+    expect(sim.state.profile.money).toBe(money);
 
     expect(driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE)).toBe(1);
     expect(sim.state.lastFine.reason).toBe('redLight');
+  });
+
+  test('over the stop line on amber, into the junction on red, does not fine: it is clearing the junction', () => {
+    const sim = crossingSim();
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'amber', 60);
+    expect(overTheLine(sim)).toBe(0);
+    // Waiting well past the start of red, a police car behind.
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'red', 10);
+    timeUntil(sim, IDLE, () => false, tables.lights.redGrace + 1);
+    expect(lightFor(sim, 1).phase).toBe('red');
+    witness(sim);
+
+    expect(driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE)).toBe(0);
+    expect(sim.state.policeSees).toBe(true);
+    expect(sim.state.profile.money).toBe(money);
+  });
+
+  test('over the stop line and into the junction in the first tables.lights.redGrace s of red does not fine; just after, it does', () => {
+    // At 12 m/s from 0.2 m short of the line, `wait` s into red: line and junction edge inside 1 s.
+    const run = (wait) => {
+      const sim = crossingSim();
+      timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'amber', 60);
+      timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'red', 10);
+      timeUntil(sim, IDLE, () => false, wait);
+      Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - 0.2 - tables.vehicle.length / 2, z: 3.5 * TILE + tables.traffic.laneOffset, heading: EAST, speed: 12 });
+      witness(sim);
+      sim.step(0, IDLE);
+      expect(sim.state.policeSees).toBe(true);
+      let entered = null;
+      const fines = driveThrough(sim, () => (entered ??= frontX(sim) >= EDGE ? sim.state.truck : null, sim.state.truck.x > 4.5 * TILE));
+      expect(entered).not.toBe(null);
+      expect(lightFor(sim, 1).phase).toBe('red');
+      return fines;
+    };
+    expect(run(0)).toBe(0);
+    expect(run(tables.lights.redGrace + 0.1)).toBe(1);
+
+    // Over the line inside the grace, stopped, then into the junction after it: fined.
+    const sim = crossingSim();
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'amber', 60);
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'red', 10);
+    expect(overTheLine(sim)).toBe(0);
+    timeUntil(sim, IDLE, () => false, tables.lights.redGrace);
+    witness(sim);
+    expect(driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE)).toBe(1);
+  });
+
+  test('over the stop line on red, into the junction on red and amber, does not fine', () => {
+    const sim = crossingSim();
+    expect(lightFor(sim, 1).phase).toBe('red');
+    expect(overTheLine(sim)).toBe(0);
+    // Edged up to 0.2 m short of the junction, then rolling in at 3 m/s once red and amber shows.
+    sim.state.truck.x = EDGE - 0.2 - tables.vehicle.length / 2;
+    timeUntil(sim, IDLE, () => lightFor(sim, 1).phase === 'redAmber', 30);
+    witness(sim);
+    sim.state.truck.speed = 3;
+    let phase = null;
+    const fines = driveThrough(sim, () => (phase ??= frontX(sim) >= EDGE ? lightFor(sim, 1).phase : null, sim.state.truck.x > 4.5 * TILE));
+    expect(phase).toBe('redAmber');
+    expect(fines).toBe(0);
+    expect(sim.state.profile.money).toBe(money);
   });
 
   test('an unsignalled crossing never fines', () => {
@@ -1593,20 +1658,16 @@ describe('Sim: traffic lights', () => {
     expect(sim.state.profile.money).toBe(0);
   });
 
-  test('the fine comes at the stop line, not at the junction edge behind it', () => {
-    // Eastbound on red at 5 m/s, a police car behind: the front from just short of the line to just short of the
-    // edge is fined; from just past the line into the junction is not.
-    const run = (from, to) => {
-      const sim = crossingSim();
-      Object.assign(sim.state.truck, { x: from - tables.vehicle.length / 2, z: 3.5 * TILE + tables.traffic.laneOffset, heading: EAST, speed: 5 });
-      witness(sim);
-      expect(lightFor(sim, 1).phase).toBe('red');
-      return driveThrough(sim, () => sim.state.truck.x + tables.vehicle.length / 2 > to);
-    };
-    const line = crossingSim().state.lights.find((l) => l.dir === 1).x;
-    expect(line).toBeLessThan(3 * TILE - 1);
-    expect(run(line - 0.5, 3 * TILE - 0.5)).toBe(1);
-    expect(run(line + 0.5, 4.5 * TILE)).toBe(0);
+  test('the fine comes at the junction edge, not at the stop line before it', () => {
+    // Eastbound on red at 5 m/s, a police car behind, from just short of the line: none to just short of the edge,
+    // one at the edge.
+    const sim = crossingSim();
+    Object.assign(sim.state.truck, { x: lightFor(sim, 1).x - 0.5 - tables.vehicle.length / 2, z: 3.5 * TILE + tables.traffic.laneOffset, heading: EAST, speed: 5 });
+    witness(sim);
+    expect(lightFor(sim, 1).phase).toBe('red');
+    expect(lightFor(sim, 1).x).toBeLessThan(EDGE - 1);
+    expect(driveThrough(sim, () => frontX(sim) > EDGE - 0.5)).toBe(0);
+    expect(driveThrough(sim, () => frontX(sim) > EDGE + 0.5)).toBe(1);
   });
 
   test('reversing over a stop line on red does not fine; driving forwards back over it does', () => {
