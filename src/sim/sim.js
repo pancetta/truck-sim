@@ -71,7 +71,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
   let limitEdge = null; // edge whose limit state.speedLimit shows (see updateLimit)
-  const traffic = map?.roads && createTraffic(tables, map, random); // AI cars still drive tiles: the grid city only (#61, #63)
+  const traffic = map && map.traffic !== false ? createTraffic(tables, map, random) : null; // a map may have none (Monti until #63)
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
   // map.colliders in a spatial cell index by their bounds, so fits() and inSight() test only those near.

@@ -190,7 +190,7 @@ export function buildOsmMap(data, tables) {
     }
   }
 
-  return { bounds, spots: [], colliders, lights, signs, graph, buildings };
+  return { bounds, spots: [], colliders, lights, signs, graph, buildings, traffic: false }; // no AI cars until #63
 }
 
 // The part of segment a→b inside the bounds as [t0, t1] (0..1 along it), or null where it misses them (Liang–Barsky).
