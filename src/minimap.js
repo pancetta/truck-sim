@@ -65,9 +65,7 @@ export function createMinimap(canvas, map, tables) {
       ctx.lineJoin = ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(tx, ty);
-      // Off the road the truck isn't on the route's first tile, so the line goes through it.
-      const onStart = Math.floor(truck.x / map.tileSize) === route[0].col && Math.floor(truck.z / map.tileSize) === route[0].row;
-      for (const t of route.slice(onStart ? 1 : 0)) ctx.lineTo(...centre(t));
+      for (const p of route) ctx.lineTo((p.x / map.tileSize) * scale, (p.z / map.tileSize) * scale);
       ctx.stroke();
     }
 

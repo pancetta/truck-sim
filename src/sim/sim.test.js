@@ -886,16 +886,28 @@ describe('Sim: time bonus', () => {
     expect(offer.expectedTime).toBeCloseTo((3 * TILE) / referenceSpeed + 2 * loadTime + slack);
   });
 
-  test('offers are dropped once the truck leaves the tile they were made on, so their times stay true', () => {
-    const sim = laneSim();
+  test('offers are dropped once the truck moves onto another edge, so their times stay true', () => {
+    // A lane south through a crossing; the truck starts on the lane above it, facing south.
+    const grid = `
+      #A#
+      #.#
+      #.#
+      ...
+      #.#
+      #B#`;
+    const map = parseMap(grid, tables);
+    const sim = createSim(tables, map, seeded(1));
+    const edgeOf = () => map.graph.nearest(sim.state.truck.x, sim.state.truck.z).edge;
+    const start = edgeOf();
     sim.requestOffers();
-    drive(sim, 1, IDLE);
+    drive(sim, 1, GAS);
     expect(sim.state.offers.length).toBeGreaterThan(0);
+    expect(edgeOf()).toBe(start);
 
     timeUntil(sim, GAS, () => sim.state.offers.length === 0, 10);
 
-    expect(sim.state.offers).toEqual([]);
-    expect(Math.abs(sim.state.truck.z - 2.5 * TILE)).toBeGreaterThan(TILE / 2 - 0.5); // it got to the next tile
+    expect(edgeOf()).not.toBe(start);
+    expect(sim.state.truck.z).toBeGreaterThan(3 * TILE); // it got into the crossing
   });
 
   test('the active order counts the time since it was accepted', () => {
@@ -1240,15 +1252,30 @@ describe('Sim: docking', () => {
 });
 
 describe('Sim: route', () => {
-  // A ring road: A's zone is the tile below A, B's the tile right of B. The truck starts on the top row
-  // at column 3, facing east. A's zone is 7 tiles away round the left, 11 round the right; B's 5 and 13.
+  // A ring road: A's zone is the tile below A, B's the tile right of B. The truck is placed on the top row at
+  // column 3, facing east. A's zone is 7 tiles away round the left, 11 round the right; B's 5 and 13.
   const RING = `
     .......
     .#####.
     .A###B.
     .......`;
-  const tileOf = (sim) => ({ col: Math.floor(sim.state.truck.x / TILE), row: Math.floor(sim.state.truck.z / TILE) });
-  const zoneOf = (map, id) => map.spots.find((s) => s.id === id).zoneTile;
+  const zoneOf = (map, id) => map.spots.find((s) => s.id === id).pose;
+  const expectAt = (p, q) => {
+    expect(p.x).toBeCloseTo(q.x);
+    expect(p.z).toBeCloseTo(q.z);
+  };
+  // The route's length from where the truck is on the road.
+  const lengthOf = (map, sim) => {
+    const points = [map.graph.nearest(sim.state.truck.x, sim.state.truck.z), ...sim.state.route];
+    return points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.z - points[i].z), 0);
+  };
+  const ringSim = (pickup) => {
+    const map = parseMap(RING, tables);
+    const sim = createSim(tables, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 3.5 * TILE, z: 0.5 * TILE + tables.traffic.laneOffset, heading: Math.PI / 2 });
+    acceptFrom(sim, pickup);
+    return { map, sim };
+  };
 
   test('the route is empty with no active order', () => {
     const sim = laneSim();
@@ -1263,32 +1290,26 @@ describe('Sim: route', () => {
     const map = parseMap(LANE, tables);
     acceptFrom(sim, 'B');
 
-    expect(sim.state.route[0]).toEqual(tileOf(sim));
-    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, 'B'));
+    expectAt(sim.state.route.at(-1), zoneOf(map, 'B'));
 
     parkAt(sim, 'B');
     drive(sim, tables.orders.loadTime + 0.1, IDLE);
-    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, 'A'));
+    expectAt(sim.state.route.at(-1), zoneOf(map, 'A'));
 
     parkAt(sim, 'A');
     drive(sim, tables.orders.loadTime + 0.1, IDLE);
     expect(sim.state.route).toEqual([]);
   });
 
-  test('on a known grid the route is a shortest road path from the truck tile', () => {
-    const map = parseMap(RING, tables);
-    const sim = createSim(tables, map, seeded(1));
-    const [offer] = sim.requestOffers();
-    sim.acceptOrder(offer.id);
+  test.each(['A', 'B'])('on a known grid the route to %s is a shortest road route from where the truck is', (pickup) => {
+    const { map, sim } = ringSim(pickup);
     const { route } = sim.state;
 
-    expect(route[0]).toEqual({ col: 3, row: 0 });
-    expect(route.at(-1)).toEqual(zoneOf(map, offer.pickup));
-    expect(route.length).toBe(offer.pickup === 'A' ? 8 : 6);
-    route.slice(1).forEach((t, i) => {
-      expect(map.isRoad(t.col, t.row)).toBe(true);
-      expect(Math.abs(t.col - route[i].col) + Math.abs(t.row - route[i].row)).toBe(1);
-    });
+    expectAt(route.at(-1), zoneOf(map, pickup));
+    expect(lengthOf(map, sim)).toBeCloseTo(pickup === 'A' ? 7 * TILE : 5 * TILE);
+    for (const p of route) expect(map.isRoad(Math.floor(p.x / TILE), Math.floor(p.z / TILE))).toBe(true);
+    // It leaves the truck's own place on the road out, and starts at the corner on its way.
+    expectAt(route[0], pickup === 'A' ? { x: 0.5 * TILE, z: 0.5 * TILE } : { x: 6.5 * TILE, z: 0.5 * TILE });
   });
 
   test('off the road the route joins the road where the trip is shortest, not at the nearest road tile', () => {
@@ -1316,21 +1337,22 @@ describe('Sim: route', () => {
     const { route } = sim.state;
     expect(tileUnder(grid, sim)).toBe(',');
     expect(nearest.row).toBe(4);
-    expect(route[0].col).toBe(6);
-    expect(route.at(-1)).toEqual(zoneOf(map, 'A'));
+    expect(Math.floor(route[0].x / TILE)).toBe(6);
+    expectAt(route.at(-1), zoneOf(map, 'A'));
   });
 
-  test('after the truck moves to another tile, the route starts from the new tile', () => {
-    const map = parseMap(RING, tables);
-    const sim = createSim(tables, map, seeded(1));
-    const [offer] = sim.requestOffers();
-    sim.acceptOrder(offer.id);
+  test('as the truck drives on, the route keeps running from where it is on the road', () => {
+    const { map, sim } = ringSim('B');
 
-    timeUntil(sim, GAS, () => tileOf(sim).col === 4, 10);
+    timeUntil(sim, GAS, () => sim.state.truck.x > 4.5 * TILE, 10);
+    expect(lengthOf(map, sim)).toBeCloseTo(4 * TILE, 0);
 
-    expect(sim.state.route[0]).toEqual({ col: 4, row: 0 });
-    expect(sim.state.route.at(-1)).toEqual(zoneOf(map, offer.pickup));
-    expect(sim.state.route.length).toBe(offer.pickup === 'A' ? 9 : 5); // A: now 8 round the left, 10 round the right
+    // Round the corner, on the next stretch of the ring, the corner is behind it.
+    Object.assign(sim.state.truck, { x: 6.5 * TILE - tables.traffic.laneOffset, z: 1.5 * TILE, heading: 0, speed: 0 });
+    sim.step(DT, IDLE);
+    expect(sim.state.route.length).toBe(1);
+    expectAt(sim.state.route[0], zoneOf(map, 'B'));
+    expect(lengthOf(map, sim)).toBeCloseTo(TILE);
   });
 });
 
@@ -2463,7 +2485,9 @@ describe('Sim: collider broad phase', () => {
     const noCars = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
     const map = parseMap(city, tables);
     // The city's colliders each sit inside one tile; add one spanning several on the open ground, as a longer obstacle would.
-    map.colliders.push({ kind: 'wide', minX: 25.6 * TILE, maxX: 28.3 * TILE, minZ: 25.2 * TILE, maxZ: 27.7 * TILE });
+    const [minX, maxX, minZ, maxZ] = [25.6 * TILE, 28.3 * TILE, 25.2 * TILE, 27.7 * TILE];
+    const points = [{ x: minX, z: minZ }, { x: maxX, z: minZ }, { x: maxX, z: maxZ }, { x: minX, z: maxZ }];
+    map.colliders.push({ kind: 'wide', minX, maxX, minZ, maxZ, points });
     const sim = createSim(noCars, map, seeded(1));
     const { length, width } = tables.vehicle;
     // Brute force: the truck's box against the map edge and every collider, touching isn't overlapping.
@@ -2509,6 +2533,31 @@ describe('Sim: collider broad phase', () => {
     expect(mismatches).toEqual([]);
     expect(hits).toBeGreaterThan(poses / 10); // both outcomes well represented
     expect(hits).toBeLessThan(poses * 0.9);
+  });
+
+  test('a collider turned off the axes stops the truck at its outline, not at its bounding box', () => {
+    const noCars = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
+    const map = parseMap(
+      `
+      ,,,,,
+      ,,,,,
+      ,,,,,
+      .....`,
+      tables,
+    );
+    // A diamond 10 m from its centre to each corner, on the open ground above the trees.
+    const points = [{ x: 35, z: 11 }, { x: 45, z: 21 }, { x: 35, z: 31 }, { x: 25, z: 21 }];
+    map.colliders.push({ kind: 'building', minX: 25, maxX: 45, minZ: 11, maxZ: 31, points });
+    const sim = createSim(noCars, map, seeded(1));
+    const blockedAt = (x, z) => {
+      Object.assign(sim.state.truck, { x, z, heading: 0, speed: 0 });
+      sim.step(DT, IDLE);
+      return sim.state.collision;
+    };
+
+    expect(blockedAt(44, 12)).toBe(false); // inside the bounding box, beside the diamond's corner
+    expect(blockedAt(35, 9)).toBe(true); // the front reaches over the top corner
+    expect(blockedAt(35, 21)).toBe(true); // wholly inside
   });
 });
 

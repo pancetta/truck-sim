@@ -1,37 +1,40 @@
-// Dev-only (?perf&auto): drives the truck round a fixed loop of streets (tables.perf.route) so every perf run
-// sees the same route. Pure pursuit on the right half of the road; when stuck it jumps on along the loop. Ported
+// Dev-only (?perf&auto): drives the truck round a fixed loop of streets (tables.perf.route), along the road graph's
+// shortest routes between its corners, so every perf run sees the same route. Pure pursuit on the right half of the road; when stuck it jumps on along the loop. Ported
 // from the investigation's scratch autopilot; since #33 it also waits behind an AI car in its path, as it ignores
 // right of way and otherwise rammed one car over and over at 50 km/h traffic.
 export function createAutopilot(sim, map, tables) {
-  const { route, lane, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
-  const ts = map.tileSize;
-  const path = [];
-  route.forEach((c, i) => path.push(...map.route(c, route[(i + 1) % route.length]).slice(0, -1)));
+  const { route, spacing, lane, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
+  const corners = route.map(({ x, z }) => map.graph.nearest(x, z));
+  const loop = corners.flatMap((c, i) => map.graph.route(c, corners[(i + 1) % corners.length]).points);
+  const path = resample(loop, spacing);
+  if (Math.hypot(path[0].x - path.at(-1).x, path[0].z - path.at(-1).z) < spacing / 2) path.pop(); // the loop closes
   let idx = 0;
   let stuck = 0;
   const input = { steer: 0, gas: 0, brake: 0 };
   const at = (i) => path[((i % path.length) + path.length) % path.length];
-  // The lane point of path tile i: the tile centre moved `lane` to the right of the way to tile i + 1.
+  // The lane point of path point i: moved `lane` to the right of the way to point i + 1.
   const point = (i) => {
     const a = at(i);
     const b = at(i + 1);
-    const [dc, dr] = [b.col - a.col, b.row - a.row];
-    return [(a.col + 0.5) * ts - dr * lane, (a.row + 0.5) * ts + dc * lane];
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    return [a.x - ((b.z - a.z) / d) * lane, a.z + ((b.x - a.x) / d) * lane];
   };
+  // Whether the way turns at b, coming from a and going on to c (by more than 0.1 rad).
+  const turns = (a, b, c) => Math.abs((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x)) > 0.1 * Math.hypot(b.x - a.x, b.z - a.z) * Math.hypot(c.x - b.x, c.z - b.z);
 
-  // Puts the truck on the loop at path tile i (the start by default), facing along it. Dev-only, so it sets the
+  // Puts the truck on the loop at path point i (the start by default), facing along it. Dev-only, so it sets the
   // Sim's state directly.
   function place(i = 0) {
     const [x, z] = point(i);
     const a = at(i);
     const b = at(i + 1);
-    Object.assign(sim.state.truck, { x, z, heading: Math.atan2(b.col - a.col, b.row - a.row), speed: 0 });
+    Object.assign(sim.state.truck, { x, z, heading: Math.atan2(b.x - a.x, b.z - a.z), speed: 0 });
     idx = i;
   }
 
   function update(dt) {
     const t = sim.state.truck;
-    // Advance along the path to the nearest tile ahead.
+    // Advance along the path to the nearest point ahead.
     let best = Infinity;
     let bi = idx;
     for (let k = 0; k < 6; k++) {
@@ -40,7 +43,7 @@ export function createAutopilot(sim, map, tables) {
       if (d < best) [best, bi] = [d, idx + k];
     }
     idx = bi;
-    if (best > (2 * ts) ** 2) {
+    if (best > (2 * spacing) ** 2) {
       // lost (e.g. after a reset to the road): search the whole loop
       for (let k = 0; k < path.length; k++) {
         const [px, pz] = point(k);
@@ -51,12 +54,7 @@ export function createAutopilot(sim, map, tables) {
     const [tx, tz] = point(idx + 2);
     const want = Math.atan2(tx - t.x, tz - t.z);
     const err = Math.atan2(Math.sin(want - t.heading), Math.cos(want - t.heading));
-    const turning = [1, 2, 3].some((k) => {
-      const a = at(idx + k - 1);
-      const b = at(idx + k);
-      const c = at(idx + k + 1);
-      return b.col - a.col !== c.col - b.col || b.row - a.row !== c.row - b.row;
-    });
+    const turning = [1, 2, 3].some((k) => turns(at(idx + k - 1), at(idx + k), at(idx + k + 1)));
     const target = turning || Math.abs(err) > 0.3 ? turnSpeed : cruiseSpeed;
     const waiting = carAhead(t);
     input.steer = Math.max(-1, Math.min(1, -err * steerGain));
@@ -66,7 +64,7 @@ export function createAutopilot(sim, map, tables) {
     stuck = Math.abs(t.speed) < 0.3 ? stuck + dt : 0;
     if (stuck > (waiting ? waitTime : stuckTime)) {
       stuck = 0;
-      // On along the loop, to the first tile no AI car is within its look-ahead of. The Sim's resetToRoad could
+      // On along the loop, to the first point no AI car is within its look-ahead of. The Sim's resetToRoad could
       // turn the truck off the loop, where it wedged for good, blocking a lane and the crossing behind (#46).
       const clear = tables.traffic.lookAhead;
       let k = idx + 1;
@@ -91,6 +89,23 @@ export function createAutopilot(sim, map, tables) {
   }
 
   return { update, place };
+}
+
+// Points every `spacing` m along the polyline, from its start.
+function resample(points, spacing) {
+  const out = [];
+  let next = 0; // m along the polyline of the next point out
+  let walked = 0;
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    for (; next <= walked + len + 1e-6; next += spacing) {
+      const t = len ? Math.min(1, (next - walked) / len) : 0;
+      out.push({ x: a.x + t * (b.x - a.x), z: a.z + t * (b.z - a.z) });
+    }
+    walked += len;
+  }
+  return out;
 }
 
 // A seeded random (mulberry32) for the Sim under ?auto, so every run meets the same traffic and offers.

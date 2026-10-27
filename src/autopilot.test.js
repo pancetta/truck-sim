@@ -22,8 +22,8 @@ function drive(seconds) {
     sim.step(step, autopilot.update(step));
     if (sim.state.lastFine !== fine && sim.state.lastFine.reason === 'collision') crashes++;
     const { x, z } = sim.state.truck;
-    tables.perf.route.forEach(({ col, row }, k) => {
-      if (Math.hypot(x - (col + 0.5) * map.tileSize, z - (row + 0.5) * map.tileSize) < map.tileSize) reached.add(k);
+    tables.perf.route.forEach((corner, k) => {
+      if (Math.hypot(x - corner.x, z - corner.z) < tables.perf.spacing) reached.add(k);
     });
   }
   return { truck: sim.state.truck, reached, crashes };

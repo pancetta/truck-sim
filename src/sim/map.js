@@ -4,7 +4,9 @@
 //   #  building           A–Z  spot: a building whose zone is the road tile beside it
 //   c  parked car, p  pole: a road tile with the obstacle at its kerb
 //   +  light junction: a road crossing with traffic lights on each road approach
-// The road graph is the grid itself: road tiles are nodes, neighbouring road tiles are edges.
+// The road graph (`graph`) runs along the road tiles' centres; the tiles stay for what still works on them.
+
+import { createGraph } from './graph.js';
 
 const ROAD = ['.', 'c', 'p', '+'];
 const OBSTACLES = { c: 'car', p: 'pole' };
@@ -21,7 +23,6 @@ export function parseMap(text, tables) {
   const cols = tiles[0].length;
   const rows = tiles.length;
   const isRoad = (col, row) => ROAD.includes(tiles[row]?.[col]);
-  const isBuilding = (col, row) => /[#A-Z]/.test(tiles[row]?.[col] ?? ''); // a spot is a building too
   const roads = [];
   const open = [];
   const spots = [];
@@ -151,66 +152,60 @@ export function parseMap(text, tables) {
   // The rule at a junction tile (three or more road sides): 'light' or 'rightBeforeLeft'; null off a junction.
   const rule = (col, row) => (!junction(col, row) ? null : tiles[row][col] === '+' ? 'light' : 'rightBeforeLeft');
 
+  // The road graph (graph.js) of the road tiles: a node at the centre of every road tile with other than two road
+  // neighbours (junctions and dead ends), plus one on each loop of road that has none, and an edge through the tile
+  // centres from node to node, with a point at every bend. A lone road tile is an edge of one point. Grid roads are all
+  // residential, one tile wide, unnamed and two-way.
   const key = ({ col, row }) => row * cols + col;
-
-  // Breadth-first search outwards from the road tile `to` (every edge is one tile long): for each road
-  // tile connected to it, the next tile on a shortest path to `to` and that path's length in tiles.
-  function towards(to) {
-    const next = new Map([[key(to), { tile: null, steps: 0 }]]);
-    const queue = [to];
-    for (let i = 0; i < queue.length; i++) {
-      const tile = queue[i];
-      const steps = next.get(key(tile)).steps + 1;
-      for (const [dc, dr] of DIRS) {
-        const n = { col: tile.col + dc, row: tile.row + dr };
-        if (isRoad(n.col, n.row) && !next.has(key(n))) {
-          next.set(key(n), { tile, steps });
-          queue.push(n);
-        }
+  const centre = ({ col, row }) => ({ x: (col + 0.5) * tileSize, z: (row + 0.5) * tileSize });
+  const sides = ({ col, row }) => DIRS.filter(([dc, dr]) => isRoad(col + dc, row + dr)).length;
+  const nodeAt = new Map(); // tile key → node index
+  const seen = new Set(); // keys of the tiles walked
+  const walked = new Set(); // `${key},${DIRS index}` of every way out of a node walked
+  const nodes = [];
+  const edges = [];
+  const edge = (from, to, points) => edges.push({ from, to, class: 'residential', width: tileSize, name: '', oneWay: false, points });
+  function addNode(tile) {
+    nodeAt.set(key(tile), nodes.length);
+    nodes.push(centre(tile));
+    seen.add(key(tile));
+    if (sides(tile) === 0) edge(nodes.length - 1, nodes.length - 1, [centre(tile)]);
+  }
+  // Every edge out of the node on `start` not walked yet, each along its road to the next node.
+  function walk(start) {
+    DIRS.forEach(([dc, dr], out) => {
+      if (!isRoad(start.col + dc, start.row + dr) || walked.has(`${key(start)},${out}`)) return;
+      walked.add(`${key(start)},${out}`);
+      const points = [centre(start)];
+      let [tile, dir] = [{ col: start.col + dc, row: start.row + dr }, out];
+      while (!nodeAt.has(key(tile))) {
+        seen.add(key(tile));
+        const next = DIRS.findIndex(([c, r], k) => k !== (dir + 2) % 4 && isRoad(tile.col + c, tile.row + r));
+        if (next !== dir) points.push(centre(tile));
+        [tile, dir] = [{ col: tile.col + DIRS[next][0], row: tile.row + DIRS[next][1] }, next];
       }
-    }
-    return next;
+      walked.add(`${key(tile)},${(dir + 2) % 4}`);
+      points.push(centre(tile));
+      edge(nodeAt.get(key(start)), nodeAt.get(key(tile)), points);
+    });
   }
-
-  function pathFrom(next, from) {
-    if (!next.has(key(from))) return null;
-    const path = [];
-    for (let t = from; t; t = next.get(key(t)).tile) path.push(t);
-    return path;
+  for (const tile of roads) if (sides(tile) !== 2) addNode(tile);
+  for (const tile of roads) if (nodeAt.has(key(tile))) walk(tile);
+  for (const tile of roads) {
+    if (seen.has(key(tile))) continue;
+    addNode(tile);
+    walk(tile);
   }
+  const graph = createGraph(nodes, edges, tables.traffic.laneOffset, tables.city.cell);
+  // A spot's place on the graph: the pose nearest its zone's centre.
+  for (const s of spots) s.pose = graph.nearest((s.zone.minX + s.zone.maxX) / 2, (s.zone.minZ + s.zone.maxZ) / 2);
+  const bounds = { minX: 0, minZ: 0, maxX: cols * tileSize, maxZ: rows * tileSize };
 
-  // Shortest road path between two road tiles, both ends included; null if they aren't connected.
-  const route = (from, to) => pathFrom(towards(to), from);
-
-  // Shortest road path to the road tile `to` from the road tile under world position (x, z). Off the road,
-  // it starts from the road tile beside the truck's patch of open ground that makes the trip shortest:
-  // straight across to its centre, then by road. Null if no road reaches `to` from there.
-  // shortcut: "straight across" assumes the open ground is convex (true for the plaza); upgrade if a map
-  // gets an L-shaped open area.
-  function routeFrom(x, z, to) {
-    const next = towards(to);
-    const here = { col: Math.floor(x / tileSize), row: Math.floor(z / tileSize) };
-    if (isRoad(here.col, here.row)) return pathFrom(next, here);
-    const seen = new Set([key(here)]);
-    const patch = [here];
-    const exits = [];
-    for (let i = 0; i < patch.length; i++) {
-      for (const [dc, dr] of DIRS) {
-        const n = { col: patch[i].col + dc, row: patch[i].row + dr };
-        if (seen.has(key(n))) continue;
-        seen.add(key(n));
-        if (isRoad(n.col, n.row)) exits.push(n);
-        else if (tiles[n.row]?.[n.col] === ',') patch.push(n);
-      }
-    }
-    const trip = (t) =>
-      Math.hypot((t.col + 0.5) * tileSize - x, (t.row + 0.5) * tileSize - z) + (next.get(key(t))?.steps ?? Infinity) * tileSize;
-    return exits.length ? pathFrom(next, exits.reduce((a, b) => (trip(b) < trip(a) ? b : a))) : null;
-  }
-
-  return { cols, rows, tileSize, isRoad, isBuilding, roads, open, spots, colliders, lights, signs, rule, route, routeFrom };
+  return { cols, rows, tileSize, bounds, isRoad, roads, open, spots, colliders, lights, signs, rule, graph };
 }
 
+// An axis-aligned box: its bounds, and as a collider its outline (`points`), which the Sim tests.
 function box(x, z, hx, hz) {
-  return { minX: x - hx, maxX: x + hx, minZ: z - hz, maxZ: z + hz };
+  const [minX, maxX, minZ, maxZ] = [x - hx, x + hx, z - hz, z + hz];
+  return { minX, maxX, minZ, maxZ, points: [{ x: minX, z: minZ }, { x: maxX, z: minZ }, { x: maxX, z: maxZ }, { x: minX, z: maxZ }] };
 }

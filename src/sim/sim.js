@@ -2,6 +2,7 @@
 // Heading 0 faces +z; forward is (sin heading, cos heading) in the x/z plane.
 
 import { DIRS } from './map.js';
+import { createCells } from './cells.js';
 import { createTraffic } from './traffic.js';
 
 const G = 9.81; // m/s²
@@ -26,7 +27,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // 'fragile', 'dock' or 'fragileDock'. `order` is the active offer plus its phase ('pickup' or 'dropoff'),
   // `elapsed` (s since it was accepted) and `damage` (0..1, grows only on fragile cargo once loaded);
   // `progress` runs 0..1 while the truck stands in that phase's zone.
-  // `route` is the shortest road path ({col, row} tiles) to that zone from the truck's road tile (see map.routeFrom).
+  // `route` is the shortest road route to that zone's place on the road graph, as points ({ x, z }) from the next one
+  // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()).
   // `lastPayment` ({ amount, lines: [{ label, amount }] }, label a key of strings.payLines) is replaced by a
   // new object on every payment, so the UI can tell each one apart;
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
@@ -66,20 +68,30 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let brakeHold = 0; // s the brake has been held at a standstill
   let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
-  let routeKey = ''; // start tile and target the current route was found for
-  let offersTile = ''; // tile the current offers were made on; their expected times count from there
-  const tileKey = () => `${Math.floor(truck.x / map.tileSize)},${Math.floor(truck.z / map.tileSize)}`;
+  let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
+  let offersEdge = null; // edge the current offers were made on; their expected times count from there
   const traffic = map && createTraffic(tables, map, random);
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
-  // The map tile (clamped to the map) holding coordinate v along an axis of n tiles.
-  const tileOf = (v, n) => Math.min(n - 1, Math.max(0, Math.floor(v / map.tileSize)));
-  // map.colliders by every tile their box spans (`row * cols + col`), so fits() tests only those near the truck. An
-  // edge on a tile border counts the tile beyond too, so boxes that overlap always share a tile.
-  const collidersAt = map ? Array.from({ length: map.cols * map.rows }, () => []) : [];
-  for (const b of map?.colliders ?? []) {
-    for (let row = tileOf(b.minZ, map.rows); row <= tileOf(b.maxZ, map.rows); row++) {
-      for (let col = tileOf(b.minX, map.cols); col <= tileOf(b.maxX, map.cols); col++) collidersAt[row * map.cols + col].push(b);
+  // map.colliders in a spatial cell index by their bounds, so fits() and inSight() test only those near.
+  const solids = createCells(tables.city.cell);
+  for (const b of map?.colliders ?? []) solids.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
+  // Where Reset to road may put the truck: every tables.city.resetSpacing m along each edge, the headings the road
+  // leaves that point by, and whether the point lies in a junction (within half the road's width of a node with three
+  // or more arms), where AI cars would wait for the truck.
+  const roadPoints = [];
+  for (const e of map?.graph.edges ?? []) {
+    const { resetSpacing: spacing } = tables.city;
+    const junction = (n, along) => along < e.width / 2 && map.graph.nodes[n].arms.length >= 3;
+    const toward = (a, b) => Math.atan2(b.x - a.x, b.z - a.z);
+    for (let i = 0; i <= Math.ceil(e.length / spacing - 1e-9); i++) {
+      const s = Math.min(i * spacing, e.length);
+      const k = e.at.findLastIndex((a) => a <= s + 1e-6); // the edge's point at or before s
+      const onPoint = s - e.at[k] < 1e-6;
+      const headings = [];
+      if (k < e.points.length - 1) headings.push(toward(e.points[k], e.points[k + 1]));
+      if (!onPoint || k > 0) headings.push(toward(e.points[onPoint ? k : k + 1], e.points[onPoint ? k - 1 : k]));
+      roadPoints.push({ ...map.graph.pointAt(e, s), headings, junction: junction(e.from, s) || junction(e.to, e.length - s) });
     }
   }
 
@@ -180,9 +192,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (state.order) {
       state.order.elapsed += dt;
       loadOrUnload(dt);
-    } else if (state.offers.length && tileKey() !== offersTile) state.offers = []; // the panel asks again
+    }
+    const here = map && (state.order || state.offers.length) ? map.graph.nearest(truck.x, truck.z) : null;
+    if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
 
-    updateRoute();
+    updateRoute(here);
   }
 
   // Loaded fragile cargo takes damage from speed shed by hard braking (m/s) and from each new hit faster than a touch;
@@ -262,7 +276,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // Whether a police car is within tables.police.radius of the truck with no building tile on the line from it to the
+  // Whether a police car is within tables.police.radius of the truck with no building on the line from it to the
   // truck's centre or to the middle of its front bumper (a car on the cross street sees the cab come out at a junction).
   // shortcut: the lines are sampled every 0.5 m, so one clipping a building's corner by under 0.5 m is clear, and the
   // truck's rear corners don't count; upgrade to the footprint if players notice.
@@ -275,11 +289,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return false;
   }
 
-  // Whether no building tile lies on the line from a to b, sampled every 0.5 m.
+  // Whether no building (a spot's included) stands on the line from a to b, sampled every 0.5 m.
+  let [px, pz] = [0, 0]; // the sample blocks() tests, kept here so the test allocates nothing
+  const blocks = (c) =>
+    (c.kind === 'building' || c.kind === 'spot') && px > c.minX && px < c.maxX && pz > c.minZ && pz < c.maxZ && inside(px, pz, c.points);
   function inSight(a, b) {
     const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.5);
     for (let i = 1; i < n; i++) {
-      if (map.isBuilding(Math.floor((a.x + ((b.x - a.x) * i) / n) / map.tileSize), Math.floor((a.z + ((b.z - a.z) * i) / n) / map.tileSize))) return false;
+      [px, pz] = [a.x + ((b.x - a.x) * i) / n, a.z + ((b.z - a.z) * i) / n];
+      if (solids.some(px, pz, px, pz, blocks)) return false;
     }
     return true;
   }
@@ -311,8 +329,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.lastFine = { reason, amount };
   }
 
-  // Finds the route again only when the truck's tile or the target changes.
-  function updateRoute() {
+  // Finds the route again only when the target changes or the truck moves: on the road onto another segment of an
+  // edge, off it into another index cell (tables.city.cell), as the best join changes with every move there.
+  // `here` is the truck's nearest graph pose, if the step already has it.
+  function updateRoute(here) {
     const order = state.order;
     if (!order) {
       state.route = [];
@@ -320,10 +340,32 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       return;
     }
     const target = targetOf(order);
-    const key = `${tileKey()},${target.id}`;
+    here ??= map.graph.nearest(truck.x, truck.z);
+    const onRoad = here.d <= here.edge.width / 2;
+    const { cell } = tables.city;
+    const key = onRoad ? `${here.edge.id},${here.k},${target.id}` : `off,${Math.floor(truck.x / cell)},${Math.floor(truck.z / cell)},${target.id}`;
     if (key === routeKey) return;
     routeKey = key;
-    state.route = map.routeFrom(truck.x, truck.z, target.zoneTile) ?? [];
+    state.route = routeFrom(here, onRoad, target.pose)?.points ?? [];
+  }
+
+  // The truck's shortest road route ({ length (m), points }) to the graph pose `to`, from `here`, its nearest graph
+  // pose; null where no road leads there. On the road it runs from `here`, its first point (the truck's own) left
+  // out. Off it, it joins the road where straight across plus on by road is shortest, along a line clear of
+  // buildings, and starts at that join.
+  function routeFrom(here, onRoad, to) {
+    const way = map.graph.towards(to);
+    if (onRoad) {
+      const r = way(here);
+      return r && { length: r.length, points: r.points.slice(1) };
+    }
+    const joins = map.graph.edges
+      .map((e) => map.graph.project(e, truck.x, truck.z))
+      .map((p) => ({ p, r: way(p) }))
+      .filter(({ r }) => r)
+      .sort((a, b) => a.p.d + a.r.length - (b.p.d + b.r.length));
+    const join = joins.find(({ p }) => inSight(truck, p));
+    return join ? { length: join.p.d + join.r.length, points: join.r.points } : null;
   }
 
   // Standing still in the active phase's zone fills `progress`; anything else resets it.
@@ -463,18 +505,19 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function requestOffers() {
     state.offers = [];
     if (state.order) return state.offers;
-    offersTile = tileKey();
+    const here = map.graph.nearest(truck.x, truck.z);
+    offersEdge = here.edge;
     const maxCargo = levelOf('cargoBed')?.maxCargo ?? o.maxCargo;
     const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && o.types[typeOf(c)] <= state.rank.tier);
     for (let i = 0; i < o.offerCount; i++) {
       const cargo = pick(cargoes);
       const from = pick(map.spots);
       const to = pick(map.spots.filter((s) => s !== from && o.types[typeOf(cargo, s)] <= state.rank.tier));
-      const path = to && map.route(from.zoneTile, to.zoneTile);
+      const path = to && map.graph.route(from.pose, to.pose);
       if (!path) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
-      const distance = (path.length - 1) * map.tileSize;
+      const distance = path.length;
       const pay = Math.round(o.basePay + (o.payPerKm * distance) / 1000);
-      const toPickup = ((map.routeFrom(truck.x, truck.z, from.zoneTile)?.length ?? 1) - 1) * map.tileSize;
+      const toPickup = routeFrom(here, here.d <= here.edge.width / 2, from.pose)?.length ?? 0;
       const expectedTime = (toPickup + distance) / o.referenceSpeed + 2 * o.loadTime + o.slack;
       state.offers.push({ id: nextOfferId++, type: typeOf(cargo, to), cargo, pickup: from.id, dropoff: to.id, distance, pay, expectedTime });
     }
@@ -490,13 +533,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // Puts the truck in the right-hand lane of the nearest free road tile, facing along it, at a standstill in first
-  // gear. A crossing (three or more road sides), where AI cars would wait for it, only when no other tile is free.
+  // Puts the truck on the nearest free lane pose of the road points, facing along the road, at a standstill in first
+  // gear. In a junction, where AI cars would wait for it, only when no other pose is free.
   function resetToRoad() {
-    const crossing = ({ col, row }) => DIRS.filter(([dc, dr]) => map.isRoad(col + dc, row + dr)).length >= 3;
-    const poses = map.roads.map((tile) => ({ pose: roadPose(tile), crossing: crossing(tile) }));
+    const poses = roadPoints.map((p) => ({ pose: lanePose(p), junction: p.junction }));
     const away = ({ pose: p }) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
-    poses.sort((a, b) => a.crossing - b.crossing || away(a) - away(b));
+    poses.sort((a, b) => a.junction - b.junction || away(a) - away(b));
     const free = ({ pose: p }) => fits(p) && !traffic.touching(corners(p)).length;
     Object.assign(truck, (poses.find(free) ?? poses[0]).pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
@@ -505,14 +547,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // In the tile's right-hand lane, where the AI cars drive (`laneOffset` right of the centre line), heading
-  // towards the road neighbour that needs the smallest turn.
-  function roadPose({ col, row }) {
-    const pose = { x: (col + 0.5) * map.tileSize, z: (row + 0.5) * map.tileSize, heading: truck.heading };
+  // At a road point, in the right-hand lane, where the AI cars drive (`laneOffset` right of the centre line), heading
+  // the way the road leaves the point that needs the smallest turn.
+  function lanePose({ x, z, headings }) {
+    const pose = { x, z, heading: truck.heading };
     let smallest = Infinity;
-    for (const [dc, dr] of DIRS) {
-      if (!map.isRoad(col + dc, row + dr)) continue;
-      const heading = Math.atan2(dc, dr);
+    for (const heading of headings) {
       const turn = Math.abs(Math.atan2(Math.sin(heading - truck.heading), Math.cos(heading - truck.heading)));
       if (turn < smallest) [pose.heading, smallest] = [heading, turn];
     }
@@ -522,7 +562,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Whether the truck's footprint at `pose` stays inside the map and clear of every collider. Runs every step,
-  // so it tests only the colliders indexed on the tiles under the footprint's bounding box.
+  // so it tests only the colliders indexed in the cells under the footprint's bounding box.
   function fits(pose) {
     if (!map) return true;
     const cs = corners(pose);
@@ -530,17 +570,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const maxX = Math.max(cs[0].x, cs[1].x, cs[2].x, cs[3].x);
     const minZ = Math.min(cs[0].z, cs[1].z, cs[2].z, cs[3].z);
     const maxZ = Math.max(cs[0].z, cs[1].z, cs[2].z, cs[3].z);
-    if (minX < 0 || minZ < 0 || maxX > map.cols * map.tileSize || maxZ > map.rows * map.tileSize) return false;
-    for (let row = tileOf(minZ, map.rows); row <= tileOf(maxZ, map.rows); row++) {
-      for (let col = tileOf(minX, map.cols); col <= tileOf(maxX, map.cols); col++) {
-        for (const b of collidersAt[row * map.cols + col]) {
-          // Bounding boxes apart (touching included) can't overlap; this skips most candidates cheaply.
-          if (b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) continue;
-          if (overlaps(pose, b)) return false;
-        }
-      }
-    }
-    return true;
+    const { bounds } = map;
+    if (minX < bounds.minX || minZ < bounds.minZ || maxX > bounds.maxX || maxZ > bounds.maxZ) return false;
+    // Bounding boxes apart (touching included) can't overlap; this skips most candidates cheaply.
+    return !solids.some(minX, minZ, maxX, maxZ, (b) => !(b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) && overlaps(pose, b));
   }
 
   // How far point `p` lies outside the truck's footprint at `pose`; negative inside, by how far it is in.
@@ -558,22 +591,29 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return [[l, w], [l, -w], [-l, -w], [-l, w]].map(([a, b]) => ({ x: x + fx * a - fz * b, z: z + fz * a + fx * b }));
   }
 
-  // Separating-axis test of the truck's box against an axis-aligned box whose bounding box overlaps the truck's
-  // (fits() checks the world axes); touching isn't overlapping.
+  // Whether the truck's box at `pose` overlaps collider b's outline (`points`, any simple polygon, turned any way):
+  // a side of the outline reaches into the box, or the box lies wholly inside it. Touching isn't overlapping.
   function overlaps({ x, z, heading }, b) {
     const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
     const [l, w] = [v.length / 2, v.width / 2];
-    const bc = [[b.minX, b.minZ], [b.maxX, b.minZ], [b.maxX, b.maxZ], [b.minX, b.maxZ]];
-    const along = bc.map(([px, pz]) => (px - x) * fx + (pz - z) * fz);
-    const right = bc.map(([px, pz]) => -(px - x) * fz + (pz - z) * fx);
-    if (along.every((a) => a >= l) || along.every((a) => a <= -l)) return false;
-    return !(right.every((r) => r >= w) || right.every((r) => r <= -w));
+    const p = b.points;
+    for (let i = 0; i < p.length; i++) {
+      // The side's ends in the truck's frame: m ahead of its centre and right of it.
+      const [a, c] = [p[i], p[(i + 1) % p.length]];
+      const [a1, r1] = [(a.x - x) * fx + (a.z - z) * fz, -(a.x - x) * fz + (a.z - z) * fx];
+      const [a2, r2] = [(c.x - x) * fx + (c.z - z) * fz, -(c.x - x) * fz + (c.z - z) * fx];
+      if (Math.min(a1, a2) >= l || Math.max(a1, a2) <= -l || Math.min(r1, r2) >= w || Math.max(r1, r2) <= -w) continue;
+      // Separating-axis test on the side's normal, the one axis the box's own two leave.
+      const [na, nr] = [r1 - r2, a2 - a1];
+      if (Math.abs(na * a1 + nr * r1) < l * Math.abs(na) + w * Math.abs(nr)) return true;
+    }
+    return inside(x, z, p);
   }
 
   updateLights();
   if (map) {
     // Start parked on the road nearest the middle of the city.
-    Object.assign(truck, { x: (map.cols * map.tileSize) / 2, z: (map.rows * map.tileSize) / 2 });
+    Object.assign(truck, { x: (map.bounds.minX + map.bounds.maxX) / 2, z: (map.bounds.minZ + map.bounds.maxZ) / 2 });
     resetToRoad();
     updateTraffic(0);
     state.policeSees = policeSees();
@@ -581,4 +621,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };
+}
+
+// Whether (x, z) lies inside the polygon `points` (even–odd rule).
+function inside(x, z, points) {
+  let odd = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [a, b] = [points[i], points[j]];
+    if (a.z > z !== b.z > z && x < a.x + ((b.x - a.x) * (z - a.z)) / (b.z - a.z)) odd = !odd;
+  }
+  return odd;
 }

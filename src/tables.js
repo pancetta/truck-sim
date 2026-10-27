@@ -214,6 +214,8 @@ export const police = {
 
 export const city = {
   tileSize: 14, // m per ASCII map tile; road width
+  cell: 14, // m, side of the spatial index cells the colliders and road edges are filed under
+  resetSpacing: 14, // m between the road points along each edge that Reset to road picks from
   docks: ['C', 'F', 'H'], // spots with a loading dock; its bay opens onto the spot's zone
   // m; kerbGap is the space between the obstacle and the tile edge. The road models' pavement
   // is the outer 1.4 m of a road tile: poles stand on it, cars park just past it.
@@ -351,12 +353,13 @@ export const perf = {
   refresh: 1, // s between overlay updates
   seed: 1, // Sim random seed under ?auto
   route: [
-    // corner tiles of the loop, driven in this order
-    { col: 1, row: 8 },
-    { col: 57, row: 8 },
-    { col: 57, row: 36 },
-    { col: 1, row: 36 },
+    // corners of the loop in m, driven in this order along the shortest roads between them
+    { x: 21, z: 119 },
+    { x: 805, z: 119 },
+    { x: 805, z: 511 },
+    { x: 21, z: 511 },
   ],
+  spacing: 14, // m between the points the autopilot steers by along the loop
   lane: 2, // m right of the road's centre line
   cruiseSpeed: 12, // m/s on straights
   turnSpeed: 4.5, // m/s near corners and while off line

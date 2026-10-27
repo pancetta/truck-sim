@@ -66,16 +66,16 @@ export function createOrders(root, sim, map, tables, strings) {
     panel.hidden = true;
   });
 
-  // Offset from the truck to the centre of the route tile just past the route's first turn (or its last
-  // tile), so the arrow leans into a turn while the truck is still approaching the junction. Off the road
-  // it aims at the route's first tile instead, where the truck joins the road.
-  function pastNextTurn(route, { x, z }) {
-    const step = (i) => `${route[i + 1].col - route[i].col},${route[i + 1].row - route[i].row}`;
-    let i = 1;
-    while (i < route.length - 1 && step(i) === step(0)) i++;
-    const onRoute = Math.floor(x / map.tileSize) === route[0].col && Math.floor(z / map.tileSize) === route[0].row;
-    const t = onRoute ? route[Math.min(i + 1, route.length - 1)] : route[0];
-    return [(t.col + 0.5) * map.tileSize - x, (t.row + 0.5) * map.tileSize - z];
+  // Offset from the truck to the route point just past the route's first turn (or its last point), so the arrow
+  // leans into a turn while the truck is still approaching it. Off the road it aims at the route's first point
+  // instead, where the truck joins the road.
+  function pastNextTurn(route, truck) {
+    // Whether the way turns at b, coming from a and going on to c (by more than about 0.3 rad).
+    const turns = (a, b, c) => Math.abs((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x)) > 0.3 * Math.hypot(b.x - a.x, b.z - a.z) * Math.hypot(c.x - b.x, c.z - b.z);
+    let i = 0;
+    while (i < route.length - 1 && !turns(i ? route[i - 1] : truck, route[i], route[i + 1])) i++;
+    const t = map.graph.onRoad(truck.x, truck.z) ? route[Math.min(i + 1, route.length - 1)] : route[0];
+    return [t.x - truck.x, t.z - truck.z];
   }
 
   function update({ profile, lastPayment: payment, lastFine: fine, order, offers, progress: p, truck, route }) {
