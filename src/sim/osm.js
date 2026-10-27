@@ -12,6 +12,7 @@
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
+import { inside } from './sim.js';
 
 export function buildOsmMap(data, tables) {
   const o = tables.osm;
@@ -146,7 +147,7 @@ export function buildOsmMap(data, tables) {
   // Bollards every tables.osm.bollardSpacing m along the corridors' outer edge where it lies in a pedestrian square or
   // within half a pedestrian way's width of its line.
   const pedestrian = data.ways.filter((w) => w.tags.highway === 'pedestrian');
-  const squares = pedestrian.filter((w) => w.tags.area === 'yes');
+  const squares = pedestrian.filter((w) => w.tags.area === 'yes').map((w) => w.points.map(([x, z]) => ({ x, z })));
   const lines = pedestrian.filter((w) => w.tags.area !== 'yes');
   const nearLine = (x, z) =>
     lines.some((w) => w.points.some((p, k) => k > 0 && segmentDistance(x, z, w.points[k - 1], p) < o.pedestrian / 2));
@@ -158,7 +159,7 @@ export function buildOsmMap(data, tables) {
       for (let s = 0; s < l; s += o.bollardSpacing) {
         const [x, z] = [a[0] + ((b[0] - a[0]) * s) / l, a[1] + ((b[1] - a[1]) * s) / l];
         if (inCorridor(x, z) || bollards.some((q) => Math.hypot(q.x - x, q.z - z) < o.bollardSpacing * 0.6)) continue;
-        if (!squares.some((w) => inside(x, z, w.points)) && !nearLine(x, z)) continue;
+        if (!squares.some((ring) => inside(x, z, ring)) && !nearLine(x, z)) continue;
         bollards.push({ x, z });
       }
     });
@@ -226,16 +227,6 @@ function seeded(id) {
 // Twice the signed area of a ring of [x, z] points.
 const area2 = (ring) => ring.reduce((s, [x, z], i) => s + x * ring[(i + 1) % ring.length][1] - ring[(i + 1) % ring.length][0] * z, 0);
 const cross = (o, a, x, z) => (a[0] - o[0]) * (z - o[1]) - (a[1] - o[1]) * (x - o[0]);
-
-// Whether (x, z) lies inside the ring of [x, z] points (even–odd rule).
-function inside(x, z, ring) {
-  let odd = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [a, b] = [ring[i], ring[j]];
-    if (a[1] > z !== b[1] > z && x < a[0] + ((b[0] - a[0]) * (z - a[1])) / (b[1] - a[1])) odd = !odd;
-  }
-  return odd;
-}
 
 // Whether (x, z) lies inside the convex ring `box`, more than 1 cm from its sides, whichever way round it runs.
 function insideConvex(box, x, z) {
