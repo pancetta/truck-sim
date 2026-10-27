@@ -771,11 +771,11 @@ describe('Sim: traffic on the road graph', () => {
     return { sim, centre };
   }
 
-  // Adds a standing AI car that drives in by arm `from` of the junction and out by arm `to`.
-  function through(sim, centre, id, from, to) {
+  // Adds an AI car that drives in by arm `from` of the junction and out by arm `to`, `s` m along its way in at `speed`.
+  function through(sim, centre, id, from, to, s = 0, speed = 0) {
     const run = centre.slots[from].in;
     const turn = run.next.find((t) => t.outSlot === to);
-    const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run, turn, turn.out], s: 0, police: false };
+    const car = { id, x: 0, z: 0, heading: 0, speed, lane: run, route: [run, turn, turn.out], s, police: false };
     sim.state.traffic.push(car);
     sim.step(0, IDLE);
     return car;
@@ -837,6 +837,61 @@ describe('Sim: traffic on the road graph', () => {
       }
       expect(together).toBe(true);
     }
+  });
+
+  // Puts the truck in its lane on arm `arm` of the junction, its middle `out` m from the junction's, facing in at `speed`.
+  function truckOn(sim, centre, arm, out, speed = 0) {
+    const { angle, edge } = centre.slots[arm];
+    const [ux, uz] = [Math.cos(angle), Math.sin(angle)];
+    const lane = edge.oneWay ? 0 : edge.laneOffset; // right of travel along -u is (uz, -ux)
+    Object.assign(sim.state.truck, { x: ux * out + uz * lane, z: uz * out - ux * lane, heading: Math.atan2(-ux, -uz), speed });
+  }
+
+  test("the junction rule is the truck's approach's: give way to a higher class, priority over a lower one, else right before left", () => {
+    const ruleFrom = ({ sim, centre }, arm) => {
+      truckOn(sim, centre, arm, 30);
+      sim.step(0, IDLE);
+      return sim.state.junctionRule;
+    };
+    // A tertiary street (south and north arms) crossed by a residential one, and the same all residential.
+    const cross = star([90, 0, -90, 180], ['tertiary', 'residential', 'tertiary', 'residential']);
+    expect([0, 1, 2, 3].map((arm) => ruleFrom(cross, arm))).toEqual(['priority', 'giveWay', 'priority', 'giveWay']);
+    const plain = star([90, 0, -90, 180]);
+    expect([0, 1, 2, 3].map((arm) => ruleFrom(plain, arm))).toEqual(Array(4).fill('rightBeforeLeft'));
+    // A T of two tertiary arms, south and east, and a residential one west: coming north, the east arm comes in from the
+    // right; coming west, none does.
+    const tee = star([90, 0, 180], ['tertiary', 'tertiary', 'residential']);
+    expect([0, 1, 2].map((arm) => ruleFrom(tee, arm))).toEqual(['rightBeforeLeft', 'priority', 'giveWay']);
+  });
+
+  describe('the give-way fine', () => {
+    // A tertiary street north–south crossed by a residential one; an AI car coming north on the tertiary street, its
+    // front bumper `short` m from the junction at `speed`, and the truck coming west on the residential street at 5 m/s,
+    // its front bumper half a m short of the junction, with a police car behind it if `seen`. Returns the give-way fines
+    // in the next 4 s at full gas, and whether the AI car stopped.
+    function giveWay(short, speed, seen = true) {
+      const { sim, centre } = star([90, 0, -90, 180], ['tertiary', 'residential', 'tertiary', 'residential']);
+      const car = through(sim, centre, 1, 0, 2, centre.slots[0].in.length - short - CAR.length / 2, speed);
+      if (seen) through(sim, centre, 99, 1, 3).police = true;
+      truckOn(sim, centre, 1, centre.radius + tables.vehicle.length / 2 + 0.5, 5);
+      let [fines, last, stopped] = [0, sim.state.lastFine, false];
+      for (let t = 0; t < 4; t += DT) {
+        sim.step(DT, GAS);
+        if (sim.state.lastFine !== last && sim.state.lastFine.reason === 'giveWay') fines++;
+        last = sim.state.lastFine;
+        stopped ||= car.speed === 0;
+      }
+      return { fines, stopped };
+    }
+
+    test('driving in so that a car with priority brakes hard is fined once, while a police car sees it', () => {
+      expect(giveWay(12, 11)).toEqual({ fines: 1, stopped: true });
+      expect(giveWay(12, 11, false)).toEqual({ fines: 0, stopped: true });
+    });
+
+    test('driving in while the car with priority is far enough off to slow down as planned is free', () => {
+      expect(giveWay(35, 11).fines).toBe(0);
+    });
   });
 
   test('AI cars drive one-way edges only their way; the truck may drive against them, unfined', () => {

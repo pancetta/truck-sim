@@ -9,7 +9,8 @@
 //     keeps them as `pedestrian` { lines, squares } for the renderer to pave.
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
-//   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit.
+//   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit. Give-way signs: on
+//     the approaches to a junction without lights where another arm ranks higher.
 //   Props: the furniture's trees, bollards, fountains and waste baskets, solid (kinds
 //     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
 //   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
@@ -126,6 +127,21 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       if (!a.out || !(nd.exit || others.some((b) => b.e.limit !== a.e.limit))) continue;
       const p = beside(n, a, mouth(a, others) + tables.signs.along, a.e.width / 2 + o.pavement / 2);
       signs.push({ kind: 'speed', limit: a.e.limit, ...p, angle: Math.atan2(-a.u[0], -a.u[1]) });
+    }
+  });
+  // Give-way signs on the right-hand pavement of each approach to a junction without lights where another arm cars come
+  // in by ranks higher (tables.traffic.priority, as the Sim's junction rule has it), tables.signs.along m before the
+  // junction's mouth, facing the traffic; none that would stand on a road.
+  const lit = new Set(lights.map((l) => l.node));
+  const rank = (a) => tables.traffic.priority[a.e.class] ?? 0;
+  nodes.forEach((_, n) => {
+    if (arms[n].length < 3 || lit.has(n)) return;
+    for (const a of arms[n]) {
+      const others = arms[n].filter((b) => b !== a);
+      if (!a.in || !others.some((b) => b.in && rank(b) > rank(a))) continue;
+      const p = beside(n, a, mouth(a, others) + tables.signs.along, -(a.e.width / 2 + o.pavement / 2)); // travel is against u
+      if (graph.onRoad(p.x, p.z)) continue; // a short arm's: it would stand on the next road
+      signs.push({ kind: 'giveWay', ...p, angle: Math.atan2(a.u[0], a.u[1]) });
     }
   });
 

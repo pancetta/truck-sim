@@ -150,6 +150,7 @@ export const fines = {
   redLight: 100, // only while a police car sees the truck (see police)
   speeding: 50, // only while a police car sees the truck, at most once per `speeding.cooldown`
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
+  giveWay: 100, // only while a police car sees the truck (see giveWay)
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
@@ -167,14 +168,22 @@ export const speedLimit = 50;
 // km/h while a police car sees it; at most one fine per `cooldown` s, however long the speeding lasts.
 export const speeding = { tolerance: 10, cooldown: 30 };
 
+// The give-way rule fine (fines.giveWay): the truck drives into a junction from an approach that gives way (another arm
+// cars come in by ranks higher, traffic.priority), and from `near` m before the junction to `within` s after, an AI car
+// that was coming in by such an arm, or was in the junction from one, sheds more than `hardBrake` m/s² of speed in a
+// step while a police car sees the truck. Once per approach, seen or not.
+export const giveWay = { hardBrake: 7, near: 2, within: 5 };
+
 // Road signs (map.signs, not solid), on the right-hand pavement facing the traffic (osm.js): speed limit signs where the
-// limit changes and on the way in from an edge exit.
+// limit changes and on the way in from an edge exit, give-way signs on the approaches that give way (see giveWay).
 export const signs = {
-  along: 3, // m into the street from the junction it begins at, for a speed limit sign
+  along: 3, // m into the street from the junction it begins at, for a speed limit sign or before it, for a give-way sign
   height: 2.6, // m, middle of the plate
   radius: 0.45, // m, the plate; the red ring is the outer `ring` of it
   ring: 0.09, // m
   post: 0.08, // m square
+  side: 1, // m, the give-way sign's triangle; its red border is `border` of it, measured square to each side
+  border: 0.12, // m
   hint: 50, // m from the truck's front bumper to the next junction ahead within which the HUD shows its rule
 };
 
@@ -254,14 +263,13 @@ export const osm = {
   furniture: 'maps/monti-furniture.json',
   ring: 'maps/monti-ring.json',
   // The drivable network, per OSM highway class: road width (m), lane offset (m) right of the centre line on a two-way
-  // edge (a one-way's lane runs on it), speed limit (km/h), and priority at a junction without lights (higher first;
-  // right before left between equal ones).
+  // edge (a one-way's lane runs on it) and speed limit (km/h); each class's priority is traffic.priority.
   classes: {
-    secondary: { width: 12, lane: 3, limit: 50, priority: 3 },
-    tertiary: { width: 10, lane: 2.5, limit: 40, priority: 2 },
-    residential: { width: 7, lane: 1.75, limit: 30, priority: 1 },
-    unclassified: { width: 7, lane: 1.75, limit: 30, priority: 1 },
-    service: { width: 4, lane: 1, limit: 30, priority: 0 },
+    secondary: { width: 12, lane: 3, limit: 50 },
+    tertiary: { width: 10, lane: 2.5, limit: 40 },
+    residential: { width: 7, lane: 1.75, limit: 30 },
+    unclassified: { width: 7, lane: 1.75, limit: 30 },
+    service: { width: 4, lane: 1, limit: 30 },
   },
   // A junction gets lights where two different streets (by name) of these classes cross: both go on through it.
   lightClasses: ['secondary', 'tertiary'],

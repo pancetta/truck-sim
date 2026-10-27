@@ -2,8 +2,11 @@
 // the time played, and above it
 // the name of the street the truck is on, the next junction's rule while one is near and a police sign while a police
 // car sees the truck. Reads Sim state; never writes to it.
-// The rules' icons, our own drawings: a traffic light, and the right before left warning sign.
+// The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond
+// and the give-way triangle.
 const RULE_ICONS = {
+  priority: '<path d="M12 1 23 12 12 23 1 12z" fill="#fff" stroke="#2b2d33" stroke-width="1"/><path d="M12 5.5 18.5 12 12 18.5 5.5 12z" fill="#e8c547"/>',
+  giveWay: '<path d="M1.5 3h21L12 22z" fill="#fff" stroke="#d1495b" stroke-width="2.5" stroke-linejoin="round"/>',
   light: '<rect x="7" y="1" width="10" height="22" rx="3" fill="#2b2d33"/><circle cx="12" cy="6" r="2.4" fill="#ff4a3d"/><circle cx="12" cy="12" r="2.4" fill="#e8c547"/><circle cx="12" cy="18" r="2.4" fill="#6cc551"/>',
   rightBeforeLeft: '<path d="M12 2 23 21H1z" fill="#fff" stroke="#d1495b" stroke-width="2.5" stroke-linejoin="round"/><path d="M11 8h2v10h-2zM8 12.5h8v1.5H8z" fill="#2b2d33"/>',
 };

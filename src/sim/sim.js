@@ -52,7 +52,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
-  // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
+  // 'light', 'giveWay', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight).
@@ -213,6 +213,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateTraffic(dt);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
+    if (map) checkGiveWay(dt);
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -332,23 +333,91 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return true;
   }
 
-  // The rule of the next junction (a node of three or more arms) along the edge the truck's leading bumper is on
-  // (backwards when reversing), its bumper in it or within tables.signs.hint m of its box: 'light' or
-  // 'rightBeforeLeft'; null if the edge ends otherwise or the truck isn't on the road or along it within 45°.
+  // The rule at junction n (a node of three or more arms; null for any other) for the truck coming in by `edge`:
+  // 'light'; 'giveWay' when another arm cars come in by ranks higher (tables.traffic.priority, as the AI cars go);
+  // 'priority' when none does, one ranks lower and none of the same rank comes in from the right (45°–135° round, as
+  // traffic.js has it); else 'rightBeforeLeft'.
   const lit = new Set(map?.lights.map((l) => l.node));
-  const ruleOf = (n) => (map.graph.nodes[n].arms.length < 3 ? null : lit.has(n) ? 'light' : 'rightBeforeLeft');
+  const rank = (e) => tables.traffic.priority[e.class] ?? 0;
+  const fromRight = (a, b) => {
+    const turn = Math.atan2(Math.sin(a.angle - b.angle), Math.cos(a.angle - b.angle));
+    return turn > Math.PI / 4 && turn < (3 * Math.PI) / 4;
+  };
+  function ruleOf(n, edge) {
+    const { slots } = map.graph.nodes[n];
+    if (slots.length < 3) return null;
+    if (lit.has(n)) return 'light';
+    const own = slots.find((s) => s.edge === edge);
+    let lower = false;
+    let right = false;
+    for (const s of slots) {
+      if (s === own) continue;
+      if (rank(s.edge) < rank(edge)) lower = true;
+      else if (s.in && rank(s.edge) > rank(edge)) return 'giveWay';
+      else if (s.in && own) right ||= fromRight(own, s);
+    }
+    return lower && !right ? 'priority' : 'rightBeforeLeft';
+  }
+
+  // The rule of the next junction along the edge the truck's leading bumper is on (backwards when reversing), its bumper
+  // in it or within tables.signs.hint m of its box (see ruleOf); null if the edge ends otherwise or the truck isn't on
+  // the road or along it within 45°. Sets `boxNode`.
+  let approachNode = -1; // the junction the leading bumper last drove towards along an edge, and that edge
+  let approachEdge = null;
+  let approachShort = Infinity; // m from the leading bumper to approachNode's box
+  let boxNode = -1; // the junction whose box the leading bumper is in, -1 for none
   function junctionAhead() {
     const back = truck.speed < -v.stopSpeed ? -1 : 1;
     const fx = Math.sin(truck.heading) * back;
     const fz = Math.cos(truck.heading) * back;
     const [x, z] = [truck.x + (fx * v.length) / 2, truck.z + (fz * v.length) / 2];
     const { nodes } = map.graph;
-    // In a junction's box, that junction's whatever the heading: near its middle the nearest edge is the cross street.
+    boxNode = -1;
+    // In a junction's box, that junction's whatever the heading, for the edge the truck came in by: near its middle the
+    // nearest edge is the cross street.
     const { edge } = map.graph.nearest(x, z, true);
-    for (const n of edge ? [edge.from, edge.to] : []) if (ruleOf(n) && Math.hypot(nodes[n].x - x, nodes[n].z - z) < nodes[n].radius) return ruleOf(n);
+    for (const n of edge ? [edge.from, edge.to] : []) {
+      if (nodes[n].arms.length < 3 || Math.hypot(nodes[n].x - x, nodes[n].z - z) >= nodes[n].radius) continue;
+      boxNode = n;
+      return ruleOf(n, n === approachNode ? approachEdge : edge);
+    }
     const on = map.graph.along(x, z, fx, fz);
     if (!on) return null;
-    return on.ahead - nodes[on.next].radius <= tables.signs.hint ? ruleOf(on.next) : null;
+    approachNode = on.next;
+    approachEdge = on.edge;
+    approachShort = on.ahead - nodes[on.next].radius;
+    return approachShort <= tables.signs.hint ? ruleOf(on.next, on.edge) : null;
+  }
+
+  // Driving towards a junction on an approach that gives way, the cars with priority there are `owed`: those coming in by
+  // an arm of higher rank, or in the junction from one, each with its speed a step ago. From tables.giveWay.near m before
+  // the junction's box, in it and for tables.giveWay.within s after, one of them shedding more than
+  // tables.giveWay.hardBrake m/s² costs a fine if the police see it, once (the cars brake as the truck's footprint meets
+  // the box, a little before its front bumper does).
+  // shortcut: only cars at that one node count, not ones coming in by another node of a crossing of several; upgrade if a
+  // forced brake there goes unfined in play.
+  let owed = [];
+  let owedUntil = -Infinity; // clock at which the owed cars stop counting
+  let settled = false; // whether one of them has braked hard since the truck came near
+  function checkGiveWay(dt) {
+    const { hardBrake, near, within } = tables.giveWay;
+    const giving = truck.speed > -v.stopSpeed && state.junctionRule === 'giveWay'; // junctionAhead() looked ahead
+    if (giving && (boxNode >= 0 || approachShort <= near)) owedUntil = clock + within;
+    for (const o of owed) {
+      if (!settled && clock <= owedUntil && dt > 0 && o.speed - o.car.speed > hardBrake * dt) {
+        if (state.policeSees) fine('giveWay');
+        settled = true;
+      }
+      o.speed = o.car.speed;
+    }
+    if (giving && boxNode < 0) {
+      const higher = (e) => rank(e) > rank(approachEdge);
+      const comes = ({ lane: p }) => (p.kind === 'run' ? p.to === approachNode && higher(p.edge) : p.node === approachNode && higher(p.in.edge));
+      owed = state.traffic.filter(comes).map((car) => ({ car, speed: car.speed }));
+    } else if (clock > owedUntil) {
+      owed = [];
+      settled = false;
+    }
   }
 
   // The limit and name of the edge the truck is on: it keeps the one it has while it stays within that edge's width (its end
@@ -592,6 +661,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     reversing = false;
     brakeHold = 0;
     redLine = null;
+    owed = [];
+    settled = false;
     updateRoute();
   }
 

@@ -85,9 +85,10 @@ export const strings = {
   redLight: 'Rote Ampel', // a fine reason (state.lastFine.reason)
   collision: 'Unfall', // a fine reason
   speeding: 'Zu schnell', // a fine reason
+  giveWay: 'Vorfahrt missachtet', // a fine reason
   policeSees: 'Polizei sieht dich', // HUD, while a police car sees the truck
   policeLettering: 'POLIZEI', // on the police cars' sides
   speedLimit: 'Höchstgeschwindigkeit', // HUD, the sign with state.speedLimit
   street: 'Straße', // HUD, the name of the street the truck is on (state.street)
-  rules: { light: 'Ampel', rightBeforeLeft: 'Rechts vor links' }, // HUD, the next junction's rule (state.junctionRule)
+  rules: { light: 'Ampel', rightBeforeLeft: 'Rechts vor links', priority: 'Vorfahrtstraße', giveWay: 'Vorfahrt achten' }, // HUD, the next junction's rule (state.junctionRule)
 };

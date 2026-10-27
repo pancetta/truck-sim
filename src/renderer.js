@@ -313,9 +313,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return { x, z, heading, kind: covered ? carTypes.length : Math.floor(hash(x, z) * 9973) % carTypes.length, paint: pick(paints, z, x) };
   });
 
-  // The road signs, our own geometry, in one batch so they are culled together; a speed sign per limit.
-  const signsOf = (limit) => map.signs.filter((s) => s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
-  addSigns([...new Set(map.signs.map((s) => s.limit))].map((limit) => [speedSign(limit), signsOf(limit)]));
+  // The road signs, our own geometry, in one batch so they are culled together; a speed sign per limit, and give-way signs.
+  const signsOf = (kind, limit) => map.signs.filter((s) => s.kind === kind && s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
+  const limits = new Set(map.signs.filter((s) => s.kind === 'speed').map((s) => s.limit));
+  addSigns([...[...limits].map((limit) => [speedSign(limit), signsOf('speed', limit)]), [giveWaySign(), signsOf('giveWay')]]);
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
   // Dock bays, our own boxes, from each dock's bay: a dock edge (a low dark platform, on the Sim's platform collider,
@@ -464,10 +465,22 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return geometry;
   }
 
-  // A layer of a sign's plate: `n` sides, `r` m from its middle to a corner (one pointing up), centred on the sign's
-  // height, 1.5 cm deep with its front `front` m out.
-  function plate(n, r, front) {
-    return new THREE.CylinderGeometry(r, r, 0.015, n).rotateX(-Math.PI / 2).translate(0, tables.signs.height, front - 0.0075);
+  // A layer of a sign's plate: `n` sides, `r` m from its middle to a corner (one pointing up, or down if `down`), centred
+  // on the sign's height, 1.5 cm deep with its front `front` m out.
+  function plate(n, r, front, down = false) {
+    return new THREE.CylinderGeometry(r, r, 0.015, n).rotateX(-Math.PI / 2).rotateZ(down ? Math.PI : 0).translate(0, tables.signs.height, front - 0.0075);
+  }
+
+  // A give-way sign, our own drawing: a triangle, point down and centred on the sign's height, grey at the back, its face
+  // a red border round white.
+  function giveWaySign() {
+    const { side, border } = tables.signs;
+    const r = side / Math.sqrt(3); // middle to corner
+    return roadSign((add, face) => {
+      add(plate(3, r, face, true), palette.signal);
+      add(plate(3, r, face + 0.015, true), palette.red);
+      add(plate(3, r - 2 * border, face + 0.03, true), palette.stopLine); // `border` in from each side is 2 × as far from the corners
+    });
   }
 
   // A speed limit sign for `limit` km/h: a round plate, grey at the back, its face a red ring round a white disc with the

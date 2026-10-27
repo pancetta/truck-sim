@@ -123,9 +123,9 @@ describe('Sim: traffic lights', () => {
 
     // Southbound from the light junction to the crossing, whose box begins `cross` m before it.
     expect(ruleAt(100 - cross - hint - front - 1, SOUTH)).toBe(null);
-    expect(ruleAt(100 - cross - hint - front + 1, SOUTH)).toBe('rightBeforeLeft');
-    expect(ruleAt(100 - cross + 2 - front, SOUTH)).toBe('rightBeforeLeft'); // its front in the crossing
-    expect(ruleAt(100 - front, SOUTH)).toBe('rightBeforeLeft'); // its front in the middle, nearest the cross street
+    expect(ruleAt(100 - cross - hint - front + 1, SOUTH)).toBe('priority'); // Via B outranks the residential street
+    expect(ruleAt(100 - cross + 2 - front, SOUTH)).toBe('priority'); // its front in the crossing
+    expect(ruleAt(100 - front, SOUTH)).toBe('priority'); // its front in the middle, nearest the cross street
     // Northbound from the crossing: the light junction.
     expect(ruleAt(light + hint + front - 1, NORTH)).toBe('light');
     expect(ruleAt(light + hint + front + 1, NORTH)).toBe(null);
@@ -135,7 +135,7 @@ describe('Sim: traffic lights', () => {
     expect(ruleAt(50, NORTH)).toBe('light');
     sim.state.truck.speed = -2;
     sim.step(0, IDLE);
-    expect(sim.state.junctionRule).toBe('rightBeforeLeft');
+    expect(sim.state.junctionRule).toBe('priority');
   });
 
   test('each axis cycles green, amber, red, red and amber with the table timings, never green together, offset per junction', () => {

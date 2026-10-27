@@ -182,6 +182,17 @@ describe('OSM map: lights and signs', () => {
     ]));
     expect(signs).toHaveLength(3);
   });
+
+  test('give-way signs stand on the approaches that give way, on the right-hand pavement before the junction, facing the traffic', () => {
+    // Via A (tertiary) east–west with a residential street off it to the south and a one-way service lane out to the north.
+    const tee = build(via('Via A', 'tertiary', [[-50, 0], [0, 0], [50, 0]]), way('residential', [[0, 0], [0, 50]]), way('service', [[0, 0], [0, -50]], { oneway: 'yes' }));
+    const giveWay = (map) => map.signs.filter((s) => s.kind === 'giveWay').map(({ x, z, angle }) => [x, z, angle].map((v) => Math.round(v * 100) / 100));
+    // Coming north up the residential street (right of -z is +x), Via A's half width plus `along` before its middle.
+    expect(giveWay(tee)).toEqual([[classes.residential.width / 2 + pavement / 2, classes.tertiary.width / 2 + tables.signs.along, 0]]);
+    // None where all arms rank the same, nor at lights.
+    expect(giveWay(build(...cross('residential', 'residential')))).toEqual([]);
+    expect(giveWay(build(...cross('tertiary', 'secondary')))).toEqual([]);
+  });
 });
 
 describe('OSM map: spots', () => {
