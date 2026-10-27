@@ -1,0 +1,53 @@
+src/strings.js
+  s_a02b9a6bee8c08::t_fe750541bade6f 84-85
+src/sim/sim.js
+  s_a02b9a6bee8c08::t_d8c228739d32ed 167,539
+  s_a02b9a6bee8c08::t_ac967144b5f24b 35-36,52,241-242,244,251-264
+  s_a02b9a6bee8c08::t_5a4d60d783cde0 265-266
+src/sim/traffic.js
+  s_a02b9a6bee8c08::t_f354e73789f9af 164-166,168-170
+  s_a02b9a6bee8c08::t_81857c4a0bf2ac 3-5
+  s_a02b9a6bee8c08::t_19516d5981f819 184
+  s_a02b9a6bee8c08::t_35857b8218a7e1 535-537,539,541-542,544-545
+src/tables.js
+  s_a02b9a6bee8c08::t_814442939881d6 143
+  s_a02b9a6bee8c08::t_a7df774e908bbc 184-188,190-197
+  s_a02b9a6bee8c08::t_9dd1a085904e21 189
+src/style.css
+  s_a02b9a6bee8c08::t_a3532c094b4eff 454-482
+src/hud.js
+  s_a02b9a6bee8c08::t_a3532c094b4eff 1-2,11-12,20,30,43
+src/renderer.js
+  s_a02b9a6bee8c08::t_a3532c094b4eff 313
+  s_a02b9a6bee8c08::t_43b0c5dc5d4d5d 16,331-333,341-342,345-347,811,817-820
+src/sim/sim.test.js
+  s_a02b9a6bee8c08::t_1f0a9b32fd988b 251-265,1353-1354,1357-1359,1442,1445,1447,1494,1496,1520,1523,1529-1568,1629,1709,1758
+  s_a02b9a6bee8c08::t_c5379407164b0a 2258-2260
+  s_a02b9a6bee8c08::t_35d7e3c8a247cf 1720-1741
+  s_a02b9a6bee8c08::t_74d13f35432d53 2256-2257
+  s_a02b9a6bee8c08::t_30cfcfe12448e0 2311-2315
+  s_a02b9a6bee8c08::t_bffc5cb3f64951 2332
+  s_a02b9a6bee8c08::t_b65d2037682e0e 2298-2299
+src/vehicles.js
+  s_a02b9a6bee8c08::t_9356088c8e6a8c 159-161
+  s_a02b9a6bee8c08::t_d6b945405e0ad4 245
+  s_a02b9a6bee8c08::t_e23d011fde8099 15,103-105,114-118,122-123,149-158,162,167-168,174,236-238,240,242-244,246-254
+src/sim/map.js
+  s_a02b9a6bee8c08::t_8364d565cbfdfa 24,191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52e85b48698df9c9c03d658f163647b69691da36",
+  "prompts": {},
+  "sessions": {
+    "s_a02b9a6bee8c08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f793183-d5ec-40d1-9a28-808bd81ff8f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
