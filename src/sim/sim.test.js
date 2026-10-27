@@ -317,6 +317,7 @@ describe('Sim: profile', () => {
       timeOfDay: sim.state.profile.timeOfDay, // see 'Sim: clock'
       timePlayed: sim.state.profile.timePlayed,
       fuel: sim.state.profile.fuel, // see 'Sim: fuel'
+      energy: sim.state.profile.energy, // see 'Sim: driver energy'
     });
     expect(profile.money).toBe(500); // the caller's object is left alone
   });

@@ -55,10 +55,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
-  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres).
-  // `serviceOffer` is what the petrol station the truck stands still in the zone of sells, [{ id: 'fuel', price }] (empty
-  // elsewhere, with a full tank and while a stop runs), replaced only when it changes; `service` the running stop bought
-  // with buyService(), { id, price, progress 0..1 }, or null. `lastTow` ({ station (spot id), fee }) is replaced on
+  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres);
+  // `energy` profile.energy (0..1), `tired` and `exhausted` whether it is below tables.energy's thresholds.
+  // `serviceOffer` is what the service spot the truck stands still in the zone of sells, [{ id, price }] with id 'fuel'
+  // or 'snack' at a petrol station and 'meal' at the restaurant, each only while it would add something (empty
+  // elsewhere and while a stop runs), replaced only when it changes; `service` the running stop bought with
+  // buyService(), { id, price, progress 0..1 }, or null. `lastTow` ({ station (spot id), fee }) is replaced on
   // every tow.
   const state = {
     truck,
@@ -90,6 +92,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     get fuel() {
       return state.profile.fuel;
     },
+    get energy() {
+      return state.profile.energy;
+    },
+    get tired() {
+      return state.profile.energy < tables.energy.tired;
+    },
+    get exhausted() {
+      return state.profile.energy < tables.energy.exhausted;
+    },
   };
   let v = upgradedVehicle();
   updateRank();
@@ -97,6 +108,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
+  const felt = { gas: 0, steer: 0, brake: 0 }; // the input as the driver applies it (see feel())
   let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
@@ -151,7 +163,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return (torque * ratioOf(gear)) / v.wheelRadius;
   }
 
-  function step(dt, input) {
+  function step(dt, controls) {
     clock += dt;
     const p = state.profile;
     p.timeOfDay = (p.timeOfDay + dt * tables.clock.minutesPerSecond) % (24 * 60);
@@ -159,6 +171,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const speedBefore = Math.abs(truck.speed);
     updateLights();
     const stopped = Math.abs(truck.speed) < v.stopSpeed;
+    if (!stopped) p.energy = Math.max(0, p.energy - dt / tables.energy.drive);
+    const input = feel(controls, dt);
 
     // Reverse: a brake hold at a standstill engages it; a stop with the brake released ends it.
     if (reversing) {
@@ -243,10 +257,27 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
     serve(dt);
     // Loading and unloading need no fuel, so a dry truck in its order's zone finishes them first.
-    const canFill = state.service || state.serviceOffer.some((s) => s.price <= p.money);
+    const canFill = state.service || state.serviceOffer.some((s) => s.id === 'fuel' && s.price <= p.money);
     if (map && p.fuel <= 0 && Math.abs(truck.speed) < v.stopSpeed && !canFill && state.progress === 0) tow();
 
     updateRoute(here);
+  }
+
+  // The controls as the driver applies them: as they are, but exhausted the steering and brake move towards them at a
+  // limited rate, slower the lower the energy (tables.energy.lag).
+  function feel(controls, dt) {
+    const { exhausted, lag } = tables.energy;
+    felt.gas = controls.gas;
+    if (!state.exhausted) {
+      felt.steer = controls.steer;
+      felt.brake = controls.brake;
+      return felt;
+    }
+    const most = (lag[0] + ((lag[1] - lag[0]) * state.profile.energy) / exhausted) * dt;
+    const toward = (from, to) => from + Math.max(-most, Math.min(most, to - from));
+    felt.steer = toward(felt.steer, controls.steer);
+    felt.brake = toward(felt.brake, controls.brake);
+    return felt;
   }
 
   // Burns the fuel for `metres` driven with the driving pedal at `pedal` (see tables.fuel).
@@ -257,24 +288,34 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.profile.fuel = Math.max(0, state.profile.fuel - litres);
   }
 
-  // At a petrol station: standing still in its zone offers a fill-up for the missing litres; a bought stop fills
-  // `progress` while the truck stands there, and charges the price and fills the tank when done. Moving ends it unpaid.
+  // At a service spot: standing still in its zone offers its services, a petrol station a fill-up for the missing
+  // litres and a snack, the restaurant a meal; a bought stop fills `progress` while the truck stands there, and charges
+  // the price and gives what it sells when done. Moving ends it unpaid.
   const stations = map?.spots.filter((s) => s.station) ?? [];
+  const servicePlaces = map?.spots.filter((s) => s.station || s.restaurant) ?? [];
+  const { snack, meal } = tables.energy;
+  const stopTime = { fuel: tables.fuel.fillTime, snack: snack.time, meal: meal.time };
   function serve(dt) {
     const p = state.profile;
     const still = Math.abs(truck.speed) < v.stopSpeed;
-    const at = still && stations.some((s) => inZone(s.zone));
+    const at = still ? servicePlaces.find((s) => inZone(s.zone)) : undefined;
     const service = state.service;
     if (service && !at) state.service = null;
-    else if (service) service.progress = Math.min(1, service.progress + dt / tables.fuel.fillTime);
+    else if (service) service.progress = Math.min(1, service.progress + dt / stopTime[service.id]);
     if (service?.progress === 1) {
       p.money = Math.max(0, p.money - service.price);
-      p.fuel = tables.fuel.tank;
+      if (service.id === 'fuel') p.fuel = tables.fuel.tank;
+      else p.energy = service.id === 'meal' ? 1 : Math.min(1, p.energy + snack.restore);
       state.service = null;
     }
-    const price = Math.ceil((tables.fuel.tank - p.fuel) * tables.fuel.price);
-    const offer = at && !state.service && tables.fuel.tank - p.fuel >= 1 ? price : null;
-    if (offer !== (state.serviceOffer[0]?.price ?? null)) state.serviceOffer = offer === null ? [] : [{ id: 'fuel', price: offer }];
+    const offer = [];
+    if (at && !state.service) {
+      if (at.station && tables.fuel.tank - p.fuel >= 1) offer.push({ id: 'fuel', price: Math.ceil((tables.fuel.tank - p.fuel) * tables.fuel.price) });
+      if (at.station && p.energy < 1) offer.push({ id: 'snack', price: snack.price });
+      if (at.restaurant && p.energy < 1) offer.push({ id: 'meal', price: meal.price });
+    }
+    const same = offer.length === state.serviceOffer.length && offer.every((s, i) => s.id === state.serviceOffer[i].id && s.price === state.serviceOffer[i].price);
+    if (!same) state.serviceOffer = offer;
   }
 
   // Out of fuel and standing: a tow takes the truck to the petrol station nearest by road (the nearest in a straight line,
@@ -710,14 +751,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const typeOf = (cargo, to) =>
     to?.dock ? (cargo.fragile ? 'fragileDock' : 'dock') : cargo.fragile ? 'fragile' : cargo.weight > o.maxCargo ? 'heavy' : 'normal';
 
-  // New offers between distinct spots, paid by the road route length; none while an order is active. Petrol stations
+  // New offers between distinct spots, paid by the road route length; none while an order is active. Service spots
   // are never a pickup or a drop-off.
   // Cargo is only what the Ladefläche carries, and cargo and drop-off make an offer type the rank tier allows.
   // The expected time is the truck's route to the pickup plus the paid route, at reference speed, plus loading,
   // unloading and slack.
   function requestOffers() {
     state.offers = [];
-    const places = map.spots.filter((s) => !s.station);
+    const places = map.spots.filter((s) => !s.station && !s.restaurant);
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;

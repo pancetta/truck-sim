@@ -177,6 +177,21 @@ export const fuel = {
   emergency: 100,
 };
 
+// The driver's energy (profile.energy, 0..1); a new profile starts rested at 1. It drains only while the truck moves,
+// from 1 to 0 in `drive` s; a test that drives far with the real tables sets it to Infinity, so the driver never tires.
+// Below `tired` the HUD warns; below `exhausted` it warns harder and the driver's steering and brake lag the input,
+// moving towards it at lag[1] per s at the exhausted threshold down to lag[0] per s at 0 (steer runs -1..1, brake 0..1).
+// A petrol station's snack restores `snack.restore` of it, the restaurant's meal all of it; each is a stop of `time` s
+// standing in the zone, for `price` €.
+export const energy = {
+  drive: 20 * 60,
+  tired: 0.3,
+  exhausted: 0.12,
+  lag: [0.8, 3],
+  snack: { restore: 0.3, price: 15, time: 4 },
+  meal: { price: 40, time: 10 },
+};
+
 // A petrol station's look (renderer.js), our own: a pump island on the pavement beside its zone, as long as `island`
 // [length, width, height] m, with `pumps` pumps [width, depth, height] on it, and a flat canopy on two posts over the
 // pavement, `canopy` m up, reaching `reach` m out over the road's edge.
@@ -187,6 +202,16 @@ export const station = {
   canopy: 4.6,
   reach: 1.1,
   roof: 0.4, // m thick, the canopy's coloured fascia
+};
+
+// The restaurant's look (renderer.js), our own: an outdoor terrace on the pavement beside its zone, `terrace`
+// [length, width] m (solid), with `tables` café tables [side, height] m, each under a parasol `parasol` [side, height]
+// m on its pole.
+export const restaurant = {
+  terrace: [7, 1],
+  tables: 3,
+  table: [0.7, 0.75],
+  parasol: [1.6, 2.3],
 };
 
 // km/h before the truck is on a road edge (each edge has its road class's limit, tables.osm): the speedometer turns red
@@ -346,9 +371,12 @@ export const osm = {
     { id: 'N', name: 'Carburanti Colibrì', street: 'Via Cavour', way: 232183086, at: 50, side: 'right' },
     { id: 'O', name: 'Distributore Girasole', street: 'Via Cavour', way: 232183088, at: 45, side: 'right' },
     { id: 'P', name: 'Benzina Ponte Verde', street: 'Largo Corrado Ricci', way: 190022892, at: 32, side: 'right' },
+    // The restaurant (`restaurant`): a service spot on a main street, never an order's pickup or drop-off.
+    { id: 'Q', name: 'Osteria Due Lucciole', street: 'Via Panisperna', way: 23694979, at: 40, side: 'right' },
   ],
   docks: ['C', 'F', 'H'], // spot ids with a loading dock
   stations: ['N', 'O', 'P'], // spot ids of the petrol stations
+  restaurant: 'Q', // spot id of the restaurant
   start: 'A', // spot id where a new game begins, in its kerb lane facing along it
 };
 
@@ -607,6 +635,7 @@ export const palette = {
   spot: 0x4f86c6, // the spots' dots on the minimap
   zone: 0x8fc1f0,
   station: 0x2f8f5b, // petrol stations: their minimap dots, zones, pumps and canopy fascia
+  restaurant: 0xb5452f, // the restaurant: its minimap dot, zone and parasols
   pickup: 0x6cc551, // active order's zone marker
   dropoff: 0xf08a4b,
   // Colours the truck's kit model is recoloured to (see kitColours), and more.

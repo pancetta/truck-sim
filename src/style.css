@@ -285,6 +285,11 @@ body:has(.rear-inset:not([hidden])) .goal {
   background: #d1495b;
 }
 
+/* Energy gauge (profile.energy), the same bar in blue, red below tables.energy.tired. */
+.dash-energy i {
+  background: #6fa8dc;
+}
+
 /* Orders: money and the orders button top left, panel top centre, notices centred below it. */
 #orders {
   position: fixed;
@@ -535,7 +540,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 .dash-rule,
 .dash-police,
-.dash-fuel-low {
+.dash-fuel-low,
+.dash-tired {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -564,7 +570,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 .dash-street[hidden],
 .dash-rule[hidden],
 .dash-police[hidden],
-.dash-fuel-low[hidden] {
+.dash-fuel-low[hidden],
+.dash-tired[hidden] {
   display: none;
 }
 
@@ -574,6 +581,17 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 .dash-fuel-low {
   background: #d1495b;
+}
+
+/* Tired: amber. Exhausted, the stronger warning: red, bigger, with a white ring. */
+.dash-tired {
+  background: #c8781f;
+}
+
+.dash-tired.exhausted {
+  background: #d1495b;
+  box-shadow: 0 0 0 2px #fff;
+  font-size: 15px;
 }
 
 .dash-rule svg {

@@ -33,6 +33,15 @@ _Avoid_: balance, cash, credits
 The total distance the truck has ever driven, kept in the **Profile**.
 _Avoid_: odometer, mileage. Not the same as an **Offer**'s route length.
 
+**Energy** ("Energie"):
+How rested the driver is, kept in the **Profile**: it drains while the truck moves and comes back with a **Snack** or a
+**Meal**. There is no game over at 0.
+_Avoid_: stamina, fatigue (as the value), sleep
+
+**Tired** ("Müde") / **Exhausted** ("Erschöpft"):
+**Energy** below its first and its second threshold. Tired only warns; exhausted warns harder, and the driver's
+steering and brake lag behind the controls, more the lower the **Energy**.
+
 ### Orders
 
 **Offer**:
@@ -77,8 +86,15 @@ A **Spot** that sells **Services** instead of taking part in **Orders**: never a
 A **Service spot** that sells fuel ("Tanken"), with pumps and a canopy on the pavement beside its **Zone**.
 _Avoid_: gas station, station (alone), fuel stop
 
+**Restaurant**:
+The **Service spot** that sells a **Meal**, with a café terrace on the pavement beside its **Zone**.
+_Avoid_: diner, rest stop
+
 **Service**:
 What a **Service spot** sells; bought while standing still in its **Zone**, it takes a short stop and is paid when done.
+
+**Snack** / **Meal** ("Essen"):
+The **Services** that restore **Energy**: a **Petrol station**'s snack some of it, the **Restaurant**'s meal all of it.
 
 **Tow** ("Abgeschleppt"):
 What happens when the tank runs empty: the truck is taken to the nearest **Petrol station** for a fee, with time lost
@@ -243,5 +259,6 @@ The **Spot** where a new game puts the truck, in its lane.
 - An **Offer** becomes an **Order** when accepted; an **Order** has one **Pickup** and one **Drop-off**, both **Spots**.
 - A **Dock** is a **Spot** with a **Dock bay**; dock **Order types** drop off at a **Dock**.
 - A **Petrol station** is a **Service spot**; a **Tow** ends at one.
+- The **Restaurant** is a **Service spot**; it and the **Petrol stations** restore **Energy**.
 - A **Rule fine** needs a **Witness**; a **Fine** for a **Contact** the truck made does not.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.

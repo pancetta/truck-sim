@@ -17,7 +17,8 @@
 //   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
 //   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay, and its
 //     kerb `lane` pose; a petrol station (tables.osm.stations) has its pump island (`pumps`, solid, kind 'station') on
-//     the pavement beside its zone. `start` is the start spot's kerb lane pose, where a new game begins.
+//     the pavement beside its zone, the restaurant (tables.osm.restaurant) its terrace (`terrace`, solid, kind
+//     'restaurant'). `start` is the start spot's kerb lane pose, where a new game begins.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
@@ -266,15 +267,17 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     const centre = bay ? { x: bay.x + (f[0] * tables.vehicle.length) / 2, z: bay.z + (f[1] * tables.vehicle.length) / 2 } : kerb;
     const r = o.zone / 2;
     const zone = { minX: centre.x - r, maxX: centre.x + r, minZ: centre.z - r, maxZ: centre.z + r };
-    // A petrol station's pump island (solid): on the middle of the pavement beside its zone, heading along the road with
-    // the road on its left.
+    // A petrol station's pump island or the restaurant's terrace (solid): on the middle of the pavement beside its zone,
+    // heading along the road with the road on its left.
     const station = o.stations.includes(t.id);
+    const restaurant = o.restaurant === t.id;
     const out = e.width / 2 + o.pavement / 2;
-    const pumps = station ? { x: near.x - u[1] * side * out, z: near.z + u[0] * side * out, heading: Math.atan2(u[0] * side, u[1] * side) } : null;
-    const { island } = tables.station;
-    if (pumps) colliders.push({ kind: 'station', ...outline(rect(pumps, [u[0] * side, u[1] * side], island[0] / 2, island[1] / 2)) });
+    const beside = { x: near.x - u[1] * side * out, z: near.z + u[0] * side * out, heading: Math.atan2(u[0] * side, u[1] * side) };
+    const [length, width] = station ? tables.station.island : tables.restaurant.terrace;
+    if (station || restaurant) colliders.push({ kind: station ? 'station' : 'restaurant', ...outline(rect(beside, [u[0] * side, u[1] * side], length / 2, width / 2)) });
     const kerbLane = { ...kerb, heading };
-    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps });
+    const [pumps, terrace] = [station ? beside : null, restaurant ? beside : null];
+    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, restaurant, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps, terrace });
     if (t.id === o.start) start = kerbLane;
   }
   colliders.push(...parkedCars(graph, spots, tables));

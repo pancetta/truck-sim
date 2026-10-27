@@ -95,8 +95,11 @@ export const strings = {
   street: 'Straße', // HUD, the name of the street the truck is on (state.street)
   fuel: 'Tank', // the fuel gauge, in the HUD and the cab
   fuelLow: 'Tank fast leer', // HUD, below tables.fuel.low
-  services: { fuel: 'Tanken' }, // what a petrol station sells (state.serviceOffer), on its buttons
-  refuelling: 'Wird getankt…',
+  energy: 'Energie', // the driver's energy gauge, in the HUD and the cab
+  tired: 'Müde: Zeit für eine Pause', // HUD, below tables.energy.tired
+  exhausted: 'Erschöpft: Lenken und Bremsen träge', // HUD, below tables.energy.exhausted
+  services: { fuel: 'Tanken', snack: 'Snack', meal: 'Essen' }, // what a service spot sells (state.serviceOffer), on its buttons
+  serving: { fuel: 'Wird getankt…', snack: 'Kurze Pause…', meal: 'Beim Essen…' }, // the running stop's progress bar
   towed: 'Tank leer, abgeschleppt zu', // the tow notice, then the station and the fee
   rules: { light: 'Ampel', rightBeforeLeft: 'Rechts vor links', priority: 'Vorfahrtstraße', giveWay: 'Vorfahrt achten', stop: 'Stop' }, // HUD, the next junction's rule (state.junctionRule)
 };

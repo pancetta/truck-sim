@@ -14,15 +14,15 @@ const ROOF = 2.4;
 const SCREEN = { top: 2.85, sill: 1.65 }; // windscreen z under the roof (it meets the dash's front); door sill height
 // The cluster rises from the dash, facing the driver's eye, above the wheel's rim. Between the dials: the gear, and under
 // it a display with the total distance, the clock and the time played, its foot just clear of the wheel's rim (the rim
-// hides the strip under the dials). The small fuel dial is right of the RPM dial (`fuel`: its radius and x); the dash
-// left of the speedometer is free for the energy gauge (#50).
+// hides the strip under the dials). The small fuel dial is right of the RPM dial, the small energy dial left of the
+// speedometer (`small`: their radius and x either side).
 const CLUSTER = {
   centre: [0.55, 1.59, 2.36],
   width: 0.54,
   height: 0.16,
   dial: 0.068,
   dialX: 0.13,
-  fuel: { dial: 0.042, x: 0.22 },
+  small: { dial: 0.042, x: 0.22 },
   gear: { size: [0.05, 0.034], y: 0.05 },
   info: { size: [0.11, 0.056], y: -0.002 },
 };
@@ -85,7 +85,7 @@ function strut(a, b, w, d) {
 // The interior group, and update() to set the wheel turn (degrees, positive clockwise from the seat) and the
 // instruments from the Sim's state.
 export function createCab(tables, strings) {
-  const { palette, camera, vehicle, cab, fuel } = tables;
+  const { palette, camera, vehicle, cab, fuel, energy } = tables;
   const sweep = THREE.MathUtils.degToRad(cab.sweep);
   const rpmMax = vehicle.torqueCurve.at(-1)[0];
   const dash = material(palette.dashboard, 0.75);
@@ -122,17 +122,20 @@ export function createCab(tables, strings) {
 
   // Instrument cluster: one texture for the dial faces, drawn once; needles turn over it, and two small displays
   // between the dials, the gear and the info display, are redrawn when what they show changes.
-  const { width, height, dial, dialX } = CLUSTER;
+  const { width, height, dial, dialX, small } = CLUSTER;
+  const quarter = (v) => ['0', '½', '1'][v / 2];
   const face = document.createElement('canvas');
   [face.width, face.height] = [Math.round(width * PX), Math.round(height * PX)];
   const ctx = face.getContext('2d');
   ctx.fillStyle = '#16181d';
   ctx.fillRect(0, 0, face.width, face.height);
-  // The fuel dial in quarters of the tank, marked empty, half and full, red below tables.fuel.low.
+  // The fuel dial in quarters of the tank, marked empty, half and full, red below tables.fuel.low; the energy dial
+  // likewise, red below tables.energy.tired.
   const dials = [
     { x: -dialX, r: dial, max: cab.speedMax, major: 20, minor: 10, label: strings.kmh },
     { x: dialX, r: dial, max: rpmMax, major: 500, minor: 100, unit: 100, red: [vehicle.upshiftRpm, rpmMax], label: strings.rpmScale },
-    { x: CLUSTER.fuel.x, r: CLUSTER.fuel.dial, max: 4, major: 2, minor: 1, text: (v) => ['0', '½', '1'][v / 2], red: [0, 4 * fuel.low], label: strings.fuel },
+    { x: small.x, r: small.dial, max: 4, major: 2, minor: 1, text: quarter, red: [0, 4 * fuel.low], label: strings.fuel },
+    { x: -small.x, r: small.dial, max: 4, major: 2, minor: 1, text: quarter, red: [0, 4 * energy.tired], label: strings.energy },
   ];
   for (const d of dials) drawDial(ctx, (width / 2 + d.x) * PX, face.height / 2, d.r * PX, d, sweep);
   // Lit from behind: brighter than white, so they read as lit after tone mapping.
@@ -232,6 +235,7 @@ export function createCab(tables, strings) {
     needles[0].rotation.z = dialAngle(Math.abs(speed) * 3.6, cab.speedMax, sweep);
     needles[1].rotation.z = dialAngle(rpm, rpmMax, sweep);
     needles[2].rotation.z = dialAngle((profile.fuel / fuel.tank) * 4, 4, sweep);
+    needles[3].rotation.z = dialAngle(profile.energy * 4, 4, sweep);
     if (gear !== shownGear) showGear([String((shownGear = gear))], CLUSTER.gear.size[1] * 0.8);
     // Whole km and minutes, so it redraws about once a game minute (a real second), not every frame.
     const info = [Math.floor(profile.distance / 1000), Math.floor(profile.timeOfDay), Math.floor(profile.timePlayed / 60)];

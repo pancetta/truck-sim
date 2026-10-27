@@ -1,4 +1,4 @@
-// Money counter, orders button and panel, goal banner, load/unload and service progress bar, a petrol station's service
+// Money counter, orders button and panel, goal banner, load/unload and service progress bar, a service spot's service
 // buttons, payment, fine and tow notices. Reads Sim state each frame; changes it only through the Sim's order and
 // service commands.
 export function createOrders(root, sim, map, tables, strings) {
@@ -125,7 +125,7 @@ export function createOrders(root, sim, map, tables, strings) {
     const share = service ? service.progress : p;
     set(progress, 'hidden', share === 0);
     if (share > 0) {
-      set(progress.firstChild, 'textContent', service ? strings.refuelling : order.phase === 'pickup' ? strings.loading : strings.unloading);
+      set(progress.firstChild, 'textContent', service ? strings.serving[service.id] : order.phase === 'pickup' ? strings.loading : strings.unloading);
       set(progress.lastChild.style, 'transform', `scaleX(${share})`);
     }
 

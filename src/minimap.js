@@ -1,5 +1,5 @@
-// Minimap: the whole city from above, north up, with the spots (petrol stations with a pump), the truck and the Sim's
-// current route. Reads Sim state
+// Minimap: the whole city from above, north up, with the spots (petrol stations with a pump, the restaurant with a knife
+// and fork), the truck and the Sim's current route. Reads Sim state
 // each frame but redraws only at tables.minimap.rate; never writes to it. The roads are the graph's edges at their
 // widths, with the main streets (tables.osm.lightClasses) named. Sizes are in units of tables.minimap.unit m.
 export function createMinimap(canvas, map, tables) {
@@ -35,7 +35,7 @@ export function createMinimap(canvas, map, tables) {
     }
     nameStreets();
     for (const s of map.spots) {
-      bctx.fillStyle = hex(palette[s.station ? 'station' : 'spot']);
+      bctx.fillStyle = hex(palette[s.station ? 'station' : s.restaurant ? 'restaurant' : 'spot']);
       bctx.beginPath();
       bctx.arc(...zoneCentre(s), spotRadius * scale, 0, 2 * Math.PI);
       bctx.fill();
@@ -50,8 +50,8 @@ export function createMinimap(canvas, map, tables) {
     lctx.fillStyle = hex(palette.light);
     for (const s of map.spots) {
       const [x, y] = zoneCentre(s);
-      if (s.station) {
-        pump(x, y);
+      if (s.station || s.restaurant) {
+        (s.station ? pump : cutlery)(x, y);
         continue;
       }
       lctx.strokeText(s.id, x, y + 0.1 * scale);
@@ -73,6 +73,27 @@ export function createMinimap(canvas, map, tables) {
     lctx.lineTo(x + 1.6 * u, y - 0.4 * u);
     lctx.lineTo(x + 1.6 * u, y + 1.6 * u);
     lctx.stroke();
+  }
+  // A knife and fork centred on (x, y) canvas px, outlined as the letters are: the fork's shaft and three tines, the
+  // knife's handle and blade.
+  function cutlery(x, y) {
+    const u = scale * 0.5;
+    const strokes = () => {
+      lctx.beginPath();
+      for (const dx of [-1.6, -1, -0.4]) lctx.moveTo(x + dx * u, y - 2.2 * u), lctx.lineTo(x + dx * u, y - 0.8 * u);
+      lctx.moveTo(x - 1.6 * u, y - 0.8 * u), lctx.lineTo(x - 0.4 * u, y - 0.8 * u);
+      lctx.moveTo(x - 1 * u, y - 0.8 * u), lctx.lineTo(x - 1 * u, y + 2.2 * u);
+      lctx.moveTo(x + 1.2 * u, y - 2.2 * u), lctx.lineTo(x + 1.2 * u, y + 2.2 * u);
+      lctx.stroke();
+    };
+    const width = lctx.lineWidth;
+    lctx.lineWidth = width + 0.5 * u;
+    strokes();
+    lctx.strokeStyle = hex(palette.light);
+    lctx.lineWidth = 0.5 * u;
+    strokes();
+    lctx.fillRect(x + 1.2 * u, y - 2.2 * u, 0.6 * u, 2.4 * u); // the blade
+    [lctx.strokeStyle, lctx.lineWidth] = [hex(palette.trim), width];
   }
   const zoneCentre = ({ zone }) => at((zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2);
 

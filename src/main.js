@@ -41,8 +41,8 @@ try {
   // storage blocked (e.g. cookies off): the save module then plays unsaved
 }
 const save = createSave(auto ? null : storage, tables);
-// The autopilot's drive never runs dry, so a tow never breaks the loop.
-const simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0 } } : tables;
+// The autopilot's drive never runs dry or tires, so a tow never breaks the loop and its steering never lags.
+const simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0 }, energy: { ...tables.energy, drive: Infinity } } : tables;
 const sim = createSim(simTables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
 const blend = createBlend();
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck

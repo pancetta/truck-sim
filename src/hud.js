@@ -1,7 +1,7 @@
-// Dashboard overlay: speed (red above the limit), the speed limit, gear, RPM, the fuel gauge, rank, total distance, the
-// game clock and the time played, and above it
+// Dashboard overlay: speed (red above the limit), the speed limit, gear, RPM, the fuel and energy gauges, rank, total
+// distance, the game clock and the time played, and above it
 // the name of the street the truck is on, the next junction's rule while one is near, a police sign while a police
-// car sees the truck and the low-fuel warning. Reads Sim state; never writes to it.
+// car sees the truck, the low-fuel warning and the tired or exhausted warning. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond,
 // the give-way triangle and the stop octagon.
 const RULE_ICONS = {
@@ -29,12 +29,14 @@ export function createHud(root, tables, strings) {
     <div class="dash-gear" aria-label="${strings.gear}"></div>
     <div class="dash-rpm" aria-label="${strings.rpm}"><i></i><small></small></div>
     <div class="dash-fuel" aria-label="${strings.fuel}"><small>${strings.fuel}</small><div><i></i></div></div>
+    <div class="dash-fuel dash-energy" aria-label="${strings.energy}"><small>${strings.energy}</small><div><i></i></div></div>
     <div class="dash-rank" aria-label="${strings.rank}"><span></span><small aria-label="${strings.distance}"></small><div><i></i></div><span aria-label="${strings.clock}"></span><small></small></div>
     <div class="dash-signs">
       <div class="dash-street" aria-label="${strings.street}" hidden></div>
       <div class="dash-rule" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"></svg><span></span></div>
       <div class="dash-police" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5"/></svg>${strings.policeSees}</div>
       <div class="dash-fuel-low" role="status" hidden>${strings.fuelLow}</div>
+      <div class="dash-tired" role="status" hidden></div>
     </div>`;
   const speed = root.querySelector('.dash-speed b');
   const gear = root.querySelector('.dash-gear');
@@ -50,6 +52,8 @@ export function createHud(root, tables, strings) {
   const street = root.querySelector('.dash-street');
   const fuelBar = root.querySelector('.dash-fuel i');
   const fuelLow = root.querySelector('.dash-fuel-low');
+  const energyBar = root.querySelector('.dash-energy i');
+  const tired = root.querySelector('.dash-tired');
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
@@ -62,10 +66,12 @@ export function createHud(root, tables, strings) {
   let shownPlayed;
   let shownRule = null;
   let shownFuel;
+  let shownEnergy;
+  let shownTired = 0; // 0 rested, 1 tired, 2 exhausted
 
   // In the cab view the 3D instruments show speed, gear and RPM, so the overlay hides but for the limit, the signs and
   // the rank panel (style.css).
-  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit, street: name }, inCab) {
+  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
     root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
@@ -92,6 +98,16 @@ export function createHud(root, tables, strings) {
       const low = profile.fuel < tables.fuel.low * tables.fuel.tank;
       fuelBar.classList.toggle('low', low);
       fuelLow.hidden = !low;
+    }
+    const energy = profile.energy.toFixed(2);
+    if (energy !== shownEnergy) energyBar.style.transform = `scaleX(${(shownEnergy = energy)})`;
+    const level = exhausted ? 2 : isTired ? 1 : 0;
+    if (level !== shownTired) {
+      shownTired = level;
+      energyBar.classList.toggle('low', level > 0);
+      tired.hidden = level === 0;
+      tired.classList.toggle('exhausted', level === 2);
+      tired.textContent = level === 2 ? strings.exhausted : strings.tired;
     }
     if (street.hidden !== !name) street.hidden = !name;
     set(street, name);

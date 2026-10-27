@@ -322,22 +322,25 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const signsOf = (kind, limit) => map.signs.filter((s) => s.kind === kind && s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
   const limits = new Set(map.signs.filter((s) => s.kind === 'speed').map((s) => s.limit));
   addSigns([...[...limits].map((limit) => [speedSign(limit), signsOf('speed', limit)]), [giveWaySign(), signsOf('giveWay')], [stopSign(), signsOf('stop')]]);
-  addBoxes(palette.zone, map.spots.filter((s) => !s.station).map((s) => s.zone), 0.04);
+  addBoxes(palette.zone, map.spots.filter((s) => !s.station && !s.restaurant).map((s) => s.zone), 0.04);
   addBoxes(palette.station, map.spots.filter((s) => s.station).map((s) => s.zone), 0.04);
+  addBoxes(palette.restaurant, map.spots.filter((s) => s.restaurant).map((s) => s.zone), 0.04);
 
-  // Petrol stations (tables.station), our own boxes, on each one's pump island (spot.pumps, the road on its left): the
-  // island, its pumps, and a canopy over the pavement on two posts, white underneath with a coloured fascia.
+  // The box on pose `p` (heading along the road, the road on its left), `length` m along and `width` m across, its middle
+  // `along` m on and `out` m right of p, from `y` m up, `height` m tall.
+  const partOf = (p) => (along, out, length, width, y, height) => {
+    const [fx, fz] = [Math.sin(p.heading), Math.cos(p.heading)]; // along the road; right, away from it, is (-fz, fx)
+    const [x, z] = [p.x + fx * along - fz * out, p.z + fz * along + fx * out];
+    return { minX: x - width / 2, maxX: x + width / 2, minZ: z - length / 2, maxZ: z + length / 2, angle: p.heading, y, height };
+  };
+
+  // Petrol stations (tables.station), our own boxes, on each one's pump island (spot.pumps): the island, its pumps, and
+  // a canopy over the pavement on two posts, white underneath with a coloured fascia.
   const st = tables.station;
   const { pavement: walk } = tables.osm;
-  const [isle, posts, coloured] = [[], [], []];
-  for (const { pumps: p } of map.spots.filter((s) => s.station)) {
-    const [fx, fz] = [Math.sin(p.heading), Math.cos(p.heading)]; // along the road; right, away from it, is (-fz, fx)
-    // The box `length` m along and `width` m across, its middle `along` m on and `out` m right of the island's, from
-    // `y` m up, `height` m tall.
-    const part = (along, out, length, width, y, height) => {
-      const [x, z] = [p.x + fx * along - fz * out, p.z + fz * along + fx * out];
-      return { minX: x - width / 2, maxX: x + width / 2, minZ: z - length / 2, maxZ: z + length / 2, angle: p.heading, y, height };
-    };
+  const [isle, posts, coloured, parasols] = [[], [], [], []];
+  for (const { pumps } of map.spots.filter((s) => s.station)) {
+    const part = partOf(pumps);
     const [length, width, kerb] = st.island;
     isle.push(part(0, 0, length, width, 0, kerb));
     for (let i = 0; i < st.pumps; i++) coloured.push(part(((i + 0.5) / st.pumps - 0.5) * length, 0, st.pump[0], st.pump[1], kerb, st.pump[2]));
@@ -346,9 +349,26 @@ export function createRenderer(canvas, tables, map, onProgress) {
     coloured.push(part(0, roofOut, length + 1, roofWidth, st.canopy, st.roof));
     isle.push(part(0, roofOut, length + 0.9, roofWidth - 0.1, st.canopy - 0.02, 0.02));
   }
+  // The restaurant (tables.restaurant), our own boxes, on its terrace (spot.terrace): a low deck with café tables, each
+  // under a parasol on its pole.
+  const rt = tables.restaurant;
+  for (const { terrace } of map.spots.filter((s) => s.restaurant)) {
+    const part = partOf(terrace);
+    const [length, width] = rt.terrace;
+    const [side, high] = rt.table;
+    const deck = 0.1;
+    isle.push(part(0, 0, length, width, 0, deck));
+    for (let i = 0; i < rt.tables; i++) {
+      const along = ((i + 0.5) / rt.tables - 0.5) * length;
+      isle.push(part(along, 0, side, side, deck + high - 0.04, 0.04));
+      posts.push(part(along, 0, 0.06, 0.06, deck, rt.parasol[1]));
+      parasols.push(part(along, 0, rt.parasol[0], rt.parasol[0], deck + rt.parasol[1], 0.12));
+    }
+  }
   addBoxes(palette.wall, isle);
   addBoxes(palette.trim, posts);
   addBoxes(palette.station, coloured);
+  addBoxes(palette.restaurant, parasols);
 
   // Dock bays, our own boxes, from each dock's bay: a dock edge (a low dark platform, on the Sim's platform collider,
   // wall or not), and painted lines on either side of the bay, as far apart as the docking check allows. They stand a
