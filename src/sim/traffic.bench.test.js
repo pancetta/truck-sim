@@ -70,7 +70,8 @@ test('the traffic step at 100 cars is fast and allocates next to nothing', () =>
 
 // #63: on the real Monti extract, the truck standing in the middle, where the ring takes in nearly all the district.
 test('on Monti too', () => {
-  const monti = buildOsmMap(JSON.parse(readFileSync(`public/${tables.osm.file}`, 'utf8')), tables);
+  const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
+  const monti = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
   const sim = createSim({ ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } }, monti, seeded(1));
   const frames = [];
   for (let i = 0; i < 1800; i++) {

@@ -9,8 +9,9 @@ import { createGraph } from './graph.js';
 import { buildOsmMap } from './osm.js';
 import { readFileSync } from 'node:fs';
 
-// The real Monti extract (spec #59), built with `t`, for the soaks.
-const monti = (t) => buildOsmMap(JSON.parse(readFileSync(`public/${tables.osm.file}`, 'utf8')), t);
+// The real Monti extract (spec #59) and its street furniture, built with `t`, for the soaks.
+const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
+const monti = (t) => buildOsmMap(read(tables.osm.file), t, read(tables.osm.furniture));
 // The nearest point to (x, z) at least 14 m off every road of `map`, searched in rings round it: where a parked truck
 // meets no car.
 function offRoad(map, x, z) {
