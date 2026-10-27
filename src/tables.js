@@ -152,6 +152,13 @@ export const fines = {
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
 };
 
+// The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
+// starts at `start`.
+export const clock = { minutesPerSecond: 1, start: 8 * 60 };
+
+// The fuel tank (profile.fuel, litres); a new profile starts full. It doesn't drain yet (#49).
+export const fuel = { tank: 400 };
+
 // km/h before the truck is on a road edge (each edge has its road class's limit, tables.osm): the speedometer turns red
 // above it.
 export const speedLimit = 50;

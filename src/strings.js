@@ -30,6 +30,8 @@ export const strings = {
   rank: 'Rang',
   km: 'km',
   distance: 'Gesamtstrecke',
+  clock: 'Uhrzeit',
+  timePlayed: 'Spielzeit',
   rankTitles: ['Aushilfsfahrer', 'Kurierfahrer', 'Berufskraftfahrer', 'Fernfahrer', 'Speditionsprofi'],
   werkstatt: 'Werkstatt',
   close: 'Schließen',

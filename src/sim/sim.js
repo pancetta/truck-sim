@@ -3,14 +3,29 @@
 
 import { createCells } from './cells.js';
 import { createTraffic } from './traffic.js';
+import { clock as dayClock, fuel } from '../tables.js';
 
 const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
 // migrate the old one; v3 came with the Monti map (#67), and the grid city's v1 and v2 start fresh.
-// distance: m driven in total; upgrades: id → level; equipped: slot → visual id.
+// distance: m driven in total; upgrades: id → level; equipped: slot → visual id; fuel: litres in the tank;
+// energy: the driver's, 0..1; timeOfDay: game minutes since midnight; timePlayed: s of play in total.
+// The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
-  return { version: 3, money: 0, rankPoints: 0, distance: 0, upgrades: {}, owned: [], equipped: {} };
+  return {
+    version: 4,
+    money: 0,
+    rankPoints: 0,
+    distance: 0,
+    upgrades: {},
+    owned: [],
+    equipped: {},
+    fuel: fuel.tank,
+    energy: 1,
+    timeOfDay: dayClock.start,
+    timePlayed: 0,
+  };
 }
 
 // `map` comes from buildOsmMap() (osm.js); without one the truck drives on an open plane with nothing to hit
@@ -40,6 +55,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
+  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight).
   const state = {
     truck,
     collision: false,
@@ -60,6 +76,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     street: '',
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
+    },
+    get timeOfDay() {
+      return state.profile.timeOfDay;
     },
   };
   let v = upgradedVehicle();
@@ -124,6 +143,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   function step(dt, input) {
     clock += dt;
+    const p = state.profile;
+    p.timeOfDay = (p.timeOfDay + dt * tables.clock.minutesPerSecond) % (24 * 60);
+    p.timePlayed += dt;
     const speedBefore = Math.abs(truck.speed);
     updateLights();
     const stopped = Math.abs(truck.speed) < v.stopSpeed;

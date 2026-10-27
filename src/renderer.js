@@ -700,7 +700,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     truck.position.set(x, 0, z);
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
     // The wheel at the same angle as the on-screen one; positive is clockwise from the driver's seat.
-    cab.update(state.truck, input.steer * tables.controls.wheelLock);
+    cab.update(state, input.steer * tables.controls.wheelLock);
     showLook(look);
     parts.sway(roll, dt);
 

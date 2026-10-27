@@ -458,7 +458,8 @@ body:has(.rear-inset:not([hidden])) .goal {
   white-space: pre-line; /* one payment line per line */
 }
 
-/* Rank title and total distance, with progress to the next tier, under the RPM bar. */
+/* Rank title and total distance, with progress to the next tier, and the clock and time played under it, under the
+   RPM bar. */
 .dash-rank {
   grid-column: 1 / -1;
   display: grid;
@@ -729,15 +730,39 @@ body:has(.rear-inset:not([hidden])) .goal {
 }
 
 /* Cab view: the 3D instruments show speed, gear and RPM, so the overlay keeps only the speed limit and the signs, on
-   the windscreen just above the dashboard (the cab camera's field of view is vertical, so vh holds at any width). */
+   the windscreen just above the dashboard (the cab camera's field of view is vertical, so vh holds at any width), and
+   the rank panel. Untransformed and full width (centred 13 px left, as above), so the rank panel can be fixed to
+   the screen. */
 .dash.cab {
+  left: 0;
+  right: 26px;
   bottom: 38vh;
+  width: auto;
+  transform: none;
   display: flex;
   justify-content: center;
   padding: 0;
   background: none;
 }
 
-.dash.cab > :not(.dash-limit, .dash-signs) {
+.dash.cab > :not(.dash-limit, .dash-signs, .dash-rank) {
   display: none;
+}
+
+/* On the left under the buttons, over the pillar and the pavement rather than the road ahead. */
+.dash.cab .dash-rank {
+  position: fixed;
+  top: calc(max(24px, env(safe-area-inset-top)) + 180px);
+  left: max(24px, env(safe-area-inset-left));
+  width: 200px;
+  box-sizing: border-box;
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.85);
+}
+
+@media (max-height: 435px) {
+  .dash.cab .dash-rank {
+    top: calc(max(24px, env(safe-area-inset-top)) + 120px);
+  }
 }

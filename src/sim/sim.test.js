@@ -295,11 +295,11 @@ describe('Sim: city', () => {
 });
 
 describe('Sim: profile', () => {
-  const profile = { version: 3, money: 500, rankPoints: 7, distance: 1000, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
+  const profile = { ...freshProfile(), money: 500, rankPoints: 7, distance: 1000, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
 
   test('a fresh Sim starts with no money and no payment', () => {
     const sim = laneSim();
-    expect(sim.state.profile).toMatchObject({ version: 3, money: 0, rankPoints: 0, distance: 0 });
+    expect(sim.state.profile).toMatchObject({ version: 4, money: 0, rankPoints: 0, distance: 0, fuel: tables.fuel.tank, energy: 1 });
     expect(sim.state.lastPayment).toBe(null);
   });
 
@@ -314,6 +314,8 @@ describe('Sim: profile', () => {
       money: 500 + offer.pay,
       rankPoints: 7 + tables.rank.pointsPerDelivery,
       distance: sim.state.profile.distance, // see 'Sim: distance'
+      timeOfDay: sim.state.profile.timeOfDay, // see 'Sim: clock'
+      timePlayed: sim.state.profile.timePlayed,
     });
     expect(profile.money).toBe(500); // the caller's object is left alone
   });
@@ -321,6 +323,25 @@ describe('Sim: profile', () => {
   test('the profile round-trips into a new Sim', () => {
     const sim = laneSim(1, laneSim(1, profile).state.profile);
     expect(sim.state.profile).toEqual(profile);
+  });
+});
+
+describe('Sim: clock', () => {
+  test('timeOfDay starts at 08:00 and advances at the table rate; timePlayed counts the s played', () => {
+    const sim = createSim(tables);
+    expect(sim.state.timeOfDay).toBe(8 * 60);
+    for (let i = 0; i < 90 * 60; i++) sim.step(DT, IDLE); // 90 s; drive() may take a step more
+    expect(sim.state.timeOfDay).toBeCloseTo(8 * 60 + 90 * tables.clock.minutesPerSecond, 6);
+    expect(sim.state.profile.timeOfDay).toBe(sim.state.timeOfDay);
+    expect(sim.state.profile.timePlayed).toBeCloseTo(90, 6);
+  });
+
+  test('timeOfDay wraps at midnight; timePlayed carries on from a given profile', () => {
+    const t = { ...tables, clock: { ...tables.clock, minutesPerSecond: 10 } };
+    const sim = createSim(t, undefined, Math.random, { ...freshProfile(), timeOfDay: 24 * 60 - 5, timePlayed: 1000 });
+    for (let i = 0; i < 60; i++) sim.step(DT, IDLE);
+    expect(sim.state.timeOfDay).toBeCloseTo(5, 6);
+    expect(sim.state.profile.timePlayed).toBeCloseTo(1001, 6);
   });
 });
 

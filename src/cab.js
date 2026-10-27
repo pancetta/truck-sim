@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { clockText, kmText, playedText } from './hud.js';
 
 // The cab interior, our own design, in truck space as in truckLook.js (metres, +z forward, +x towards the driver's
 // (left) side, y up): dashboard with the instrument cluster, windscreen pillars, doors, headliner, passenger seat and
@@ -12,8 +13,17 @@ const DASH = { top: 1.5, back: 2.155, front: 2.9, side: 1.17 };
 const ROOF = 2.4;
 const SCREEN = { top: 2.85, sill: 1.65 }; // windscreen z under the roof (it meets the dash's front); door sill height
 // The cluster rises from the dash, facing the driver's eye, above the wheel's rim. The dash beside it is free for the
-// fuel and energy gauges (#49, #50).
-const CLUSTER = { centre: [0.55, 1.59, 2.36], width: 0.38, height: 0.16, dial: 0.068, dialX: 0.1, gear: [0.05, 0.034] };
+// fuel and energy gauges (#49, #50). Between the dials: the gear, and under it a display with the total distance, the
+// clock and the time played, its foot just clear of the wheel's rim (the rim hides the strip under the dials).
+const CLUSTER = {
+  centre: [0.55, 1.59, 2.36],
+  width: 0.44,
+  height: 0.16,
+  dial: 0.068,
+  dialX: 0.13,
+  gear: { size: [0.05, 0.034], y: 0.05 },
+  info: { size: [0.11, 0.056], y: -0.002 },
+};
 const PX = 1650; // cluster texture pixels per metre
 
 // The needle's turn (rotation.z, rad, anticlockwise) for `value` on a dial from 0 to `max` that sweeps `sweep` rad
@@ -71,7 +81,7 @@ function strut(a, b, w, d) {
 }
 
 // The interior group, and update() to set the wheel turn (degrees, positive clockwise from the seat) and the
-// instruments from the Sim's truck.
+// instruments from the Sim's state.
 export function createCab(tables, strings) {
   const { palette, camera, vehicle, cab } = tables;
   const sweep = THREE.MathUtils.degToRad(cab.sweep);
@@ -108,8 +118,8 @@ export function createCab(tables, strings) {
     new THREE.Mesh(new THREE.BoxGeometry(across, 0.03, SCREEN.top - 0.9).translate(0, ROOF + 0.015, (SCREEN.top + 0.9) / 2), material(palette.headliner, 0.9)),
   );
 
-  // Instrument cluster: one texture for the dial faces, drawn once; needles turn over it, the gear shows on a small
-  // display between the dials, redrawn when it changes.
+  // Instrument cluster: one texture for the dial faces, drawn once; needles turn over it, and two small displays
+  // between the dials, the gear and the info display, are redrawn when what they show changes.
   const { width, height, dial, dialX } = CLUSTER;
   const face = document.createElement('canvas');
   [face.width, face.height] = [Math.round(width * PX), Math.round(height * PX)];
@@ -154,15 +164,32 @@ export function createCab(tables, strings) {
     return needle;
   });
 
-  const gearCanvas = document.createElement('canvas');
-  [gearCanvas.width, gearCanvas.height] = CLUSTER.gear.map((m) => Math.round(m * PX));
-  const gearCtx = gearCanvas.getContext('2d');
-  const gearTexture = Object.assign(new THREE.CanvasTexture(gearCanvas), { colorSpace: THREE.SRGBColorSpace });
-  const gearDisplay = new THREE.Mesh(new THREE.PlaneGeometry(...CLUSTER.gear), backlit(gearTexture));
-  gearDisplay.position.set(0, height * 0.22, 0.001); // above the wheel hub
-  cluster.add(gearDisplay);
+  // A display at `y` m on the cluster: show(lines, font) draws the lines of text, `font` m high, evenly down it.
+  function display({ size, y }) {
+    const canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = size.map((m) => Math.round(m * PX));
+    const ctx = canvas.getContext('2d');
+    const texture = Object.assign(new THREE.CanvasTexture(canvas), { colorSpace: THREE.SRGBColorSpace });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(...size), backlit(texture));
+    mesh.position.set(0, y, 0.001);
+    cluster.add(mesh);
+    return (lines, font) => {
+      ctx.fillStyle = '#0b0c10';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = new THREE.Color(palette.lampAmber).getStyle();
+      ctx.font = `700 ${Math.round(font * PX)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const pad = canvas.width * 0.05;
+      lines.forEach((line, i) => ctx.fillText(line, canvas.width / 2, ((i + 0.5) * canvas.height) / lines.length, canvas.width - 2 * pad));
+      texture.needsUpdate = true;
+    };
+  }
+  const showGear = display(CLUSTER.gear);
+  const showInfo = display(CLUSTER.info);
   interior.add(cluster);
   let shownGear;
+  let shownInfo = [];
 
   // Steering column and wheel: the column tilts the wheel towards the driver; the wheel spins about the column's
   // axis (local +z, away from the driver). Only its top shows, under the dials, with a marker as on the on-screen
@@ -196,20 +223,17 @@ export function createCab(tables, strings) {
   );
   interior.add(column);
 
-  function update({ speed, rpm, gear }, wheelTurn) {
+  function update({ truck: { speed, rpm, gear }, profile }, wheelTurn) {
     wheel.rotation.z = THREE.MathUtils.degToRad(wheelTurn);
     needles[0].rotation.z = dialAngle(Math.abs(speed) * 3.6, cab.speedMax, sweep);
     needles[1].rotation.z = dialAngle(rpm, rpmMax, sweep);
-    if (gear === shownGear) return;
-    shownGear = gear;
-    gearCtx.fillStyle = '#0b0c10';
-    gearCtx.fillRect(0, 0, gearCanvas.width, gearCanvas.height);
-    gearCtx.fillStyle = new THREE.Color(palette.lampAmber).getStyle();
-    gearCtx.font = `700 ${Math.round(gearCanvas.height * 0.8)}px system-ui, sans-serif`;
-    gearCtx.textAlign = 'center';
-    gearCtx.textBaseline = 'middle';
-    gearCtx.fillText(String(gear), gearCanvas.width / 2, gearCanvas.height / 2);
-    gearTexture.needsUpdate = true;
+    if (gear !== shownGear) showGear([String((shownGear = gear))], CLUSTER.gear.size[1] * 0.8);
+    // Whole km and minutes, so it redraws about once a game minute (a real second), not every frame.
+    const info = [Math.floor(profile.distance / 1000), Math.floor(profile.timeOfDay), Math.floor(profile.timePlayed / 60)];
+    if (info.every((n, i) => n === shownInfo[i])) return;
+    shownInfo = info;
+    const [km, minute, played] = info;
+    showInfo([kmText(km * 1000, strings), clockText(minute), playedText(played * 60, strings)], 0.013);
   }
 
   return { interior, update };
