@@ -275,11 +275,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return true;
   }
 
-  // The rule (map.rule) of the next junction along the road axis the truck heads closest to, its front bumper in it or
-  // within tables.signs.hint m of it; null if the road ends or the truck isn't on one.
+  // The rule (map.rule) of the next junction along the road axis the truck drives closest to (backwards when
+  // reversing), its leading bumper in it or within tables.signs.hint m of it; null if the road ends or the truck
+  // isn't on one.
   function junctionAhead() {
-    const fx = Math.sin(truck.heading);
-    const fz = Math.cos(truck.heading);
+    const back = truck.speed < -v.stopSpeed ? -1 : 1;
+    const fx = Math.sin(truck.heading) * back;
+    const fz = Math.cos(truck.heading) * back;
     const [dc, dr] = DIRS.reduce((a, d) => (d[0] * fx + d[1] * fz > a[0] * fx + a[1] * fz ? d : a));
     const x = truck.x + (fx * v.length) / 2;
     const z = truck.z + (fz * v.length) / 2;

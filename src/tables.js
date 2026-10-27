@@ -179,9 +179,11 @@ export const traffic = {
   // (and from a light junction, for a car turning left there): more than stopping from cruise at `brake`. The
   // truck looks two tiles ahead, so more than ~28 m has no effect for it.
   giveWay: 28,
-  // s a truck standing short of an unsignalled crossing keeps its right of way, so the cars on its left wait for it
-  // to drive in or back off; after that it lets them go, so a parked truck doesn't hold up the city
+  // s a truck standing at the line of an unsignalled crossing (its front bumper within `truckLine` m of it) keeps its
+  // right of way, so the cars on its left wait for it to drive in or back off; after that it lets them go, so a parked
+  // truck doesn't hold up the city
   truckHold: 10,
+  truckLine: 6, // m
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)

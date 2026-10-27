@@ -112,27 +112,35 @@ export function parseMap(text, tables) {
   // pavement there, and the plate is too wide to set the post back to the wall. `kind` 'speed', a speed limit sign
   // where a street begins: on every way out of a light junction, and on every way into the city out of a junction
   // on the road round its edge, `tables.signs.along` m into the street; 'rightBeforeLeft', a warning sign on every
-  // approach to an unsignalled junction, in the middle of the tile before it (clear of a speed sign on that tile).
+  // approach to an unsignalled junction, in the middle of the tile before it (clear of a speed sign on that tile), or
+  // 3 m nearer the junction where a pole stands there.
   const signs = [];
   const junction = (col, row) => isRoad(col, row) && DIRS.filter(([dc, dr]) => isRoad(col + dc, row + dr)).length >= 3;
   const cs = roads.map((r) => r.col);
   const rs = roads.map((r) => r.row);
   const [minCol, maxCol, minRow, maxRow] = [Math.min(...cs), Math.max(...cs), Math.min(...rs), Math.max(...rs)];
   const onEdge = (col, row) => col === minCol || col === maxCol || row === minRow || row === maxRow;
-  function sign(kind, c, r, dir, along) {
+  // A pole's middle (the 'p' tile's kerb, mid-tile), so a sign that would stand in it moves `along` to the next spot.
+  const poles = colliders.filter((b) => b.kind === 'pole').map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }));
+  function sign(kind, c, r, dir, ...alongs) {
     const [dc, dr] = DIRS[dir];
     const kerb = !isRoad(c - dr, r + dc); // right of travel (dc, dr) is (-dr, dc)
     if (!isRoad(c, r) || !kerb || junction(c, r) || spots.some((s) => s.dock && s.zoneTile.col === c && s.zoneTile.row === r)) return;
     const { inset } = tables.signs;
-    const [a, side] = [along - tileSize / 2, tileSize / 2 - inset]; // from the tile's centre, ahead and right
-    const [x, z] = [(c + 0.5) * tileSize + dc * a - dr * side, (r + 0.5) * tileSize + dr * a + dc * side];
-    signs.push({ kind, x, z, dir });
+    const side = tileSize / 2 - inset; // from the tile's centre, right
+    for (const along of alongs) {
+      const a = along - tileSize / 2; // from the tile's centre, ahead
+      const [x, z] = [(c + 0.5) * tileSize + dc * a - dr * side, (r + 0.5) * tileSize + dr * a + dc * side];
+      if (poles.some((p) => Math.hypot(p.x - x, p.z - z) < 1.5)) continue;
+      signs.push({ kind, x, z, dir });
+      return;
+    }
   }
   for (const { col, row } of roads) {
     if (!junction(col, row)) continue;
     const light = tiles[row][col] === '+';
     DIRS.forEach(([dc, dr], dir) => {
-      if (!light) sign('rightBeforeLeft', col - dc, row - dr, dir, tileSize / 2);
+      if (!light) sign('rightBeforeLeft', col - dc, row - dr, dir, tileSize / 2, tileSize / 2 - 3); // 3 m nearer the junction past a pole
       if (light || (onEdge(col, row) && !onEdge(col + dc, row + dr))) sign('speed', col + dc, row + dr, dir, tables.signs.along);
     });
   }

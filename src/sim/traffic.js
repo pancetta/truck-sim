@@ -6,8 +6,9 @@
 // A car's `route` is its lane ahead, one piece per road tile: { col, row, from, to }, where `from` is the DIRS
 // index it travels into the tile and `to` the one it leaves by; `lane` is the piece it is on, `s` the m
 // driven along it and `prev` the piece before; `at`, `seen` and `since` are the crossing group it was last the first
-// car of an approach to, the last step it was and the step it became that (see rightOfWay). A piece runs `laneOffset` right of the centre line: straight
-// across the tile, or a quarter circle round the tile corner between its entry and exit edges.
+// car of an approach to, the last step it was and the step it became that (see rightOfWay). A piece runs
+// `laneOffset` right of the centre line: straight across the tile, or a quarter circle round the tile corner
+// between its entry and exit edges.
 // At unsignalled crossings one approach at a time drives in, chosen right before left (see rightOfWay); at
 // light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No car
 // drives into a crossing or junction whose exit lane is queued up (see exitBlocked), or where the truck stands in
@@ -278,8 +279,8 @@ export function createTraffic(tables, map, random) {
   // dir + 3); when all four approaches have a car or the truck, none would, so the first to arrive goes (the
   // first vehicle of its approach the longest), and if that is the truck the cars wait for it. Of several that
   // may go the same, also the first to arrive. The truck counts as arriving while it drives towards the crossing,
-  // and while it stands short of it for up to `truckHold` s: after that a player waiting there is letting the
-  // cars go, and a parked truck doesn't hold them up for good.
+  // and while it stands at its line (within `truckLine`) for up to `truckHold` s: after that a player waiting there
+  // is letting the cars go, and a parked truck doesn't hold them up for good.
   const atCrossings = []; // scratch: the groups with traffic at them this step
   let truckAt = null; // the crossing group the truck is the first vehicle of an approach to, since step `truckSince`
   let truckSince = 0;
@@ -345,7 +346,7 @@ export function createTraffic(tables, map, random) {
       const { dir, col, row, short } = truckTiles[k];
       const [bc, br] = [col - DIRS[dir][0], row - DIRS[dir][1]]; // the tile before
       const g = groupAt(col, row);
-      if (!g || groupAt(bc, br) === g || !map.isRoad(bc, br) || short <= 0 || short > t.giveWay) continue;
+      if (!g || groupAt(bc, br) === g || !map.isRoad(bc, br) || short <= 0 || short > (moving ? t.giveWay : t.truckLine)) continue;
       arrive(g, dir, null, short);
       break;
     }

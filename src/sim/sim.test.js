@@ -1424,7 +1424,8 @@ describe('Sim: traffic lights', () => {
         expect(sign, `into (${col}, ${row}) travelling ${dir}`).toBeDefined();
       });
     }
-    for (const a of map.signs) for (const b of map.signs) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(2);
+    const poles = map.colliders.filter((c) => c.kind === 'pole').map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }));
+    for (const a of map.signs) for (const b of [...map.signs, ...poles]) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(1.4);
   });
 
   test("the state has the speed limit, and the rule of the next junction ahead within the hint distance", () => {
@@ -1451,6 +1452,11 @@ describe('Sim: traffic lights', () => {
     expect(ruleAt(4 * TILE + hint + front + 1, NORTH)).toBe(null);
     // Northbound past the light junction, towards the street's dead end.
     expect(ruleAt(2.5 * TILE, NORTH)).toBe(null);
+    // Facing north between them: the light junction ahead, but reversing, the crossing behind.
+    expect(ruleAt(6.5 * TILE, NORTH)).toBe('light');
+    sim.state.truck.speed = -2;
+    sim.step(0, IDLE);
+    expect(sim.state.junctionRule).toBe('rightBeforeLeft');
   });
 
   test('each axis cycles green, amber, red with the table timings, never green together, offset per junction', () => {
@@ -1910,6 +1916,16 @@ describe('Sim: right of way and collisions', () => {
 
     expect(entered.has(a)).toBe(true);
     expect(sim.state.lastFine).toBe(null);
+  });
+
+  test('a truck standing back from the line lets the car on its left go at once', () => {
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 4 * TILE + tables.traffic.truckLine + 3 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    const a = addCar(sim, 1, through[NORTH]);
+
+    const { entered } = watch(sim, [a], truckHold - 2);
+
+    expect(entered.has(a)).toBe(true);
   });
 
   test(`a truck standing at the line longer than ${tables.traffic.truckHold} s lets the car on its left go`, () => {
