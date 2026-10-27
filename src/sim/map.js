@@ -21,6 +21,7 @@ export function parseMap(text, tables) {
   const cols = tiles[0].length;
   const rows = tiles.length;
   const isRoad = (col, row) => ROAD.includes(tiles[row]?.[col]);
+  const isBuilding = (col, row) => /[#A-Z]/.test(tiles[row]?.[col] ?? ''); // a spot is a building too
   const roads = [];
   const open = [];
   const spots = [];
@@ -187,7 +188,7 @@ export function parseMap(text, tables) {
     return exits.length ? pathFrom(next, exits.reduce((a, b) => (trip(b) < trip(a) ? b : a))) : null;
   }
 
-  return { cols, rows, tileSize, isRoad, roads, open, spots, colliders, lights, signs, route, routeFrom };
+  return { cols, rows, tileSize, isRoad, isBuilding, roads, open, spots, colliders, lights, signs, route, routeFrom };
 }
 
 function box(x, z, hx, hz) {

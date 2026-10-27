@@ -32,7 +32,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber' or 'red');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
-  // `traffic` are the AI cars: { id, x, z, heading, speed, lane } and more (see traffic.js).
+  // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
+  // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
@@ -48,6 +49,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
     lightsVersion: 0,
     traffic: [],
+    policeSees: false,
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
     },
@@ -162,6 +164,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     updateTraffic(dt);
+    state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -235,14 +238,30 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // The front crossing a stop line into a light junction, driving forwards, while that approach is red costs a
-  // fine. Reversing over a line is manoeuvring (backing out of a box or into a bay), and its front bumper is
-  // the last part to cross anyway.
+  // fine if the police see it. Reversing over a line is manoeuvring (backing out of a box or into a bay), and its
+  // front bumper is the last part to cross anyway.
   function checkRedLight(from, to) {
-    if (!from || truck.speed <= 0 || (from.col === to.col && from.row === to.row)) return;
+    if (!state.policeSees || !from || truck.speed <= 0 || (from.col === to.col && from.row === to.row)) return;
     const light = state.lights.find(
       (l) => l.col === to.col && l.row === to.row && DIRS[l.dir][0] === to.col - from.col && DIRS[l.dir][1] === to.row - from.row,
     );
     if (light?.phase === 'red') fine('redLight');
+  }
+
+  // Whether a police car is within tables.police.radius of the truck with no building tile on the line between them.
+  // shortcut: the line runs centre to centre, sampled every 0.5 m, so the truck's front peeking out of a side street
+  // is unseen and a line clipping a building's corner by under 0.5 m is clear; upgrade to the footprint if players notice.
+  function policeSees() {
+    const r2 = tables.police.radius ** 2;
+    for (const c of state.traffic) {
+      const [dx, dz] = [truck.x - c.x, truck.z - c.z];
+      if (!c.police || dx * dx + dz * dz > r2) continue;
+      const n = Math.ceil(Math.hypot(dx, dz) / 0.5);
+      let clear = true;
+      for (let i = 1; i < n && clear; i++) clear = !map.isBuilding(Math.floor((c.x + (dx * i) / n) / map.tileSize), Math.floor((c.z + (dz * i) / n) / map.tileSize));
+      if (clear) return true;
+    }
+    return false;
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
@@ -517,6 +536,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     Object.assign(truck, { x: (map.cols * map.tileSize) / 2, z: (map.rows * map.tileSize) / 2 });
     resetToRoad();
     updateTraffic(0);
+    state.policeSees = policeSees();
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };

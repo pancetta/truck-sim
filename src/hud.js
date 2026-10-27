@@ -1,4 +1,5 @@
-// Dashboard overlay: speed (red above the limit), gear, RPM, rank and total distance. Reads Sim state; never writes to it.
+// Dashboard overlay: speed (red above the limit), gear, RPM, rank and total distance, and a police sign while a
+// police car sees the truck. Reads Sim state; never writes to it.
 export function createHud(root, tables, strings) {
   const { idleRpm, upshiftRpm, torqueCurve } = tables.vehicle;
   const maxRpm = torqueCurve.at(-1)[0];
@@ -7,7 +8,8 @@ export function createHud(root, tables, strings) {
     <div class="dash-speed"><b></b><small>${strings.kmh}</small></div>
     <div class="dash-gear" aria-label="${strings.gear}"></div>
     <div class="dash-rpm" aria-label="${strings.rpm}"><i></i><small></small></div>
-    <div class="dash-rank" aria-label="${strings.rank}"><span></span><small aria-label="${strings.distance}"></small><div><i></i></div></div>`;
+    <div class="dash-rank" aria-label="${strings.rank}"><span></span><small aria-label="${strings.distance}"></small><div><i></i></div></div>
+    <div class="dash-police" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5"/></svg>${strings.policeSees}</div>`;
   const speed = root.querySelector('.dash-speed b');
   const gear = root.querySelector('.dash-gear');
   const bar = root.querySelector('.dash-rpm i');
@@ -15,6 +17,7 @@ export function createHud(root, tables, strings) {
   const rankTitle = root.querySelector('.dash-rank span');
   const rankBar = root.querySelector('.dash-rank i');
   const distance = root.querySelector('.dash-rank small');
+  const police = root.querySelector('.dash-police');
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
@@ -24,7 +27,7 @@ export function createHud(root, tables, strings) {
   let shownRank;
   let shownKm;
 
-  function update({ truck, rank, profile }) {
+  function update({ truck, rank, profile, policeSees }) {
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
     speed.classList.toggle('over', kmh > tables.speedLimit);
@@ -37,6 +40,7 @@ export function createHud(root, tables, strings) {
     const km = Math.floor(profile.distance / 1000); // formatted only on a change: toLocaleString is slow
     if (km !== shownKm) distance.textContent = `${(shownKm = km).toLocaleString('de-DE')} ${strings.km}`;
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
+    if (police.hidden === policeSees) police.hidden = !policeSees;
   }
 
   return { update };

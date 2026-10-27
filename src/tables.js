@@ -140,7 +140,7 @@ export const lights = {
 
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
-  redLight: 100,
+  redLight: 100, // only while a police car sees the truck (see police)
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
 };
 
@@ -179,6 +179,20 @@ export const traffic = {
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)
   despawnDistance: 180, // m from the truck past which a car out of view leaves
+};
+
+// Police cars (#68): AI cars on top of the rank tier's, which patrol the whole city and never leave it. A rule
+// fine (fines.redLight) is taken only while one sees the truck: within `radius` m, with no building on the line
+// between them. Their livery is our own: a generated `body` type in `paint`, a lettered `band` along each side
+// and an unlit roof `lightBar` (the lettering is strings.policeLettering).
+export const police = {
+  count: 2,
+  radius: 60, // m
+  body: 'sedan', // a vehicles.types key
+  paint: 0xf2f2f0,
+  band: 0x1d4f91,
+  lettering: 0xffffff,
+  lightBar: 0x2f6fe0,
 };
 
 export const city = {

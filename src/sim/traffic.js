@@ -1,6 +1,8 @@
 // AI cars (spec #12, "Traffic"), part of the headless Sim. They drive the road graph in the right-hand lane,
 // turn at random at junctions, keep their distance to the car or truck ahead and stop at lights that aren't
-// green. They appear and vanish out of the truck's view, keeping the count the Sim asks for.
+// green. They appear and vanish out of the truck's view, keeping the count the Sim asks for. On top of those,
+// tables.police.count police cars (`police: true`) drive the same rules anywhere in the city: they appear out of
+// view anywhere and leave only at a dead end, whereupon a new one appears.
 // A car's `route` is its lane ahead, one piece per road tile: { col, row, from, to }, where `from` is the DIRS
 // index it travels into the tile and `to` the one it leaves by; `lane` is the piece it is on, `s` the m
 // driven along it and `prev` the piece before. A piece runs `laneOffset` right of the centre line: straight
@@ -159,11 +161,13 @@ export function createTraffic(tables, map, random) {
     return !sameStreet && (x - truck.x) ** 2 + (z - truck.z) ** 2 >= distance ** 2;
   }
 
-  // One new car in the middle of a random hidden road tile in the spawn ring, standing, unless another car is
-  // within the look-ahead there. Mid-tile, so none of it sticks out into the truck's street.
+  // One new car in the middle of a random hidden road tile in the spawn ring (for a police car, as far out as the
+  // city goes), standing, unless another car is within the look-ahead there. Mid-tile, so none of it sticks out
+  // into the truck's street.
   const ring = []; // scratch: the road tiles in the spawn ring
-  function spawn(truck) {
-    const [near, far] = t.spawnDistance;
+  function spawn(truck, police) {
+    const near = t.spawnDistance[0];
+    const far = police ? Infinity : t.spawnDistance[1];
     ring.length = 0;
     for (const r of map.roads) {
       const x = (r.col + 0.5) * ts;
@@ -177,7 +181,7 @@ export function createTraffic(tables, map, random) {
     if (!out.length) return;
     const route = [{ col, row, from, to: pick(out) }];
     extend(route);
-    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: laneLength(route[0]) / 2 };
+    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: laneLength(route[0]) / 2, police };
     place(car);
     if (cars.some((c) => (c.x - car.x) ** 2 + (c.z - car.z) ** 2 < t.lookAhead ** 2)) return;
     cars.push(car);
@@ -528,13 +532,17 @@ export function createTraffic(tables, map, random) {
     targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, truckBox) - size.length / 2 - t.followGap));
   }
 
-  // Drops cars that left the road or the truck's surroundings, spawns one while fewer than `count`, then
-  // drives each car; the ones in `held` (ids, a Set or Map) stand still.
+  // Drops cars that left the road or (police aside) the truck's surroundings, spawns one while fewer than `count`
+  // and a police car while fewer than tables.police.count, then drives each car; the ones in `held` (ids, a Set
+  // or Map) stand still.
   function step(dt, truck, lights, count, held = new Set()) {
+    let police = 0;
     for (let i = cars.length - 1; i >= 0; i--) {
-      if (cars[i].gone || hidden(cars[i].x, cars[i].z, truck, t.despawnDistance)) cars.splice(i, 1);
+      if (cars[i].gone || (!cars[i].police && hidden(cars[i].x, cars[i].z, truck, t.despawnDistance))) cars.splice(i, 1);
+      else if (cars[i].police) police++;
     }
-    if (cars.length < count) spawn(truck);
+    if (cars.length - police < count) spawn(truck, false);
+    if (police < tables.police.count) spawn(truck, true);
 
     now++;
     for (let i = 0; i < cars.length; i++) corners(cars[i], size, (footprints[i] ??= newBox()));

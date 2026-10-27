@@ -248,6 +248,21 @@ function simOn(grid) {
   return createSim(tables, parseMap(grid, tables));
 }
 
+// Adds a standing AI car (a police car if `police`) that drives through `tiles` ([col, row] neighbours in order)
+// and on from the start of the first, entering it towards the second. Then places it with a step that takes no time.
+function addCar(sim, id, tiles, police = false) {
+  const dir = (a, b) => DIRS.findIndex(([dc, dr]) => b[0] - a[0] === dc && b[1] - a[1] === dr);
+  const dirs = tiles.slice(1).map((t, i) => dir(tiles[i], t));
+  const route = tiles.map(([col, row], i) => ({ col, row, from: dirs[Math.max(0, i - 1)], to: dirs[Math.min(i, dirs.length - 1)] }));
+  const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: 0, police };
+  sim.state.traffic.push(car);
+  sim.step(0, IDLE);
+  return car;
+}
+
+// Tables without police cars of their own: a test adds the ones it needs.
+const noPolice = { ...tables, police: { ...tables.police, count: 0 } };
+
 function tileUnder(grid, sim) {
   const rows = grid.trim().split('\n').map((line) => line.trim());
   return rows[Math.floor(sim.state.truck.z / TILE)][Math.floor(sim.state.truck.x / TILE)];
@@ -1335,9 +1350,12 @@ describe('Sim: traffic lights', () => {
   const money = 500;
   const profile = { ...freshProfile(), money };
 
-  function crossingSim(grid = CROSSING) {
-    return createSim(tables, parseMap(grid, tables), seeded(1), profile);
+  function crossingSim(grid = CROSSING, money = profile.money) {
+    return createSim(noPolice, parseMap(grid, noPolice), seeded(1), { ...profile, money });
   }
+
+  // A police car following the eastbound truck from the west end of the CROSSING's street, where it sees it.
+  const witness = (sim) => addCar(sim, 99, [[0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3]], true);
 
   function placeAt(sim, col, row, heading) {
     Object.assign(sim.state.truck, { x: (col + 0.5) * TILE, z: (row + 0.5) * TILE, heading, speed: 0 });
@@ -1421,10 +1439,12 @@ describe('Sim: traffic lights', () => {
     expect(changes).toBeGreaterThan(2);
   });
 
-  test('crossing the stop line on red fines once', () => {
+  test('crossing the stop line on red fines once, seen by a police car', () => {
     const sim = crossingSim();
     placeAt(sim, 1, 3, EAST);
+    witness(sim);
     expect(lightFor(sim, 1).phase).toBe('red');
+    expect(sim.state.policeSees).toBe(true);
 
     const fines = driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
 
@@ -1471,8 +1491,9 @@ describe('Sim: traffic lights', () => {
   });
 
   test('a fine larger than the money leaves 0 and shows the amount taken', () => {
-    const sim = createSim(tables, parseMap(CROSSING, tables), seeded(1), { ...profile, money: 30 });
+    const sim = crossingSim(CROSSING, 30);
     placeAt(sim, 1, 3, EAST);
+    witness(sim);
 
     driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE);
 
@@ -1496,12 +1517,53 @@ describe('Sim: traffic lights', () => {
     expect(lightFor(sim, 1).phase).toBe('red');
     expect(fines).toBe(0);
 
-    // Now forwards, westbound into the crossing from the east arm while that approach is red.
+    // Now forwards, westbound into the crossing from the east arm while that approach is red, a police car behind.
     timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 5);
     timeUntil(sim, IDLE, () => lightFor(sim, 3).phase === 'red', 60);
+    addCar(sim, 99, [[6, 3], [5, 3], [4, 3], [3, 3], [2, 3], [1, 3], [0, 3]], true);
     timeUntil(sim, GAS, () => (count(), sim.state.truck.x < 2.5 * TILE), 20);
     expect(fines).toBe(1);
     expect(sim.state.lastFine.reason).toBe('redLight');
+  });
+
+  describe('police witnesses (#68)', () => {
+    // A light junction at (3, 2) on a long street, and a parallel street behind a row of buildings. The eastbound
+    // truck runs the junction's red light at 5 m/s from just short of the stop line, so the police cars, standing
+    // when added, hardly move before it.
+    const STREETS = `
+      ###.#######
+      ###.#######
+      ...+.......
+      ###########
+      ...........`;
+    const { laneOffset } = tables.traffic;
+
+    function runRed(police, radius = tables.police.radius) {
+      const t = { ...noPolice, police: { ...noPolice.police, radius } };
+      const sim = createSim(t, parseMap(STREETS, t), seeded(1), profile);
+      Object.assign(sim.state.truck, { x: 3 * TILE - tables.vehicle.length / 2 - 0.5, z: 2.5 * TILE + laneOffset, heading: EAST, speed: 5 });
+      addCar(sim, 99, police, true);
+      expect(lightFor(sim, 1).phase).toBe('red');
+      const sees = sim.state.policeSees;
+      return { sees, fines: driveThrough(sim, () => sim.state.truck.x > 4.5 * TILE), money: sim.state.profile.money };
+    }
+
+    test('in range and in sight: fined', () => {
+      // Behind the truck in its lane, 37.5 m back.
+      expect(runRed([[0, 2], [1, 2], [2, 2], [3, 2], [4, 2]])).toEqual({ sees: true, fines: 1, money: money - tables.fines.redLight });
+    });
+
+    test('out of range: not fined, though it would be with a longer radius', () => {
+      // Coming the other way from the street's east end, 116 m off.
+      const far = [[10, 2], [9, 2], [8, 2], [7, 2], [6, 2]];
+      expect(runRed(far)).toEqual({ sees: false, fines: 0, money });
+      expect(runRed(far, 150)).toMatchObject({ sees: true, fines: 1 });
+    });
+
+    test('behind a building: not fined', () => {
+      // On the parallel street, 32 m off, with the buildings between.
+      expect(runRed([[2, 4], [3, 4], [4, 4], [5, 4]])).toEqual({ sees: false, fines: 0, money });
+    });
   });
 
   test('a signal post is solid: driving onto the pavement corner stops the truck', () => {
@@ -1564,7 +1626,7 @@ describe('Sim: traffic', () => {
     const count = (rankPoints) => {
       const sim = trafficSim(GRID, 1, { ...freshProfile(), rankPoints });
       drive(sim, 1, IDLE);
-      return sim.state.traffic.length;
+      return sim.state.traffic.filter((c) => !c.police).length;
     };
 
     expect(count(0)).toBe(tiers[0].traffic);
@@ -1644,7 +1706,7 @@ describe('Sim: traffic', () => {
       if (t > 30 && t < 30 + DT) Object.assign(sim.state.truck, { x: 1.5 * TILE, z: 1.5 * TILE });
       sim.step(DT, IDLE);
       const { x, z } = sim.state.truck;
-      for (const { id, lane } of sim.state.traffic.filter((c) => !seen.has(c.id))) {
+      for (const { id, lane } of sim.state.traffic.filter((c) => !c.police && !seen.has(c.id))) {
         seen.add(id);
         const away = Math.hypot((lane.col + 0.5) * TILE - x, (lane.row + 0.5) * TILE - z);
         expect(away).toBeGreaterThanOrEqual(near);
@@ -1653,6 +1715,28 @@ describe('Sim: traffic', () => {
       }
     }
     expect(seen.size).toBeGreaterThan(tiers[0].traffic); // some cars left and new ones came
+  });
+
+  test('police cars come on top of the tier\'s, out of view anywhere in the city, and stay when the truck drives off', () => {
+    const sim = trafficSim(GRID, 4);
+    const near = tables.traffic.spawnDistance[0];
+    const { x, z } = sim.state.truck;
+    for (let i = 0; i < 2; i++) {
+      for (const { lane } of sim.state.traffic.filter((c) => c.police)) {
+        expect(Math.hypot((lane.col + 0.5) * TILE - x, (lane.row + 0.5) * TILE - z)).toBeGreaterThanOrEqual(near);
+        expect(lane.col === Math.floor(x / TILE) || lane.row === Math.floor(z / TILE)).toBe(false);
+      }
+      sim.step(DT, IDLE);
+    }
+    const police = sim.state.traffic.filter((c) => c.police);
+    expect(police).toHaveLength(tables.police.count);
+
+    // To the far corner, more than despawnDistance from the other side of the city: the other cars there go.
+    Object.assign(sim.state.truck, { x: 1.5 * TILE, z: 1.5 * TILE });
+    const others = sim.state.traffic.filter((c) => !c.police);
+    drive(sim, 60, IDLE);
+    expect(sim.state.traffic.filter((c) => c.police)).toEqual(police);
+    expect(others.some((c) => !sim.state.traffic.includes(c))).toBe(true);
   });
 
   test('traffic is the same for the same seed', () => {
@@ -1671,7 +1755,7 @@ describe('Sim: right of way and collisions', () => {
   const { stopGap, laneOffset } = tables.traffic;
   const CAR = tables.city.obstacles.car;
   // No cars of their own: each test adds the ones it needs.
-  const quiet = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
+  const quiet = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
   // An unsignalled crossing at (3, 3); the truck is parked out of the way on the lone tile top left.
   const CROSS = `
     .######
@@ -1687,18 +1771,6 @@ describe('Sim: right of way and collisions', () => {
     const sim = createSim(quiet, parseMap(CROSS, quiet), seeded(1), profile);
     Object.assign(sim.state.truck, { x: 0.5 * TILE, z: 0.5 * TILE, heading: SOUTH });
     return sim;
-  }
-
-  // Adds a standing AI car that drives through `tiles` ([col, row] neighbours in order) and on from the
-  // start of the first, entering it towards the second. Then places it with a step that takes no time.
-  function addCar(sim, id, tiles) {
-    const dir = (a, b) => DIRS.findIndex(([dc, dr]) => b[0] - a[0] === dc && b[1] - a[1] === dr);
-    const dirs = tiles.slice(1).map((t, i) => dir(tiles[i], t));
-    const route = tiles.map(([col, row], i) => ({ col, row, from: dirs[Math.max(0, i - 1)], to: dirs[Math.min(i, dirs.length - 1)] }));
-    const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: 0 };
-    sim.state.traffic.push(car);
-    sim.step(0, IDLE);
-    return car;
   }
 
   // Straight through the crossing from two tiles out, by the direction of travel.
@@ -2181,11 +2253,11 @@ describe('Sim: collider broad phase', () => {
 });
 
 describe('Sim: traffic soak', () => {
-  // The city with 40 cars near the truck, over several seeds. The parked truck tours awkward spots, 20 s each so the queues it
-  // causes clear, then random poses anywhere on the road; besides, the truck drives the ?perf&auto loop and
-  // reverses back and forth. A car driving into the truck shows as a car's footprint newly overlapping the
-  // truck's after a step: the truck's own move into a car is undone, so it never leaves them overlapping. Cars
-  // driving into each other show the same way (#43).
+  // The city with 40 cars near the truck, over several seeds. The parked truck tours awkward spots, 40 s each so the
+  // queues it causes clear and (since #68 shifted the random draws) a car comes by each, then random poses anywhere on
+  // the road; besides, the truck drives the ?perf&auto loop and reverses back and forth. A car driving into the truck
+  // shows as a car's footprint newly overlapping the truck's after a step: the truck's own move into a car is undone,
+  // so it never leaves them overlapping. Cars driving into each other show the same way (#43).
   const busy = {
     ...tables,
     rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 40 })) },
@@ -2223,7 +2295,8 @@ describe('Sim: traffic soak', () => {
     let crashes = 0;
     for (let i = 0; i < steps; i++) {
       const k = Math.floor((i * poses.length) / steps);
-      if (poses.length && i === Math.ceil((k * steps) / poses.length)) Object.assign(sim.state.truck, poses[k]);
+      const placed = poses.length > 0 && i === Math.ceil((k * steps) / poses.length);
+      if (placed) Object.assign(sim.state.truck, poses[k]);
       sim.step(DT, input ? input(i) : IDLE);
       const { truck, traffic } = sim.state;
       const now = new Set();
@@ -2235,7 +2308,11 @@ describe('Sim: traffic soak', () => {
           if ((car.x - other.x) ** 2 + (car.z - other.z) ** 2 < CAR.length ** 2 && vehiclesOverlap(car, CAR, other, CAR)) now.add(pair);
         }
       }
-      for (const id of now) if (!touching.has(id)) typeof id === 'number' ? contacts++ : crashes++;
+      for (const id of now) {
+        if (touching.has(id)) continue;
+        if (typeof id !== 'number') crashes++;
+        else if (!placed) contacts++; // a pose can land the truck on a car (#68: a police car, seed 2); no car made that
+      }
       touching = now;
     }
     return { contacts, crashes, near: near.map((n) => n.size) };
@@ -2252,7 +2329,7 @@ describe('Sim: traffic soak', () => {
       return run;
     };
     for (const seed of [1, 2, 3]) {
-      const tour = add(soak(seed, 30 * names.length, null, Object.values(spots)));
+      const tour = add(soak(seed, 40 * names.length, null, Object.values(spots)));
       tour.near.forEach((n, i) => (near[i] += n));
       // Anywhere across a road tile, any heading.
       const random = seeded(seed + 100);

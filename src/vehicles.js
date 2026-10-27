@@ -12,6 +12,7 @@ const SQUARE = 1 / 3; // superellipse exponent of the cross-section: lower is bo
 const MIRROR = 0.085; // m the mirrors reach out past the body
 const BUMPER = 0.055; // m the bumpers and plates stand out past the body's ends, at most
 const DETAIL = { near: { sections: 40, around: 32, rich: true }, far: { sections: 14, around: 12, rich: false } };
+const BAND = { length: 2.6, height: 0.2 }; // m, a police car's lettered side band
 
 // A body type with its profile stretched along x to `length` m, `width` m across the body.
 function fit(c, length, width) {
@@ -99,9 +100,9 @@ function loftBody(c, nx, nr, mirrors) {
   return geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
 }
 
-// A part of the details mesh in one colour; `plate` maps its faces onto the plate half of the detail atlas, else
-// they sample its plain white half. `headlight` marks the faces a lights-on look can make glow.
-function detail(geometry, colour, { plate = false, headlight = false } = {}) {
+// A part of the details mesh in one colour; `plate` maps its faces onto the detail atlas' number plate, `band` onto
+// its police band, else they sample its plain white. `headlight` marks the faces a lights-on look can make glow.
+function detail(geometry, colour, { plate = false, band = false, headlight = false } = {}) {
   const g = geometry.toNonIndexed();
   const n = g.getAttribute('position').count;
   const c = new THREE.Color(colour);
@@ -110,11 +111,16 @@ function detail(geometry, colour, { plate = false, headlight = false } = {}) {
   g.setAttribute('color', new THREE.BufferAttribute(colours, 3));
   g.setAttribute('headlight', new THREE.BufferAttribute(new Float32Array(n).fill(headlight ? 1 : 0), 1));
   const uv = g.getAttribute('uv');
-  for (let i = 0; i < n; i++) uv.setXY(i, plate ? uv.getX(i) * 0.5 : 0.75, plate ? uv.getY(i) : 0.5);
+  for (let i = 0; i < n; i++) {
+    if (plate) uv.setXY(i, uv.getX(i) * 0.5, 0.5 + uv.getY(i) * 0.5);
+    else if (band) uv.setXY(i, uv.getX(i), uv.getY(i) * 0.5);
+    else uv.setXY(i, 0.75, 0.75);
+  }
   return g;
 }
 
-function carDetails(c, rich) {
+// `police` ({ lightBar }) adds a police car's parts: an unlit bar across the roof and a lettered band on each side.
+function carDetails(c, rich, police) {
   const front = (y) => cross(c.body, y, 1)[1];
   const rear = (y) => cross(c.body, y, 1)[0];
   const W = c.width;
@@ -140,18 +146,32 @@ function carDetails(c, rich) {
     parts.push(detail(new THREE.BoxGeometry(0.02, 0.11, 0.52).rotateY(Math.PI).translate(rear(0.45) - 0.045, 0.45, 0), '#ffffff', { plate: true }));
     parts.push(detail(new THREE.BoxGeometry(0.03, 0.12, W * 0.42).translate(front(0.6) - 0.01, 0.6, 0), '#1c1c1c')); // grille
   }
+  if (police) {
+    const roofX = c.pillar ?? c.length / 2;
+    const roof = cross(c.body, roofX, 0)[1];
+    parts.push(detail(new THREE.BoxGeometry(0.28, 0.08, W * 0.5).translate(roofX, roof + 0.04, 0), police.lightBar));
+    // Mid-height, where the boxy cross-section is widest, so the flat band lies close along the side.
+    const [yb, yt] = cross(c.body, c.length / 2, 0);
+    for (const side of [-1, 1]) {
+      const band = new THREE.BoxGeometry(BAND.length, BAND.height, 0.02).translate(c.length / 2, (yb + yt) / 2, side * (halfWidth(c, c.length / 2) + 0.01));
+      parts.push(detail(band, '#ffffff', { band: true }));
+    }
+    // And across the rear, half the size, so it shows in the chase view; turned like the rear plate to read upright.
+    const back = new THREE.BoxGeometry(0.02, BAND.height / 2, BAND.length / 2).rotateY(Math.PI).translate(rear(0.65) - 0.02, 0.65, 0);
+    parts.push(detail(back, '#ffffff', { band: true }));
+  }
   return mergeGeometries(parts);
 }
 
 // Per body type: { near: { body, details }, far: { body, details } } in the footprint { length, width }, and the
-// fitted type the skin is painted from.
-export function carGeometries(types, footprint) {
+// fitted type the skin is painted from. `police` ({ lightBar }) gives them a police car's parts.
+export function carGeometries(types, footprint, police = null) {
   return Object.fromEntries(
     Object.entries(types).map(([type, raw]) => {
       const c = fit(raw, footprint.length - 2 * BUMPER, footprint.width - 2 * MIRROR);
       // Built with the length along +x from the rear; turned so the front is +z, as the Sim's heading 0 points.
       const place = (g) => g.translate(-c.length / 2, 0, 0).rotateY(-Math.PI / 2);
-      const lod = ({ sections, around, rich }) => ({ body: place(loftBody(c, sections, around, rich)), details: place(carDetails(c, rich)) });
+      const lod = ({ sections, around, rich }) => ({ body: place(loftBody(c, sections, around, rich)), details: place(carDetails(c, rich, police)) });
       return [type, { fitted: c, near: lod(DETAIL.near), far: lod(DETAIL.far) }];
     }),
   );
@@ -213,11 +233,25 @@ export function skinTexture(c) {
   return t;
 }
 
-// A made-up number plate in the left half of the details atlas, plain white in the right half.
-export function detailAtlas() {
+// The details atlas: a made-up number plate top left, plain white top right, and below them a police car's side
+// band (`police`: { text, band, lettering }, colours as numbers), its lettering drawn to read upright on BAND.
+export function detailAtlas(police) {
   const canvas = document.createElement('canvas');
-  [canvas.width, canvas.height] = [256, 64];
+  [canvas.width, canvas.height] = [512, 256];
   const g = canvas.getContext('2d');
+  const hex = (colour) => `#${colour.toString(16).padStart(6, '0')}`;
+  g.fillStyle = hex(police.band);
+  g.fillRect(0, 128, 512, 128);
+  g.save();
+  g.fillStyle = hex(police.lettering);
+  g.font = 'bold 100px sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.translate(256, 196);
+  g.scale(512 / BAND.length / (128 / BAND.height), 1); // the band is far longer than the atlas strip is wide
+  g.fillText(police.text, 0, 0);
+  g.restore();
+  g.scale(2, 2); // the plate half, drawn at 256 × 64
   g.fillStyle = '#ffffff';
   g.fillRect(0, 0, 256, 64);
   g.fillStyle = '#f4f4f0';

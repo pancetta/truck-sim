@@ -13,6 +13,7 @@ import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets } from './streets.js';
 import { planSkyline, skylineMeshes, paintSkylineWindows } from './skyline.js';
 import assetInfo from './assetInfo.json';
+import { strings } from './strings.js';
 
 // CC0 kit models in public/models/, sky, ground and building textures in public/textures/ (see CREDITS.md); the textures are
 // KTX2 from `npm run assets`, transcoded by three's Basis transcoder in public/basis/.
@@ -309,7 +310,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Cars, for the parked ones and the AI cars alike: per kind, instanced meshes for the near and for the far detail
   // level, with room for every parked car and the busiest rank tier. The generated body types come first, each a
   // painted body (the instance colour is the paint) and a details mesh; then the covered car, its glTF's meshes,
-  // which load after the first frame and stay empty until then.
+  // which load after the first frame and stay empty until then; then the police cars.
   const carRoom = parked.length + Math.max(...tables.rank.tiers.map((t) => t.traffic));
   const carMeshes = []; // all of them, for drawCars
   // Whether drawCars leaves the empty meshes visible for a frame: three sets up a mesh's shaders and textures, for
@@ -327,9 +328,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return mesh;
   };
   const generated = carGeometries(tables.vehicles.types, city.obstacles.car);
-  const detailMaterial = new THREE.MeshStandardMaterial({ map: detailAtlas(), vertexColors: true, roughness: 0.45, metalness: 0.1 });
-  const carKinds = carTypes.map((type) => {
-    const { fitted, near, far } = generated[type];
+  const { police } = tables;
+  const detailMaterial = new THREE.MeshStandardMaterial({ map: detailAtlas({ ...police, text: strings.policeLettering }), vertexColors: true, roughness: 0.45, metalness: 0.1 });
+  const carKind = ({ fitted, near, far }) => {
     const paint = new THREE.MeshStandardMaterial({ map: skinTexture(fitted), roughness: 0.35, metalness: 0.5 });
     const lod = ({ body, details }, shadow) => {
       const bodyMesh = carMesh(body, paint, shadow);
@@ -337,9 +338,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
       return [bodyMesh, carMesh(details, detailMaterial, shadow)];
     };
     return { near: lod(near, true), far: lod(far, false), painted: true };
-  });
+  };
+  const carKinds = carTypes.map((type) => carKind(generated[type]));
   const coveredCar = { near: [], far: [], painted: false };
   carKinds.push(coveredCar);
+  // The police cars' kind, last: their body type with the livery parts, in their own paint.
+  carKinds.push(carKind(carGeometries({ police: tables.vehicles.types[police.body] }, city.obstacles.car, police).police));
+  const policePaint = new THREE.Color(police.paint);
   // The box every car fits, for culling: the footprint, as tall as the tallest body type (the van).
   const carSize = new THREE.Vector3(city.obstacles.car.width, Math.max(...Object.values(generated).map((g) => g.fitted.height)), city.obstacles.car.length);
 
@@ -803,13 +808,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const inView = (sphere) => frustum.intersectsSphere(sphere) || (rearTime > 0 && rearFrustum.intersectsSphere(sphere));
   // Only the cars in view, or in the inset's while it shows, are drawn, in full detail within vehicles.near of the
   // truck: from the chase camera, camera.chaseDistance back, the car just ahead of the truck would lose its lights and plate.
-  // An AI car's id picks its body type and paint.
+  // An AI car's id picks its body type and paint; a police car is the police kind.
   function drawCars(cars, rear) {
     frustumOf(camera, frustum);
     if (rear) frustumOf(rearCamera, rearFrustum);
     for (const mesh of carMeshes) mesh.count = 0;
     for (const car of parked) drawCar(car.kind, car.x, car.z, car.heading, car.paint, rear);
-    for (const car of cars) drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
+    for (const car of cars) {
+      if (car.police) drawCar(carKinds.length - 1, car.x, car.z, car.heading, policePaint, rear);
+      else drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
+    }
     for (const mesh of carMeshes) {
       mesh.visible = warmCars || mesh.count > 0;
       // Only the instances in use go up to the GPU.

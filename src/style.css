@@ -451,6 +451,35 @@ body:has(.rear-inset:not([hidden])) .goal {
   transform-origin: left;
 }
 
+/* Police sign, above the dashboard while a police car sees the truck (rule fines apply). */
+.dash-police {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: #1d4f91;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dash-police[hidden] {
+  display: none;
+}
+
+.dash-police svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
 /* Werkstatt: button under the orders button; the open panel is modal over the paused game. */
 .werkstatt-toggle {
   position: fixed;
