@@ -14,8 +14,9 @@
 //   Props: the furniture's trees, bollards, fountains and waste baskets, solid (kinds
 //     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
 //   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
-//   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay; `start`
-//     is the start spot's kerb lane pose, where a new game begins.
+//   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay, and its
+//     kerb `lane` pose; a petrol station (tables.osm.stations) has its pump island (`pumps`, solid, kind 'station') on
+//     the pavement beside its zone. `start` is the start spot's kerb lane pose, where a new game begins.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
@@ -259,8 +260,16 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     const centre = bay ? { x: bay.x + (f[0] * tables.vehicle.length) / 2, z: bay.z + (f[1] * tables.vehicle.length) / 2 } : kerb;
     const r = o.zone / 2;
     const zone = { minX: centre.x - r, maxX: centre.x + r, minZ: centre.z - r, maxZ: centre.z + r };
-    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), zone, pose: graph.nearest(centre.x, centre.z), bay });
-    if (t.id === o.start) start = { ...kerb, heading };
+    // A petrol station's pump island (solid): on the middle of the pavement beside its zone, heading along the road with
+    // the road on its left.
+    const station = o.stations.includes(t.id);
+    const out = e.width / 2 + o.pavement / 2;
+    const pumps = station ? { x: near.x - u[1] * side * out, z: near.z + u[0] * side * out, heading: Math.atan2(u[0] * side, u[1] * side) } : null;
+    const { island } = tables.station;
+    if (pumps) colliders.push({ kind: 'station', ...outline(rect(pumps, [u[0] * side, u[1] * side], island[0] / 2, island[1] / 2)) });
+    const kerbLane = { ...kerb, heading };
+    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps });
+    if (t.id === o.start) start = kerbLane;
   }
   colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.

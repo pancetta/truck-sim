@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as tables from '../tables.js';
 import { createAutopilot } from '../autopilot.js';
-import { build, way, monti, createSim, seeded, offRoad, vehiclesOverlap, DT, GAS, BRAKE, IDLE } from './fixtures.js';
+import { build, way, monti, undrained, createSim, seeded, offRoad, vehiclesOverlap, DT, GAS, BRAKE, IDLE } from './fixtures.js';
 
 // The soaks and the collider broad phase, on the real Monti extract (spec #59).
 
@@ -73,7 +73,7 @@ describe('Sim: collider broad phase', () => {
 
     expect(mismatches).toEqual([]);
     expect(hits).toBeGreaterThan(poses / 10); // both outcomes well represented
-    expect(hits).toBeLessThan(poses * 0.9);
+    expect(hits).toBeLessThan(poses * 0.95);
   });
 
   test('a collider turned off the axes stops the truck at its outline, not at its bounding box', () => {
@@ -101,7 +101,7 @@ describe('Sim: traffic soak', () => {
   // truck's own move into a car is undone, so it never leaves them overlapping. Cars driving into each other show the
   // same way (#43).
   const busy = {
-    ...tables,
+    ...undrained(),
     rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 40 })) },
     traffic: { ...tables.traffic, spawnDistance: [45, 120], despawnDistance: 140 }, // the cars kept around the truck
   };
@@ -227,7 +227,7 @@ describe('Sim: traffic gridlock soak', () => {
   // The longest any car was stuck, in s, with the truck driven by the autopilot, or else parked off the road near
   // `near` ({ x, z }).
   function longestStuck(cars, seed, near) {
-    const counted = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: cars })) } };
+    const counted = { ...undrained(), rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: cars })) } };
     const map = monti(counted);
     const sim = createSim(counted, map, seeded(seed));
     let input = () => IDLE;

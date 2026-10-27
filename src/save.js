@@ -21,7 +21,7 @@ export function createSave(storage, tables) {
 
   function validate(data) {
     // Migrations first, then the checks for the current version; any other starts fresh (v1 and v2 were the grid
-    // city's, #67). v3 → v4 (#48) adds a full tank, a rested driver, the clock at its start and no time played.
+    // city's, #67). Fuel over the tank is cut back to a full one. v3 → v4 (#48) adds a full tank, a rested driver, the clock at its start and no time played.
     const fresh = freshProfile();
     if (isObject(data) && data.version === 3) {
       const { fuel, energy, timeOfDay, timePlayed } = fresh;
@@ -48,7 +48,7 @@ export function createSave(storage, tables) {
       upgrades: Object.fromEntries(levels),
       owned: kept,
       equipped: Object.fromEntries(worn),
-      fuel,
+      fuel: Math.min(fuel, tables.fuel.tank),
       energy,
       timeOfDay,
       timePlayed,

@@ -12,15 +12,17 @@ const DASH = { top: 1.5, back: 2.155, front: 2.9, side: 1.17 };
 // fill the top of the view.
 const ROOF = 2.4;
 const SCREEN = { top: 2.85, sill: 1.65 }; // windscreen z under the roof (it meets the dash's front); door sill height
-// The cluster rises from the dash, facing the driver's eye, above the wheel's rim. The dash beside it is free for the
-// fuel and energy gauges (#49, #50). Between the dials: the gear, and under it a display with the total distance, the
-// clock and the time played, its foot just clear of the wheel's rim (the rim hides the strip under the dials).
+// The cluster rises from the dash, facing the driver's eye, above the wheel's rim. Between the dials: the gear, and under
+// it a display with the total distance, the clock and the time played, its foot just clear of the wheel's rim (the rim
+// hides the strip under the dials). The small fuel dial is right of the RPM dial (`fuel`: its radius and x); the dash
+// left of the speedometer is free for the energy gauge (#50).
 const CLUSTER = {
   centre: [0.55, 1.59, 2.36],
-  width: 0.44,
+  width: 0.54,
   height: 0.16,
   dial: 0.068,
   dialX: 0.13,
+  fuel: { dial: 0.042, x: 0.22 },
   gear: { size: [0.05, 0.034], y: 0.05 },
   info: { size: [0.11, 0.056], y: -0.002 },
 };
@@ -32,9 +34,9 @@ export function dialAngle(value, max, sweep) {
   return sweep / 2 - THREE.MathUtils.clamp(value / max, 0, 1) * sweep;
 }
 
-// One dial at (x, y) canvas px, radius r px: ticks every `minor`, numbers every `major` (shown divided by `unit`),
-// red from `redFrom` to the end, and the unit label under the centre.
-function drawDial(ctx, x, y, r, { max, major, minor, unit = 1, redFrom = Infinity, label }, sweep) {
+// One dial at (x, y) canvas px, radius r px: ticks every `minor`, numbers every `major` (shown divided by `unit`, or as
+// `text` gives them), red from red[0] to red[1] if given, and the unit label under the centre.
+function drawDial(ctx, x, y, r, { max, major, minor, unit = 1, text = (v) => String(v / unit), red, label }, sweep) {
   const point = (value, radius) => {
     const a = dialAngle(value, max, sweep);
     return [x - Math.sin(a) * radius, y - Math.cos(a) * radius];
@@ -43,12 +45,12 @@ function drawDial(ctx, x, y, r, { max, major, minor, unit = 1, redFrom = Infinit
   ctx.beginPath();
   ctx.arc(x, y, r, 0, 2 * Math.PI);
   ctx.fill();
-  if (redFrom < max) {
+  if (red) {
     // Canvas angles run clockwise from +x; a needle turn a points at -π/2 - a.
     ctx.strokeStyle = '#d1495b';
     ctx.lineWidth = r * 0.07;
     ctx.beginPath();
-    ctx.arc(x, y, r * 0.86, -Math.PI / 2 - dialAngle(redFrom, max, sweep), -Math.PI / 2 - dialAngle(max, max, sweep));
+    ctx.arc(x, y, r * 0.86, -Math.PI / 2 - dialAngle(red[0], max, sweep), -Math.PI / 2 - dialAngle(red[1], max, sweep));
     ctx.stroke();
   }
   ctx.strokeStyle = ctx.fillStyle = '#f2f2f2';
@@ -62,7 +64,7 @@ function drawDial(ctx, x, y, r, { max, major, minor, unit = 1, redFrom = Infinit
     ctx.moveTo(...point(v, r * 0.92));
     ctx.lineTo(...point(v, isMajor ? r * 0.76 : r * 0.83));
     ctx.stroke();
-    if (isMajor) ctx.fillText(String(v / unit), ...point(v, r * 0.6));
+    if (isMajor) ctx.fillText(text(v), ...point(v, r * 0.6));
   }
   ctx.font = `${Math.round(r * 0.13)}px system-ui, sans-serif`;
   ctx.fillText(label, x, y + r * 0.45);
@@ -83,7 +85,7 @@ function strut(a, b, w, d) {
 // The interior group, and update() to set the wheel turn (degrees, positive clockwise from the seat) and the
 // instruments from the Sim's state.
 export function createCab(tables, strings) {
-  const { palette, camera, vehicle, cab } = tables;
+  const { palette, camera, vehicle, cab, fuel } = tables;
   const sweep = THREE.MathUtils.degToRad(cab.sweep);
   const rpmMax = vehicle.torqueCurve.at(-1)[0];
   const dash = material(palette.dashboard, 0.75);
@@ -126,11 +128,13 @@ export function createCab(tables, strings) {
   const ctx = face.getContext('2d');
   ctx.fillStyle = '#16181d';
   ctx.fillRect(0, 0, face.width, face.height);
+  // The fuel dial in quarters of the tank, marked empty, half and full, red below tables.fuel.low.
   const dials = [
-    { x: -dialX, max: cab.speedMax, major: 20, minor: 10, label: strings.kmh },
-    { x: dialX, max: rpmMax, major: 500, minor: 100, unit: 100, redFrom: vehicle.upshiftRpm, label: strings.rpmScale },
+    { x: -dialX, r: dial, max: cab.speedMax, major: 20, minor: 10, label: strings.kmh },
+    { x: dialX, r: dial, max: rpmMax, major: 500, minor: 100, unit: 100, red: [vehicle.upshiftRpm, rpmMax], label: strings.rpmScale },
+    { x: CLUSTER.fuel.x, r: CLUSTER.fuel.dial, max: 4, major: 2, minor: 1, text: (v) => ['0', '½', '1'][v / 2], red: [0, 4 * fuel.low], label: strings.fuel },
   ];
-  for (const d of dials) drawDial(ctx, (width / 2 + d.x) * PX, face.height / 2, dial * PX, d, sweep);
+  for (const d of dials) drawDial(ctx, (width / 2 + d.x) * PX, face.height / 2, d.r * PX, d, sweep);
   // Lit from behind: brighter than white, so they read as lit after tone mapping.
   const backlit = (map, hex = 0xffffff) => new THREE.MeshBasicMaterial({ map, color: new THREE.Color(hex).multiplyScalar(cab.backlight) });
   const faceTexture = Object.assign(new THREE.CanvasTexture(face), { colorSpace: THREE.SRGBColorSpace, anisotropy: 4 });
@@ -150,7 +154,7 @@ export function createCab(tables, strings) {
     ),
     new THREE.Mesh(
       mergeGeometries([
-        ...dials.map((d) => new THREE.TorusGeometry(dial, 0.005, 6, 40).translate(d.x, 0, 0.002)),
+        ...dials.map((d) => new THREE.TorusGeometry(d.r, 0.005, 6, 40).translate(d.x, 0, 0.002)),
         ...dials.map((d) => new THREE.CylinderGeometry(0.008, 0.008, 0.008, 12).rotateX(Math.PI / 2).translate(d.x, 0, 0.006)),
       ]),
       material(palette.chrome, 0.3),
@@ -158,7 +162,7 @@ export function createCab(tables, strings) {
   );
   const needleMaterial = backlit(null, palette.needle);
   const needles = dials.map((d) => {
-    const needle = new THREE.Mesh(new THREE.BoxGeometry(0.005, dial * 0.95, 0.002).translate(0, dial * 0.35, 0), needleMaterial);
+    const needle = new THREE.Mesh(new THREE.BoxGeometry(0.005, d.r * 0.95, 0.002).translate(0, d.r * 0.35, 0), needleMaterial);
     needle.position.set(d.x, 0, 0.003);
     cluster.add(needle);
     return needle;
@@ -227,6 +231,7 @@ export function createCab(tables, strings) {
     wheel.rotation.z = THREE.MathUtils.degToRad(wheelTurn);
     needles[0].rotation.z = dialAngle(Math.abs(speed) * 3.6, cab.speedMax, sweep);
     needles[1].rotation.z = dialAngle(rpm, rpmMax, sweep);
+    needles[2].rotation.z = dialAngle((profile.fuel / fuel.tank) * 4, 4, sweep);
     if (gear !== shownGear) showGear([String((shownGear = gear))], CLUSTER.gear.size[1] * 0.8);
     // Whole km and minutes, so it redraws about once a game minute (a real second), not every frame.
     const info = [Math.floor(profile.distance / 1000), Math.floor(profile.timeOfDay), Math.floor(profile.timePlayed / 60)];

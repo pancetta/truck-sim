@@ -1,5 +1,6 @@
-// Money counter, orders button and panel, goal banner, load/unload progress bar, payment and fine notices.
-// Reads Sim state each frame; changes it only through the Sim's order commands.
+// Money counter, orders button and panel, goal banner, load/unload and service progress bar, a petrol station's service
+// buttons, payment, fine and tow notices. Reads Sim state each frame; changes it only through the Sim's order and
+// service commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
     <div class="money" aria-label="${strings.money}"></div>
@@ -7,12 +8,14 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="notices"><div class="paid" hidden></div><div class="paid fined" hidden></div></div>`;
+    <div class="notices"><div class="services"></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
   const paid = root.querySelector('.paid');
   const fined = root.querySelector('.fined');
+  const towed = root.querySelector('.towed');
+  const services = root.querySelector('.services');
   const goal = root.querySelector('.goal');
   const [arrow, goalText, hint, damage] = goal.children;
   const [damageText, meter] = damage.children;
@@ -33,6 +36,8 @@ export function createOrders(root, sim, map, tables, strings) {
   money.textContent = eur(lastMoney);
   let lastPayment = sim.state.lastPayment;
   let lastFine = sim.state.lastFine;
+  let lastTow = sim.state.lastTow;
+  let shownServices = null;
   const timers = new Map();
   // Writes to the DOM only when a shown value changes, not every frame. It compares with what it last wrote,
   // since style properties read back normalised (a colour as rgb()).
@@ -53,7 +58,7 @@ export function createOrders(root, sim, map, tables, strings) {
   // Hides the notices at once: the Werkstatt panel opening over them would cover them (#orders is a stacking
   // context of its own, under the Werkstatt).
   function dismissNotices() {
-    for (const el of [paid, fined]) {
+    for (const el of [paid, fined, towed]) {
       if (el.hidden) continue;
       clearTimeout(timers.get(el));
       el.hidden = true;
@@ -63,6 +68,11 @@ export function createOrders(root, sim, map, tables, strings) {
   root.querySelector('.orders-toggle').addEventListener('click', () => {
     panel.hidden = !panel.hidden;
     shown = null;
+  });
+  services.addEventListener('click', (e) => {
+    const id = e.target.closest('[data-service]')?.dataset.service;
+    const result = id && sim.buyService(id);
+    if (result && !result.ok) notify(towed, strings.refusals[result.reason]);
   });
   panel.addEventListener('click', (e) => {
     const id = e.target.closest('[data-offer]')?.dataset.offer;
@@ -83,7 +93,7 @@ export function createOrders(root, sim, map, tables, strings) {
     return [t.x - truck.x, t.z - truck.z];
   }
 
-  function update({ profile, lastPayment: payment, lastFine: fine, order, offers, progress: p, truck, route }) {
+  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, serviceOffer, service, order, offers, progress: p, truck, route }) {
     if (profile.money !== lastMoney) {
       lastMoney = profile.money;
       money.textContent = eur(lastMoney);
@@ -100,10 +110,23 @@ export function createOrders(root, sim, map, tables, strings) {
       notify(fined, `${strings.fine}: ${strings[fine.reason]} −${eur(fine.amount)}`);
     }
 
-    set(progress, 'hidden', p === 0);
-    if (p > 0) {
-      set(progress.firstChild, 'textContent', order.phase === 'pickup' ? strings.loading : strings.unloading);
-      set(progress.lastChild.style, 'transform', `scaleX(${p})`);
+    if (tow !== lastTow) {
+      lastTow = tow;
+      notify(towed, `${strings.towed} ${tow.station ? place(tow.station) : ''} −${eur(tow.fee)}`);
+    }
+
+    if (serviceOffer !== shownServices) {
+      shownServices = serviceOffer;
+      services.innerHTML = serviceOffer
+        .map((s) => `<button type="button" data-service="${s.id}">${strings.services[s.id]} · ${eur(s.price)}</button>`)
+        .join('');
+    }
+
+    const share = service ? service.progress : p;
+    set(progress, 'hidden', share === 0);
+    if (share > 0) {
+      set(progress.firstChild, 'textContent', service ? strings.refuelling : order.phase === 'pickup' ? strings.loading : strings.unloading);
+      set(progress.lastChild.style, 'transform', `scaleX(${share})`);
     }
 
     // Where to go: an arrow along the route to its next corner (or the active zone), turned by the truck's

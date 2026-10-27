@@ -50,6 +50,8 @@ export const strings = {
     unknown: 'Unbekannter Artikel',
     owned: 'Schon gekauft',
     notOwned: 'Noch nicht gekauft',
+    moving: 'Erst anhalten', // buyService()
+    busy: 'Läuft schon',
   },
   technik: 'Technik',
   looks: 'Aussehen',
@@ -90,5 +92,10 @@ export const strings = {
   policeLettering: 'POLIZEI', // on the police cars' sides
   speedLimit: 'Höchstgeschwindigkeit', // HUD, the sign with state.speedLimit
   street: 'Straße', // HUD, the name of the street the truck is on (state.street)
+  fuel: 'Tank', // the fuel gauge, in the HUD and the cab
+  fuelLow: 'Tank fast leer', // HUD, below tables.fuel.low
+  services: { fuel: 'Tanken' }, // what a petrol station sells (state.serviceOffer), on its buttons
+  refuelling: 'Wird getankt…',
+  towed: 'Tank leer, abgeschleppt zu', // the tow notice, then the station and the fee
   rules: { light: 'Ampel', rightBeforeLeft: 'Rechts vor links', priority: 'Vorfahrtstraße', giveWay: 'Vorfahrt achten' }, // HUD, the next junction's rule (state.junctionRule)
 };

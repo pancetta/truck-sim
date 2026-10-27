@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as tables from './tables.js';
 import { createSim } from './sim/sim.js';
-import { monti } from './sim/fixtures.js';
+import { monti, undrained } from './sim/fixtures.js';
 import { createAutopilot, seeded } from './autopilot.js';
 
 const map = monti(tables);
@@ -86,7 +86,7 @@ describe('the autopilot into the docks', () => {
 });
 
 test('the autopilot drives the loop (tables.perf.spots) among its traffic, hardly ever into an AI car', () => {
-  const sim = createSim(tables, map, seeded(tables.perf.seed));
+  const sim = createSim(undrained(), map, seeded(tables.perf.seed));
   const autopilot = createAutopilot(sim, map, tables);
   autopilot.place();
   const zones = tables.perf.spots.map((id) => map.spots.find((s) => s.id === id).zone);

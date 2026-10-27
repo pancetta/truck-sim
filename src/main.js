@@ -41,7 +41,9 @@ try {
   // storage blocked (e.g. cookies off): the save module then plays unsaved
 }
 const save = createSave(auto ? null : storage, tables);
-const sim = createSim(tables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
+// The autopilot's drive never runs dry, so a tow never breaks the loop.
+const simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0 } } : tables;
+const sim = createSim(simTables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
 const blend = createBlend();
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
@@ -94,7 +96,9 @@ function frame(now) {
   if (werkstatt.open) orders.dismissNotices();
   while (pending >= step) {
     blend.remember(sim.state);
+    const tow = sim.state.lastTow;
     sim.step(step, input);
+    if (sim.state.lastTow !== tow) blend.remember(sim.state); // the tow moves the truck at once, as a reset does
     pending -= step;
   }
   // Drawn between the last two steps, by the time left over, so the motion is even whatever steps this frame had.

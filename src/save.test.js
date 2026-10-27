@@ -103,6 +103,10 @@ describe('save module', () => {
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 
+  test('fuel over the tank is cut back to a full tank', () => {
+    expect(stored({ ...valid, fuel: baseTables.fuel.tank + 50 })).toEqual({ ...valid, fuel: baseTables.fuel.tank });
+  });
+
   test('unknown ids are dropped, and so is an equipped item not owned or in the wrong slot', () => {
     const profile = stored({
       ...valid,

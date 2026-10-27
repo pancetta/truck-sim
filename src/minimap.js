@@ -1,4 +1,5 @@
-// Minimap: the whole city from above, north up, with the spots, the truck and the Sim's current route. Reads Sim state
+// Minimap: the whole city from above, north up, with the spots (petrol stations with a pump), the truck and the Sim's
+// current route. Reads Sim state
 // each frame but redraws only at tables.minimap.rate; never writes to it. The roads are the graph's edges at their
 // widths, with the main streets (tables.osm.lightClasses) named. Sizes are in units of tables.minimap.unit m.
 export function createMinimap(canvas, map, tables) {
@@ -33,8 +34,8 @@ export function createMinimap(canvas, map, tables) {
       bctx.stroke();
     }
     nameStreets();
-    bctx.fillStyle = hex(palette.spot);
     for (const s of map.spots) {
+      bctx.fillStyle = hex(palette[s.station ? 'station' : 'spot']);
       bctx.beginPath();
       bctx.arc(...zoneCentre(s), spotRadius * scale, 0, 2 * Math.PI);
       bctx.fill();
@@ -49,11 +50,29 @@ export function createMinimap(canvas, map, tables) {
     lctx.fillStyle = hex(palette.light);
     for (const s of map.spots) {
       const [x, y] = zoneCentre(s);
+      if (s.station) {
+        pump(x, y);
+        continue;
+      }
       lctx.strokeText(s.id, x, y + 0.1 * scale);
       lctx.fillText(s.id, x, y + 0.1 * scale);
     }
     ctx.lineJoin = 'round'; // resizing resets the context; the truck marker's outline needs it without a route too
     drawn = -Infinity; // resizing clears the canvas, so the next update redraws
+  }
+  // A petrol pump centred on (x, y) canvas px, outlined as the letters are: its body with a window, and the hose.
+  function pump(x, y) {
+    const u = scale * 0.5; // a pump 2.4 units tall
+    lctx.strokeRect(x - 1.4 * u, y - 2.4 * u, 2 * u, 4.4 * u);
+    lctx.fillRect(x - 1.4 * u, y - 2.4 * u, 2 * u, 4.4 * u);
+    lctx.fillStyle = hex(palette.station);
+    lctx.fillRect(x - 1 * u, y - 1.9 * u, 1.2 * u, 1.2 * u);
+    lctx.fillStyle = hex(palette.light);
+    lctx.beginPath();
+    lctx.moveTo(x + 0.6 * u, y - 1.2 * u);
+    lctx.lineTo(x + 1.6 * u, y - 0.4 * u);
+    lctx.lineTo(x + 1.6 * u, y + 1.6 * u);
+    lctx.stroke();
   }
   const zoneCentre = ({ zone }) => at((zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2);
 

@@ -253,6 +253,38 @@ body:has(.rear-inset:not([hidden])) .goal {
   right: 0;
 }
 
+/* Fuel gauge (profile.fuel of the tank), red below tables.fuel.low. */
+.dash-fuel {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.dash-fuel small {
+  opacity: 0.7;
+}
+
+.dash-fuel div {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.15);
+}
+
+.dash-fuel i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #6cc551;
+  transform-origin: left;
+}
+
+.dash-fuel i.low {
+  background: #d1495b;
+}
+
 /* Orders: money and the orders button top left, panel top centre, notices centred below it. */
 #orders {
   position: fixed;
@@ -502,7 +534,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 }
 
 .dash-rule,
-.dash-police {
+.dash-police,
+.dash-fuel-low {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -530,12 +563,17 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 .dash-street[hidden],
 .dash-rule[hidden],
-.dash-police[hidden] {
+.dash-police[hidden],
+.dash-fuel-low[hidden] {
   display: none;
 }
 
 .dash-rule {
   background: rgb(40 40 48 / 0.85);
+}
+
+.dash-fuel-low {
+  background: #d1495b;
 }
 
 .dash-rule svg {
@@ -702,6 +740,28 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 .fined {
   color: #ff6b5e;
+}
+
+.towed {
+  color: #fff;
+}
+
+/* A petrol station's services, while the truck stands in its zone, as buttons over the notices. */
+.services {
+  display: flex;
+  gap: 8px;
+}
+
+.services button {
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 14px;
+  background: #2f8f5b;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 /* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals.

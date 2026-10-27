@@ -157,8 +157,36 @@ export const fines = {
 // starts at `start`.
 export const clock = { minutesPerSecond: 1, start: 8 * 60 };
 
-// The fuel tank (profile.fuel, litres); a new profile starts full. It doesn't drain yet (#49).
-export const fuel = { tank: 400 };
+// The fuel tank (profile.fuel, litres); a new profile starts full. A full tank lasts about 4–5 average deliveries (one
+// is about 1.7 km of driving on Monti, to the pickup and on).
+export const fuel = {
+  tank: 400,
+  // Litres per km driven, times (1 + perTonne × tonnes of cargo) and (1 + perPedal × the driving pedal, 0..1); a test
+  // that drives far with the real tables sets perKm to 0, so the tank never empties.
+  perKm: 40,
+  perTonne: 0.02,
+  perPedal: 0.5,
+  low: 0.15, // share of the tank below which the HUD warns
+  price: 1, // € per litre at a petrol station
+  fillTime: 6, // s standing still in a petrol station's zone to fill up
+  // Out of fuel, a tow takes the truck to the petrol station nearest by road: `towFee` € (money never drops below 0),
+  // the clock on by `towTime` game minutes, and `emergency` litres in the tank, about one delivery's worth.
+  towFee: 250,
+  towTime: 60,
+  emergency: 100,
+};
+
+// A petrol station's look (renderer.js), our own: a pump island on the pavement beside its zone, as long as `island`
+// [length, width, height] m, with `pumps` pumps [width, depth, height] on it, and a flat canopy on two posts over the
+// pavement, `canopy` m up, reaching `reach` m out over the road's edge.
+export const station = {
+  island: [8, 0.9, 0.25],
+  pumps: 2,
+  pump: [0.7, 0.45, 1.7],
+  canopy: 4.6,
+  reach: 1.1,
+  roof: 0.4, // m thick, the canopy's coloured fascia
+};
 
 // km/h before the truck is on a road edge (each edge has its road class's limit, tables.osm): the speedometer turns red
 // above it.
@@ -305,8 +333,13 @@ export const osm = {
     { id: 'K', name: 'Bottega del Rame', street: 'Via Cimarra', way: 202737280, at: 159, side: 'right' },
     { id: 'L', name: 'Tessuti Arcobaleno', street: 'Via Caprareccia', way: 113687408, at: 66, side: 'right' },
     { id: 'M', name: 'Pasticceria Nuvola', street: 'Via degli Zingari', way: 206908813, at: 57, side: 'right' },
+    // Petrol stations (`stations`): service spots on wide two-way streets, never an order's pickup or drop-off.
+    { id: 'N', name: 'Carburanti Colibrì', street: 'Via Cavour', way: 232183086, at: 50, side: 'right' },
+    { id: 'O', name: 'Distributore Girasole', street: 'Via Cavour', way: 232183088, at: 45, side: 'right' },
+    { id: 'P', name: 'Benzina Ponte Verde', street: 'Largo Corrado Ricci', way: 190022892, at: 32, side: 'right' },
   ],
   docks: ['C', 'F', 'H'], // spot ids with a loading dock
+  stations: ['N', 'O', 'P'], // spot ids of the petrol stations
   start: 'A', // spot id where a new game begins, in its kerb lane facing along it
 };
 
@@ -564,6 +597,7 @@ export const palette = {
   light: 0xffffff, // minimap
   spot: 0x4f86c6, // the spots' dots on the minimap
   zone: 0x8fc1f0,
+  station: 0x2f8f5b, // petrol stations: their minimap dots, zones, pumps and canopy fascia
   pickup: 0x6cc551, // active order's zone marker
   dropoff: 0xf08a4b,
   // Colours the truck's kit model is recoloured to (see kitColours), and more.

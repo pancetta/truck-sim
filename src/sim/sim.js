@@ -55,7 +55,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // 'light', 'giveWay', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
-  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight).
+  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres).
+  // `serviceOffer` is what the petrol station the truck stands still in the zone of sells, [{ id: 'fuel', price }] (empty
+  // elsewhere, with a full tank and while a stop runs), replaced only when it changes; `service` the running stop bought
+  // with buyService(), { id, price, progress 0..1 }, or null. `lastTow` ({ station (spot id), fee }) is replaced on
+  // every tow.
   const state = {
     truck,
     collision: false,
@@ -74,11 +78,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     junctionRule: null,
     speedLimit: tables.speedLimit,
     street: '',
+    serviceOffer: [],
+    service: null,
+    lastTow: null,
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
     },
     get timeOfDay() {
       return state.profile.timeOfDay;
+    },
+    get fuel() {
+      return state.profile.fuel;
     },
   };
   let v = upgradedVehicle();
@@ -178,6 +188,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     } else if (truck.gear !== 'N') {
       drive = input.gas * wheelForce(truck.gear, truck.rpm);
     }
+    if (p.fuel <= 0) drive = 0; // out of fuel: it coasts
     const resist = brake * v.brakeForce + v.rollingResistance * truck.mass * G + v.drag * truck.speed ** 2;
     truck.speed += (drive / truck.mass) * dt;
     // Resistance slows the truck towards zero but never pushes it the other way.
@@ -209,7 +220,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     checkRedLight(frontBefore, front()); // before touchCars, which may stop the truck
     if (traffic) touchCars(met, before, pushed);
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
-    state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
+    const moved = Math.hypot(truck.x - x, truck.z - z);
+    p.distance += moved;
+    burn(moved, reversing ? input.brake : input.gas);
     updateTraffic(dt);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
@@ -227,8 +240,59 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (here) updateLimit(here);
     if (map) checkSpeeding();
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
+    serve(dt);
+    // Loading and unloading need no fuel, so a dry truck in its order's zone finishes them first.
+    const canFill = state.service || state.serviceOffer.some((s) => s.price <= p.money);
+    if (map && p.fuel <= 0 && Math.abs(truck.speed) < v.stopSpeed && !canFill && state.progress === 0) tow();
 
     updateRoute(here);
+  }
+
+  // Burns the fuel for `metres` driven with the driving pedal at `pedal` (see tables.fuel).
+  function burn(metres, pedal) {
+    const f = tables.fuel;
+    const cargo = (truck.mass - v.emptyMass) / 1000;
+    const litres = (metres / 1000) * f.perKm * (1 + f.perTonne * cargo) * (1 + f.perPedal * pedal);
+    state.profile.fuel = Math.max(0, state.profile.fuel - litres);
+  }
+
+  // At a petrol station: standing still in its zone offers a fill-up for the missing litres; a bought stop fills
+  // `progress` while the truck stands there, and charges the price and fills the tank when done. Moving ends it unpaid.
+  const stations = map?.spots.filter((s) => s.station) ?? [];
+  function serve(dt) {
+    const p = state.profile;
+    const still = Math.abs(truck.speed) < v.stopSpeed;
+    const at = still && stations.some((s) => inZone(s.zone));
+    const service = state.service;
+    if (service && !at) state.service = null;
+    else if (service) service.progress = Math.min(1, service.progress + dt / tables.fuel.fillTime);
+    if (service?.progress === 1) {
+      p.money = Math.max(0, p.money - service.price);
+      p.fuel = tables.fuel.tank;
+      state.service = null;
+    }
+    const price = Math.ceil((tables.fuel.tank - p.fuel) * tables.fuel.price);
+    const offer = at && !state.service && tables.fuel.tank - p.fuel >= 1 ? price : null;
+    if (offer !== (state.serviceOffer[0]?.price ?? null)) state.serviceOffer = offer === null ? [] : [{ id: 'fuel', price: offer }];
+  }
+
+  // Out of fuel and standing: a tow takes the truck to the petrol station nearest by road (the nearest in a straight line,
+  // where none leads to one: the Colle Oppio streets aren't joined to the rest), in its kerb lane, for tables.fuel.towFee (money never drops below 0), and puts the clock on by
+  // tables.fuel.towTime and tables.fuel.emergency litres in the tank. Not while it could fill up where it stands.
+  function tow() {
+    const p = state.profile;
+    const f = tables.fuel;
+    const here = map.graph.nearest(truck.x, truck.z);
+    const onRoad = here.d <= here.edge.width / 2;
+    const straight = (s) => 1e9 + Math.hypot(s.lane.x - truck.x, s.lane.z - truck.z); // after any reachable one
+    const by = stations.map((s) => ({ s, length: routeFrom(here, onRoad, s.pose)?.length ?? straight(s) }));
+    const to = by.sort((a, b) => a.length - b.length)[0]?.s;
+    const fee = Math.min(p.money, f.towFee);
+    p.money -= fee;
+    p.timeOfDay = (p.timeOfDay + f.towTime) % (24 * 60);
+    p.fuel = f.emergency;
+    if (to) place(to.lane);
+    state.lastTow = { station: to?.id ?? null, fee };
   }
 
   // Loaded fragile cargo takes damage from speed shed by hard braking (m/s) and from each new hit faster than a touch;
@@ -492,12 +556,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return join ? { length: join.p.d + join.r.length, points: join.r.points } : null;
   }
 
+  const inZone = (zone) => truck.x > zone.minX && truck.x < zone.maxX && truck.z > zone.minZ && truck.z < zone.maxZ;
+
   // Standing still in the active phase's zone fills `progress`; anything else resets it.
   function loadOrUnload(dt) {
     const order = state.order;
-    const { zone } = targetOf(order);
-    const inZone = truck.x > zone.minX && truck.x < zone.maxX && truck.z > zone.minZ && truck.z < zone.maxZ;
-    state.progress = inZone && Math.abs(truck.speed) < v.stopSpeed ? state.progress + dt / o.loadTime : 0;
+    state.progress = inZone(targetOf(order).zone) && Math.abs(truck.speed) < v.stopSpeed ? state.progress + dt / o.loadTime : 0;
     if (state.progress < 1) return;
     state.progress = 0;
     if (order.phase === 'pickup') {
@@ -569,6 +633,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const refuse = (reason) => ({ ok: false, reason });
   const OK = { ok: true, reason: null };
 
+  // Starts a stop for one of state.serviceOffer's services (see serve()); paid when it completes. Returns { ok, reason };
+  // a refusal changes nothing.
+  function buyService(id) {
+    if (Math.abs(truck.speed) >= v.stopSpeed) return refuse('moving');
+    const offer = state.serviceOffer.find((s) => s.id === id);
+    if (!offer) return refuse(state.service ? 'busy' : 'unknown');
+    if (state.profile.money < offer.price) return refuse('noMoney');
+    state.service = { id, price: offer.price, progress: 0 };
+    state.serviceOffer = [];
+    return OK;
+  }
+
   // Raises one upgrade by a level. Returns { ok, reason }; a refusal changes nothing.
   function buyUpgrade(id) {
     if (!Object.hasOwn(tables.upgrades, id)) return refuse('unknown');
@@ -618,21 +694,23 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const typeOf = (cargo, to) =>
     to?.dock ? (cargo.fragile ? 'fragileDock' : 'dock') : cargo.fragile ? 'fragile' : cargo.weight > o.maxCargo ? 'heavy' : 'normal';
 
-  // New offers between distinct spots, paid by the road route length; none while an order is active.
+  // New offers between distinct spots, paid by the road route length; none while an order is active. Petrol stations
+  // are never a pickup or a drop-off.
   // Cargo is only what the Ladefläche carries, and cargo and drop-off make an offer type the rank tier allows.
   // The expected time is the truck's route to the pickup plus the paid route, at reference speed, plus loading,
   // unloading and slack.
   function requestOffers() {
     state.offers = [];
-    if (state.order || map.spots.length < 2) return state.offers;
+    const places = map.spots.filter((s) => !s.station);
+    if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
     const maxCargo = levelOf('cargoBed')?.maxCargo ?? o.maxCargo;
     const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && o.types[typeOf(c)] <= state.rank.tier);
     for (let i = 0; i < o.offerCount; i++) {
       const cargo = pick(cargoes);
-      const from = pick(map.spots);
-      const to = pick(map.spots.filter((s) => s !== from && o.types[typeOf(cargo, s)] <= state.rank.tier));
+      const from = pick(places);
+      const to = pick(places.filter((s) => s !== from && o.types[typeOf(cargo, s)] <= state.rank.tier));
       const path = to && map.graph.route(from.pose, to.pose);
       if (!path) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
       const distance = path.length;
@@ -660,7 +738,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const away = ({ pose: p }) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
     poses.sort((a, b) => a.junction - b.junction || away(a) - away(b));
     const free = ({ pose: p }) => fits(p) && !traffic?.touching(corners(p)).length;
-    Object.assign(truck, (poses.find(free) ?? poses[0]).pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
+    place((poses.find(free) ?? poses[0]).pose);
+  }
+
+  // Puts the truck at `pose`, at a standstill in first gear.
+  function place(pose) {
+    Object.assign(truck, pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
     brakeHold = 0;
     redLine = null;
@@ -743,7 +826,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns, buyService };
 }
 
 // Whether (x, z) lies inside the polygon `points` (even–odd rule).

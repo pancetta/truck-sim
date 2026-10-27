@@ -4,7 +4,7 @@ import * as base from '../tables.js';
 import { createSim } from './sim.js';
 import { createTraffic } from './traffic.js';
 import { createAutopilot, seeded } from '../autopilot.js';
-import { monti } from './fixtures.js';
+import { monti, undrained } from './fixtures.js';
 
 // Bench (#31): the traffic step at 100 cars, on the ?perf&auto drive round Monti. The spawn ring is widened to 400 m, as
 // in docs/perf/2026-10-baseline.md, so the city holds that many.
@@ -14,7 +14,7 @@ import { monti } from './fixtures.js';
 // shortcut: total_allocated_bytes is Node 26+; under older Node (CI runs 24) only the time is checked. Drop the
 // guard once CI's Node has it.
 const allocated = () => getHeapStatistics().total_allocated_bytes;
-const tables = { ...base, traffic: { ...base.traffic, spawnDistance: [45, 400], despawnDistance: 450 } };
+const tables = { ...undrained(base), traffic: { ...base.traffic, spawnDistance: [45, 400], despawnDistance: 450 } };
 const map = monti(tables);
 const { step } = tables.loop;
 

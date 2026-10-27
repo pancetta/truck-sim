@@ -63,12 +63,26 @@ Harm to fragile cargo from hard braking and **Hits**; it lowers the fragile prem
 ### Places
 
 **Spot**:
-A place in the city where cargo is loaded or unloaded, with a **Zone** on the road beside it.
-_Avoid_: location, stop, station (a petrol station will be its own kind of **Spot**)
+A place in the city where cargo is loaded or unloaded, or a **Service spot**, with a **Zone** on the road beside it.
+_Avoid_: location, stop
 
 **Zone**:
-The patch of road at a **Spot** where the truck must stand still while loading or unloading.
+The patch of road at a **Spot** where the truck must stand still while loading, unloading or at a **Service**.
 _Avoid_: area, marker
+
+**Service spot**:
+A **Spot** that sells **Services** instead of taking part in **Orders**: never a **Pickup** or **Drop-off**.
+
+**Petrol station** ("Tankstelle"):
+A **Service spot** that sells fuel ("Tanken"), with pumps and a canopy on the pavement beside its **Zone**.
+_Avoid_: gas station, station (alone), fuel stop
+
+**Service**:
+What a **Service spot** sells; bought while standing still in its **Zone**, it takes a short stop and is paid when done.
+
+**Tow** ("Abgeschleppt"):
+What happens when the tank runs empty: the truck is taken to the nearest **Petrol station** for a fee, with time lost
+and a little emergency fuel.
 
 **Dock** ("Rampe"):
 A **Spot** with a **Dock bay** the truck can back into.
@@ -222,5 +236,6 @@ The **Spot** where a new game puts the truck, in its lane.
 - A **Profile** has one **Rank**; the **Rank**'s **Tier** gates **Upgrade** levels, **Order types** and the amount of traffic.
 - An **Offer** becomes an **Order** when accepted; an **Order** has one **Pickup** and one **Drop-off**, both **Spots**.
 - A **Dock** is a **Spot** with a **Dock bay**; dock **Order types** drop off at a **Dock**.
+- A **Petrol station** is a **Service spot**; a **Tow** ends at one.
 - A **Rule fine** needs a **Witness**; a **Fine** for a **Contact** the truck made does not.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.

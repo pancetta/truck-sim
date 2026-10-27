@@ -317,7 +317,33 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const signsOf = (kind, limit) => map.signs.filter((s) => s.kind === kind && s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
   const limits = new Set(map.signs.filter((s) => s.kind === 'speed').map((s) => s.limit));
   addSigns([...[...limits].map((limit) => [speedSign(limit), signsOf('speed', limit)]), [giveWaySign(), signsOf('giveWay')]]);
-  addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
+  addBoxes(palette.zone, map.spots.filter((s) => !s.station).map((s) => s.zone), 0.04);
+  addBoxes(palette.station, map.spots.filter((s) => s.station).map((s) => s.zone), 0.04);
+
+  // Petrol stations (tables.station), our own boxes, on each one's pump island (spot.pumps, the road on its left): the
+  // island, its pumps, and a canopy over the pavement on two posts, white underneath with a coloured fascia.
+  const st = tables.station;
+  const { pavement: walk } = tables.osm;
+  const [isle, posts, coloured] = [[], [], []];
+  for (const { pumps: p } of map.spots.filter((s) => s.station)) {
+    const [fx, fz] = [Math.sin(p.heading), Math.cos(p.heading)]; // along the road; right, away from it, is (-fz, fx)
+    // The box `length` m along and `width` m across, its middle `along` m on and `out` m right of the island's, from
+    // `y` m up, `height` m tall.
+    const part = (along, out, length, width, y, height) => {
+      const [x, z] = [p.x + fx * along - fz * out, p.z + fz * along + fx * out];
+      return { minX: x - width / 2, maxX: x + width / 2, minZ: z - length / 2, maxZ: z + length / 2, angle: p.heading, y, height };
+    };
+    const [length, width, kerb] = st.island;
+    isle.push(part(0, 0, length, width, 0, kerb));
+    for (let i = 0; i < st.pumps; i++) coloured.push(part(((i + 0.5) / st.pumps - 0.5) * length, 0, st.pump[0], st.pump[1], kerb, st.pump[2]));
+    for (const end of [-1, 1]) posts.push(part(end * (length / 2 - 0.3), width / 2 - 0.15, 0.2, 0.2, kerb, st.canopy - kerb));
+    const [roofWidth, roofOut] = [walk + st.reach, -st.reach / 2]; // from the pavement's back to `reach` over the road
+    coloured.push(part(0, roofOut, length + 1, roofWidth, st.canopy, st.roof));
+    isle.push(part(0, roofOut, length + 0.9, roofWidth - 0.1, st.canopy - 0.02, 0.02));
+  }
+  addBoxes(palette.wall, isle);
+  addBoxes(palette.trim, posts);
+  addBoxes(palette.station, coloured);
 
   // Dock bays, our own boxes, from each dock's bay: a dock edge (a low dark platform, on the Sim's platform collider,
   // wall or not), and painted lines on either side of the bay, as far apart as the docking check allows. They stand a
@@ -507,9 +533,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     });
   }
 
-  // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own, and turned
-  // by their `angle` about their middle if they have one. None for no boxes (a map without docks): WebGPU rejects an
-  // instanced mesh without instances.
+  // One instanced draw call per colour; boxes stand on the ground or `y` m up if they carry one, `height` tall unless
+  // they carry their own, and turned by their `angle` about their middle if they have one. None for no boxes (a map
+  // without docks): WebGPU rejects an instanced mesh without instances.
   function addBoxes(color, boxes, height) {
     if (!boxes.length) return;
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
@@ -518,7 +544,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const size = new THREE.Vector3();
     boxes.forEach((b, i) => {
       const h = b.height ?? height;
-      m.makeRotationY(b.angle ?? 0).scale(size.set(b.maxX - b.minX, h, b.maxZ - b.minZ)).setPosition((b.minX + b.maxX) / 2, h / 2, (b.minZ + b.maxZ) / 2);
+      m.makeRotationY(b.angle ?? 0).scale(size.set(b.maxX - b.minX, h, b.maxZ - b.minZ)).setPosition((b.minX + b.maxX) / 2, (b.y ?? 0) + h / 2, (b.minZ + b.maxZ) / 2);
       mesh.setMatrixAt(i, m);
     });
     scene.add(mesh);
