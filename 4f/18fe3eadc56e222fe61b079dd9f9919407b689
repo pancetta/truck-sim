@@ -1,0 +1,78 @@
+src/renderer.js
+  s_dd8e463541957d::t_a03aa2f23b6a27 16-18,63-78,223-224,230-232,243-246,248,257,268-269,271-278,281,290-304,318,336-339,412,427,433,442-443,497-499,509,790,860,863-864
+  s_dd8e463541957d::t_91936b4fb8bddc 305-317
+  s_dd8e463541957d::t_a2da600e8e34d6 282-289
+  s_dd8e463541957d::t_d64bc65b62893e 535-536,538
+src/sim/sim.js
+  s_dd8e463541957d::t_144da332f648bd 270-271,623
+  s_dd8e463541957d::t_d980bbd629d6fd 93,96
+  s_dd8e463541957d::t_f1f3fe112501e9 40,73,80-81,94-95,188,198-199,214-216,509,544,552-554,561-562,622
+  s_dd8e463541957d::t_85aa903d39e0e3 630
+data/osm/monti-furniture.json
+  s_dd8e463541957d::t_f3aa42a6dfa15b 1-8390
+scripts/assets.config.js
+  s_dd8e463541957d::t_be0987d4b11117 39-53
+data/osm/ring.json
+  s_dd8e463541957d::t_f3aa42a6dfa15b 1
+src/sim/map.js
+  s_dd8e463541957d::t_bd45471a7bcd00 68-71,77-78,117,142,160,169
+public/maps/monti-ring.json
+  s_dd8e463541957d::t_8358744622a8eb 1
+src/main.js
+  s_dd8e463541957d::t_3a701c4aab74b2 32-35
+public/maps/monti-furniture.json
+  s_dd8e463541957d::t_8358744622a8eb 1
+scripts/maps.js
+  s_dd8e463541957d::t_7ba0d8ac273a82 1-27,32-38
+  s_dd8e463541957d::t_2f891e410f9d65 28-31
+src/sim/osm.test.js
+  s_dd8e463541957d::t_cd68a155a068a2 5,224-225
+  s_dd8e463541957d::t_82c5a1cb886388 94,113-114,119
+  s_dd8e463541957d::t_7cdfca9aa3a3ca 1-4,6-93,95-112,115-118,120-223,226-227
+src/sim/graph.js
+  s_dd8e463541957d::t_f1ab0393236852 7-11,23-24
+src/tables.js
+  s_dd8e463541957d::t_1a5b6bcb175318 243-264
+  s_dd8e463541957d::t_91936b4fb8bddc 239-240
+  s_dd8e463541957d::t_eccddc13d1029f 241-242
+CREDITS.md
+  s_dd8e463541957d::t_f5d3d741322c50 39-46
+scripts/assets.test.js
+  s_dd8e463541957d::t_f5d3d741322c50 4-5,36-42
+  s_dd8e463541957d::t_13daf49f9c903e 43-44
+docs/adr/0002-monti-osm-map.md
+  s_dd8e463541957d::t_6c3549c131c288 1-19
+package.json
+  s_dd8e463541957d::t_8358744622a8eb 10-11
+public/maps/monti.json
+  s_dd8e463541957d::t_8358744622a8eb 1
+data/osm/monti-osm.json
+  s_dd8e463541957d::t_f3aa42a6dfa15b 1-36904
+src/plainCity.js
+  s_dd8e463541957d::t_836c256f3cfdbf 34-35,63-64
+  s_dd8e463541957d::t_0b3f31abfd5509 46
+  s_dd8e463541957d::t_907d5f50ced09e 1-4,7-33,36-45,48-62,65
+  s_dd8e463541957d::t_c8ca7cd70149b3 5-6,47
+src/minimap.js
+  s_dd8e463541957d::t_0dfba69ea2cd27 3,8-10,20,28,30-41,73,81
+src/sim/osm.js
+  s_dd8e463541957d::t_de685fd9735558 1-170,172-176,178-179,183-271,275-320
+  s_dd8e463541957d::t_8b47209695c82c 171,177,180-182
+  s_dd8e463541957d::t_27b81c07919c47 272-274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4f18fe3eadc56e222fe61b079dd9f9919407b689",
+  "prompts": {},
+  "sessions": {
+    "s_dd8e463541957d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0e7b7579-f57b-4593-be24-0e5df1349769",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
