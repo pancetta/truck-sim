@@ -1,0 +1,22 @@
+src/vehicles.test.js
+  s_a6ad3b93c73ebe::t_5b1f5d528da0ae 2
+  s_a6ad3b93c73ebe::t_d779b5aa9b07f7 30-81
+src/vehicles.js
+  s_a6ad3b93c73ebe::t_37dc95c66de16c 80-90,139-140,142-143,154-155,173-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "443339903239542829dc64100219df4cdc0f6226",
+  "prompts": {},
+  "sessions": {
+    "s_a6ad3b93c73ebe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4bd25916-0e4d-42fa-b31c-a91a14eaed3d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
