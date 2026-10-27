@@ -49,6 +49,7 @@ src/sim/graph.js
 src/sim/osm.js
   s_6220d12c4ac5ff::t_a2518fd8bcb1fc 253-254
   s_6220d12c4ac5ff::t_fd9a79175e4f2d 15,20,209-210,214-252,255-260
+  s_6220d12c4ac5ff::t_ea15c51e0b8735 213
 src/sim/traffic.bench.test.js
   s_6220d12c4ac5ff::t_739cebd133d7c6 71
   s_6220d12c4ac5ff::t_83a86a9f86782d 9-10,39-41,64-70,72-80
@@ -59,6 +60,8 @@ src/sim/sim.js
   s_6220d12c4ac5ff::t_8d4c3a0f3a42eb 74,202,338-344
   s_6220d12c4ac5ff::t_559438ba52c15b 75,190,643
   s_6220d12c4ac5ff::t_eb9d955bcc4736 345-346
+src/renderer.js
+  s_6220d12c4ac5ff::t_ea15c51e0b8735 347
 ---
 {
   "schema_version": "authorship/3.0.0",
