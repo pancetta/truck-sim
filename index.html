@@ -54,6 +54,13 @@
         border-radius: inherit;
         background: #e8c547;
       }
+      /* The map data's licence (ODbL) asks for this credit wherever the map shows. */
+      #loading .credit {
+        position: absolute;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        font-size: 13px;
+        opacity: 0.7;
+      }
     </style>
   </head>
   <body>
@@ -67,6 +74,7 @@
       <h1>Truck Sim</h1>
       <p>Lädt…</p>
       <div class="bar" aria-hidden="true"></div>
+      <p class="credit">© OpenStreetMap contributors</p>
     </div>
     <canvas id="scene"></canvas>
     <div id="controls"></div>

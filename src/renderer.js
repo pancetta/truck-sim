@@ -12,7 +12,7 @@ import { planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets } from './streets.js';
-import { planSkyline, skylineMeshes, paintSkylineWindows } from './skyline.js';
+import { planSkyline, skylineMeshes, ringMeshes, paintSkylineWindows } from './skyline.js';
 import { roadPieces, roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { createCells } from './sim/cells.js';
 import { inside } from './sim/sim.js';
@@ -87,6 +87,13 @@ function rayToBox(x, z, dx, dz, b) {
     far = Math.min(far, Math.max(t0, t1));
   }
   return near <= far ? near : Infinity;
+}
+
+// The way a parked car on its collider's outline (a box, turned any way) faces, one of the two along its longer side:
+// the heading about y that turns the car's +z along that side.
+export function parkedHeading([a, b, c]) {
+  const [ux, uz] = Math.hypot(b.x - a.x, b.z - a.z) >= Math.hypot(c.x - b.x, c.z - b.z) ? [b.x - a.x, b.z - a.z] : [c.x - b.x, c.z - b.z];
+  return Math.atan2(ux, uz);
 }
 
 // Where the shadow area is centred for a camera focus: the focus moved to the nearest whole shadow-map texel across
@@ -295,15 +302,18 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.add(...buildingParts.meshes);
     streets.dress(plan);
   }));
+  // The skyline ring outside the map (skyline.js): two meshes, its roofs in the buildings' roof material. On the grid
+  // generated; on an OSM map the real buildings round it.
+  // Pavement on the grid's road tiles (streets.js) or along an OSM map's roads (below).
+  const pavers = groundMaterial(tables.streets.pavement, {}, true);
+  const skylineMaterials = { walls: new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 }), roof: buildingMaterials.roof };
   if (grid) {
-    // The skyline ring outside the map (skyline.js): two meshes, its roofs in the buildings' roof material.
-    const skylineWalls = new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 });
-    loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, { walls: skylineWalls, roof: buildingMaterials.roof }))));
+    loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, skylineMaterials))));
   } else {
+    loads.push(fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(items, tables, skylineMaterials))));
     // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
     // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
     const { pavement } = tables.streets;
-    const pavers = groundMaterial(pavement, {}, true);
     const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
     loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
       const { top, stones } = pavementGeometry(osmPavements(map, pieces, tables), pavement, roadHeight / 2);
@@ -312,11 +322,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
         scene.add(mesh);
       }
     }));
-    // Bollards and the barriers at the edge exits, plain boxes on their colliders (each a box turned any way).
-    for (const [kind, height, color] of [['bollard', city.bollardHeight, palette.signal], ['barrier', city.barrierHeight, palette.red]]) {
-      const boxes = map.colliders.filter((c) => c.kind === kind);
-      if (!boxes.length) continue; // WebGPU rejects an instanced mesh without instances
-      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
+    // The barriers at the edge exits, plain boxes on their colliders (each a box turned any way).
+    const boxes = map.colliders.filter((c) => c.kind === 'barrier');
+    const height = city.barrierHeight;
+    if (boxes.length) { // WebGPU rejects an instanced mesh without instances
+      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: palette.red }), boxes.length);
       mesh.castShadow = mesh.receiveShadow = true;
       const m = new THREE.Matrix4();
       boxes.forEach(({ points: [a, b, c] }, i) => {
@@ -334,7 +344,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const paints = tables.vehicles.paints.map((hex) => new THREE.Color(hex));
   const parked = map.colliders.filter((c) => c.kind === 'car').map((b) => {
     const { x, z } = centre(b);
-    const heading = (b.maxX - b.minX > b.maxZ - b.minZ ? Math.PI / 2 : 0) + (hash(x, z) > 0.5 ? Math.PI : 0);
+    const heading = parkedHeading(b.points) + (hash(x, z) > 0.5 ? Math.PI : 0);
     const covered = hash(z, x) * 7 % 1 < tables.vehicles.covered;
     return { x, z, heading, kind: covered ? carTypes.length : Math.floor(hash(x, z) * 9973) % carTypes.length, paint: pick(paints, z, x) };
   });
@@ -450,9 +460,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   addBoxes(palette.stopLine, stopLines, 0.045);
   let shownLights = null;
 
-  // Pavements, lanterns (also on the poles), and the trees and props on open ground; on an OSM map, its pavements are
-  // drawn above and its dressing comes with #66.
-  const streets = grid ? createStreets(scene, map, tables, { pavers: groundMaterial(tables.streets.pavement, {}, true), loadTexture, loader, models: MODELS }) : { dress() {}, load: async () => {}, update() {} };
+  // Pavements (on an OSM map drawn above), lanterns (also on the poles), and the trees and props on open ground or,
+  // on an OSM map, OSM's street furniture.
+  const streets = createStreets(scene, map, tables, { pavers, loadTexture, loader, models: MODELS });
   laterLoads.push(streets.load);
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only

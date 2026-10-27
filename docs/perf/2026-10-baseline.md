@@ -837,6 +837,23 @@ With `?map=monti`, Monti gets the realistic look. Roads are ribbons along the gr
 
 Frames held 16.7 ms throughout. Against #37–#42's budget, Monti draws under a third of the grid's draw calls with the same texture memory, and spends less render CPU. It draws about 1.4× the grid's triangles and holds 1.4× its geometry buffers. AI traffic isn't on Monti yet (#63). Monti has no lanterns, plants, trees or skyline yet (#66).
 
+## Monti dressing and skyline (#66)
+
+Monti gets its street furniture, lanterns, plants and skyline. OSM's trees, bollards, fountains and waste baskets stand where the furniture extract puts them, unless that is on the road. They are solid, like the grid's plaza props, and drawn with #40's props and tree pictures. #40's wall lanterns, door pots and flower boxes go on the real walls that face a road (`tables.streets.roadReach`). The skyline is the prototype's ring of real buildings: walls with #42's window picture and flat roofs in the roof texture, two meshes with no colliders and no shadows. `npm run maps` keeps only the ring buildings outside the map within the camera's reach (`camera.fog[1]`, 350 m): 2,109 of 9,466. That cuts the file from 1.96 MB to 0.44 MB, so the download shrinks by 1.5 MB. The ring is 54k wall and 24k roof triangles, built in about 50 ms.
+
+**How measured:** as for #65. Headless Chrome on the M2, dev build, `?map=monti&perf`, 1257×856 at dpr 2, truck standing, overlay read after 9 s. main (`e9b11e2`) was measured in the same sitting. Relative numbers only; the iPad check is the owner's `?perf&auto` run.
+
+| | draw calls / triangles | render ms median / p95 | texture memory | geometry buffers |
+|---|---|---|---|---|
+| main, cab at the start | 105 / 338k | 2.2 / 3.0 | 56.2 MB (49 textures) | 15.2 MB |
+| #66, cab at the start | 120 / 423k | 2.5 / 4.1 | 56.2 MB (56 textures) | 19.6 MB |
+| main, chase at the start | 99 / 354k | 2.3 / 3.0 | | 16.1 MB |
+| #66, chase at the start | 113 / 436k | 2.9 / 4.1 | | 20.6 MB |
+| main, cab by a fountain (Via Leonina) | 127 / 376k | 1.1 / 2.9 | | 19.6 MB |
+| #66, cab by a fountain (Via Leonina) | 141 / 460k | 3.0 / 4.1 | | 24.1 MB |
+
+Frames held 16.7 ms throughout. The dressing adds about 15 draw calls: the ring's two, plus the instanced props, lanterns and trees. The ring accounts for most of the 85k added triangles, since it is never culled. Texture memory doesn't grow: the tree pictures and lantern textures stay within #40's budget. On the iPad, the first things to cut are still `lantern.cull` and `flowers` (#40), and then the ring's triangles (one roof and wall mesh per side, so each can be culled).
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

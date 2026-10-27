@@ -1,3 +1,5 @@
+import { camera } from '../src/tables.js';
+
 // The game's downloaded assets: what `npm run assets` (scripts/assets.js) fetches from Poly Haven (all CC0) into
 // assets-src/ and turns into the files under public/, and the budget public/ must fit (scripts/assets.test.js).
 //   hdri:    the sky, public/textures/<id>_<res>.ktx2 (UASTC HDR, no mipmaps), and <id>_<first>.ktx2 at the smaller
@@ -40,14 +42,15 @@ export const encoding = {
 // in data/osm/, which `npm run maps` (scripts/maps.js) trims to the tags the game uses (`keep`, by element kind) and
 // projects to metres, equirectangular round `origin` ([lat, lon]): x east, z south. `bbox` ([south, west, north, east])
 // is the box the extract was taken in, whose edge is the map's. ring.json is already in metres round the same origin
-// (made by prototype-monti-ring.py on that branch), so it is only copied.
+// (made by prototype-monti-ring.py on that branch); of its buildings, those within `reach` m of the map's edge are kept
+// (the camera draws nothing further away, tables.camera.fog), and none that reaches into the map, which has its own.
 export const maps = {
   origin: [41.89525, 12.49225],
   bbox: [41.892, 12.487, 41.8985, 12.4975],
   files: [
     { source: 'data/osm/monti-osm.json', out: 'maps/monti.json', keep: { highway: ['highway', 'name', 'oneway', 'tunnel', 'area'], building: ['building', 'height', 'building:levels'] } },
     { source: 'data/osm/monti-furniture.json', out: 'maps/monti-furniture.json', keep: { natural: ['natural'], amenity: ['amenity'], barrier: ['barrier'] } },
-    { source: 'data/osm/ring.json', out: 'maps/monti-ring.json' },
+    { source: 'data/osm/ring.json', out: 'maps/monti-ring.json', reach: camera.fog[1] },
   ],
 };
 

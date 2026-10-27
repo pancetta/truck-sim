@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as tables from './tables.js';
 import { parseMap } from './sim/map.js';
+import { buildOsmMap } from './sim/osm.js';
+import { inside } from './sim/sim.js';
 import city from './city.txt?raw';
 import { Group, Mesh, BoxGeometry, MeshStandardMaterial, DataTexture, Scene, Vector3 } from 'three/webgpu';
 import { pavementLayout, lanternMounts, facadeProps, createStreets } from './streets.js';
@@ -168,5 +171,50 @@ describe('Streets: drawn by distance', () => {
     expect(farMesh.count).toBeGreaterThan(nearMesh.count);
     streets.update(eye, () => false);
     expect(nearMesh.count + farMesh.count).toBe(0);
+  });
+});
+
+describe('Streets on the Monti map', () => {
+  const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
+  const monti = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
+  const montiPlan = planBuildings(monti, tables);
+  const { roadReach } = tables.streets;
+  const inBuilding = (x, z) => monti.buildings.some((b) => inside(x, z, b.points));
+  // m to the edge of the road nearest to (x, z) moved by (ox, oz), and whether that road lies along (ox, oz).
+  const kerb = (x, z, ox, oz) => {
+    const p = monti.graph.nearest(x + ox, z + oz);
+    return [p.d - p.edge.width / 2, (p.x - x) * ox + (p.z - z) * oz > 0];
+  };
+
+  it('hangs lanterns on the real walls, turned out over a road in front of them', () => {
+    const walls = lanternMounts(monti, montiPlan, tables.streets.lantern, tables.buildings.bay, roadReach);
+    expect(walls.length).toBeGreaterThan(300);
+    for (const { x, z, angle, pole } of walls) {
+      const [ox, oz] = [Math.sin(angle), Math.cos(angle)];
+      expect(pole).toBe(false);
+      expect(inBuilding(x - ox * 0.3, z - oz * 0.3), `lantern at ${x}, ${z}`).toBe(true);
+      expect(inBuilding(x + ox * 0.3, z + oz * 0.3)).toBe(false);
+      const [d, ahead] = kerb(x, z, ox, oz);
+      expect(d).toBeLessThan(roadReach);
+      expect(ahead).toBe(true);
+    }
+  });
+
+  it('stands pots and props on the pavement where they are on it, and on the ground elsewhere', () => {
+    const { pots } = facadeProps(monti, montiPlan, tables);
+    expect(pots.length).toBeGreaterThan(50);
+    const { height } = tables.streets.pavement;
+    const scene = new Scene();
+    createStreets(scene, monti, tables, { loadTexture: null, loader: null, models: '' });
+    // The bins' instanced mesh: one matrix per bin, its y the ground's.
+    const bins = monti.colliders.filter((c) => c.kind === 'bin');
+    const [binMesh] = scene.children.filter((o) => o.userData.matrices?.length === bins.length);
+    const ys = binMesh.userData.matrices.map((m) => m[13]);
+    const placed = [...pots.map((p) => ['pot', p]), ...bins.map((b, i) => ['bin', { x: (b.minX + b.maxX) / 2, y: ys[i], z: (b.minZ + b.maxZ) / 2 }])];
+    for (const [kind, { x, y, z }] of placed) {
+      const onPavement = kerb(x, z, 0, 0)[0] <= tables.osm.pavement;
+      expect(y, `${kind} at ${x}, ${z}`).toBe(onPavement ? height : 0);
+    }
+    expect(ys.filter((y) => y === height).length).toBeGreaterThan(0);
   });
 });

@@ -391,7 +391,7 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
 
 export const newData = () => ({ position: [], uv: [], color: [], index: [] });
 
-function vertex(data, [x, y, z], [u, v], colour) {
+export function vertex(data, [x, y, z], [u, v], colour) {
   data.position.push(x, y, z);
   data.uv.push(u, v);
   data.color.push(Math.round(colour.r * 255), Math.round(colour.g * 255), Math.round(colour.b * 255), 255);

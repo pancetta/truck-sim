@@ -210,8 +210,28 @@ describe('OSM map: reset to road', () => {
   });
 });
 
+describe('OSM map: street furniture', () => {
+  test('trees, bollards, fountains and waste baskets stand where OSM puts them, as solid props, but none on the road', () => {
+    const node = (x, z, tags) => ({ x, z, tags });
+    const map = buildOsmMap({ bounds, ways: [way('residential', [[-50, 0], [50, 0]])] }, tables, {
+      nodes: [
+        node(10, 6, { natural: 'tree' }),
+        node(-10, -6, { barrier: 'bollard' }),
+        node(20, 7, { amenity: 'drinking_water' }),
+        node(-20, 30, { amenity: 'waste_basket' }),
+        node(0, 3, { natural: 'tree' }), // on the road, 7 m wide
+        node(30, 6, { amenity: 'bench' }), // not one of ours
+      ],
+    });
+    const props = map.colliders.filter((c) => ['tree', 'bollard', 'fountain', 'bin'].includes(c.kind));
+    expect(props.map((c) => [c.kind, (c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2])).toEqual([['tree', 10, 6], ['bollard', -10, -6], ['fountain', 20, 7], ['bin', -20, 30]]);
+    expect(driveFrom(map, 10, 14, Math.PI).collision).toBe(true); // north from behind the tree, into it
+  });
+});
+
 describe('OSM map: the real Monti extract', () => {
-  const map = buildOsmMap(JSON.parse(readFileSync(`public/${tables.osm.file}`, 'utf8')), tables);
+  const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
+  const map = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
 
   test('builds a connected-looking network with barriers at every edge exit and lights at its one main crossing', () => {
     const exits = map.graph.nodes.filter((n) => n.exit);
@@ -221,12 +241,14 @@ describe('OSM map: the real Monti extract', () => {
     expect(new Set(map.lights.map((l) => l.junction)).size).toBe(1);
   });
 
+  // m from (x, z) to the segment from a to b.
+  const segment = (x, z, a, b) => {
+    const [dx, dz] = [b.x - a.x, b.z - a.z];
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)));
+    return Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
+  };
+
   test('no building reaches into a road or its pavement, nor stands on a road', () => {
-    const seg = (x, z, a, b) => {
-      const [dx, dz] = [b.x - a.x, b.z - a.z];
-      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)));
-      return Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
-    };
     const into = [];
     for (const { points } of map.buildings) {
       const near = map.graph.edges.filter((e) => e.points.some((p) => points.some((q) => Math.hypot(p.x - q.x, p.z - q.z) < 150)));
@@ -235,12 +257,22 @@ describe('OSM map: the real Monti extract', () => {
         const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.5);
         for (let k = 0; k <= n; k++) {
           const [x, z] = [a.x + ((b.x - a.x) * k) / n, a.z + ((b.z - a.z) * k) / n];
-          for (const e of near) for (let j = 1; j < e.points.length; j++) if (seg(x, z, e.points[j - 1], e.points[j]) < e.width / 2 + pavement - 0.01) into.push({ x, z, edge: e.id });
+          for (const e of near) for (let j = 1; j < e.points.length; j++) if (segment(x, z, e.points[j - 1], e.points[j]) < e.width / 2 + pavement - 0.01) into.push({ x, z, edge: e.id });
         }
       });
     }
     expect(into).toEqual([]);
     const onRoad = map.graph.edges.flatMap((e) => e.points).filter((p) => map.buildings.some((b) => inside(p.x, p.z, b.points)));
     expect(onRoad).toEqual([]);
+  });
+
+  test('puts most of OSM\'s street furniture in, and none of it on a road', () => {
+    const props = map.colliders.filter((c) => ['tree', 'bollard', 'fountain', 'bin'].includes(c.kind));
+    expect(props.length).toBeGreaterThan(0.8 * read(tables.osm.furniture).nodes.length);
+    const onRoad = ({ minX, maxX, minZ, maxZ }) => {
+      const [x, z] = [(minX + maxX) / 2, (minZ + maxZ) / 2];
+      return map.graph.edges.some((e) => e.points.some((b, k) => k && segment(x, z, e.points[k - 1], b) <= e.width / 2));
+    };
+    expect(props.filter(onRoad)).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 // npm run maps (also run by npm run assets): turns the OSM extracts listed in assets.config.js `maps` into the files
 // the game loads under public/maps/. Ways keep their node ids (shared nodes join streets) and their points in metres;
-// nodes keep only their point. Elements with none of the `keep` tags are left out. Commit what it writes.
+// nodes keep only their point. Elements with none of the `keep` tags are left out. A file with a `reach` is a list of
+// buildings already in metres ({ r: [[x, z]], ... }): those with a corner inside the map or none within `reach` m of
+// it are left out. Commit what it writes.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,13 +17,15 @@ export const xz = (lat, lon) => [round((lon - lon0) * M_LON), round(-(lat - lat0
 const [south, west, north, east] = maps.bbox;
 const [minX, maxZ] = xz(south, west);
 const [maxX, minZ] = xz(north, east);
+const outside = (x, z) => Math.hypot(Math.max(minX - x, 0, x - maxX), Math.max(minZ - z, 0, z - maxZ)); // m from the map
 
 // Each listed file as { out (under public/), json (its text) }.
 export async function makeMaps() {
   const made = [];
-  for (const { source, out, keep } of maps.files) {
+  for (const { source, out, keep, reach } of maps.files) {
     const data = JSON.parse(await readFile(source, 'utf8'));
     let trimmed = data;
+    if (reach) trimmed = data.filter(({ r }) => !r.some(([x, z]) => x > minX && x < maxX && z > minZ && z < maxZ) && r.some(([x, z]) => outside(x, z) < reach));
     if (keep) {
       const ways = [];
       const nodes = [];

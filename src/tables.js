@@ -242,14 +242,16 @@ export const city = {
     size: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
   },
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
-  bollardHeight: 0.9, // m, on an OSM map, where they close pedestrian ways
   barrierHeight: 1.1, // m, across an OSM map's edge exits
 };
 
 // The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js; loaded instead of the grid city with ?map=monti
-// until it replaces it (#67). `file` is under public/, made by `npm run maps`.
+// until it replaces it (#67). The files are under public/, made by `npm run maps`: the roads and buildings, the street
+// furniture (trees, bollards, fountains, waste baskets), and the real buildings round the map for its skyline.
 export const osm = {
   file: 'maps/monti.json',
+  furniture: 'maps/monti-furniture.json',
+  ring: 'maps/monti-ring.json',
   // The drivable network, per OSM highway class: road width (m), lane offset (m) right of the centre line on a two-way
   // edge (a one-way's lane runs on it), speed limit (km/h), and priority at a junction without lights (higher first;
   // right before left between equal ones).
@@ -324,6 +326,7 @@ export const skyline = {
   floors: [3, 7], // storeys; a little taller than the city's (buildings.floors), so the ring shows over its outer row
   floor: 3.5, // m per storey, a row of painted windows each
   bay: 3.2, // m per painted window, about
+  monument: [4.5, 10], // m per painted window across and up on an OSM map's churches and monuments: tall arches
   roofPitch: 0.45, // m of rise per m across the hipped roofs
   tints: buildings.tints, // walls, times `brightness`
   brightness: [0.75, 1],
@@ -498,6 +501,9 @@ export const streets = {
   // iron and painted metal on posts and open ground; potted plants in pairs beside a `pots` share of the doors, and
   // flower boxes on the open windows' sills of a `flowers` share of the buildings.
   propCull: 90,
+  // m: on an OSM map, a wall gets lanterns and plants where a road's edge is at most this far in front of it (most
+  // stand at the pavement's back, 1.5 m from it; this takes in walls across a wider real street or a small square).
+  roadReach: 8,
   pots: 0.2,
   flowers: 0.15,
   pot: { radius: 0.17, height: 0.38, colour: 0xa8573a, leaves: 0x4f7a3a },

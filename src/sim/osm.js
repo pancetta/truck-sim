@@ -1,7 +1,8 @@
 // The OSM map builder (spec #59, "Map module"): turns OpenStreetMap-shaped data into the map the Sim and the renderer
 // use, as parseMap() does for the grid city. `data` is public/maps/monti.json (from `npm run maps`) or a test's inline
 // fixture: { bounds: { minX, minZ, maxX, maxZ }, ways: [{ id, tags, nodes (highways only), points: [[x, z]] }] } in
-// metres, x east and z south. The city is flat.
+// metres, x east and z south. The city is flat. `furniture` is public/maps/monti-furniture.json or a fixture's:
+// { nodes: [{ x, z, tags }] }.
 //   Drivable network: ways of a tables.osm.classes highway class, but no tunnels or areas, cut where they leave the
 //     bounds (an edge exit, closed by a truck-only barrier) and split at every node they share into edges.
 //   Pedestrian ways and squares: not drivable, closed by bollards where the road and its pavements meet them; the map
@@ -9,13 +10,18 @@
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
 //   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit.
+//   Props: the furniture's trees, bollards, fountains and waste baskets, solid, as the grid's plaza props (kinds
+//     'tree', 'bollard', 'fountain' and 'bin'); none on the road.
 // The map has no spots yet (#64) and no tiles: Sim and renderer parts that still need tiles skip it.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
 import { inside } from './sim.js';
 
-export function buildOsmMap(data, tables) {
+// The furniture's props by OSM tag: [tag, value, collider kind].
+const PROPS = [['natural', 'tree', 'tree'], ['barrier', 'bollard', 'bollard'], ['amenity', 'drinking_water', 'fountain'], ['amenity', 'waste_basket', 'bin']];
+
+export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   const o = tables.osm;
   const { bounds } = data;
   const { cell } = tables.city;
@@ -166,8 +172,14 @@ export function buildOsmMap(data, tables) {
       }
     });
   }
-  const { bollard } = tables.city.plaza.size;
-  for (const p of bollards) colliders.push({ kind: 'bollard', ...outline(rect(p, [1, 0], bollard / 2, bollard / 2)) });
+  const { size } = tables.city.plaza;
+  for (const p of bollards) colliders.push({ kind: 'bollard', ...outline(rect(p, [1, 0], size.bollard / 2, size.bollard / 2)) });
+
+  // The street furniture where OSM puts it, unless that is on the road.
+  for (const { x, z, tags } of furniture.nodes) {
+    const kind = PROPS.find(([tag, value]) => tags[tag] === value)?.[2];
+    if (kind && !graph.onRoad(x, z)) colliders.push({ kind, ...outline(rect({ x, z }, [1, 0], size[kind] / 2, size[kind] / 2)) });
+  }
 
   // Buildings, cut back out of the corridors, with their height: OSM's `height`, else from `building:levels`, else a
   // seeded tables.osm.floors. Roofs (OSM building=roof, open canopies) are left out.
