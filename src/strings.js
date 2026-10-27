@@ -86,5 +86,6 @@ export const strings = {
   policeSees: 'Polizei sieht dich', // HUD, while a police car sees the truck
   policeLettering: 'POLIZEI', // on the police cars' sides
   speedLimit: 'Höchstgeschwindigkeit', // HUD, the sign with state.speedLimit
+  street: 'Straße', // HUD, the name of the street the truck is on (state.street)
   rules: { light: 'Ampel', rightBeforeLeft: 'Rechts vor links' }, // HUD, the next junction's rule (state.junctionRule)
 };

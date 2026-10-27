@@ -13,7 +13,9 @@
 //   Props: the furniture's trees, bollards, fountains and waste baskets, solid, as the grid's plaza props (kinds
 //     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
 //   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
-// The map has no spots yet (#64) and no tiles: Sim and renderer parts that still need tiles skip it.
+//   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay; `start`
+//     is the start spot's kerb lane pose, where a new game begins.
+// The map has no tiles: Sim and renderer parts that still need tiles skip it.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
@@ -64,7 +66,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       if (k === 0 || (k < points.length - 1 && uses.get(p.key) < 2)) return;
       const piece = points.slice(start, k + 1);
       if (way.tags.oneway === '-1') piece.reverse(); // drawn against the way it runs
-      edges.push({ from: node(piece[0]), to: node(piece.at(-1)), class: way.tags.highway, width, laneOffset: lane, limit, name: way.tags.name ?? '', oneWay, points: piece.map(({ x, z }) => ({ x, z })) });
+      edges.push({ from: node(piece[0]), to: node(piece.at(-1)), way: way.id, class: way.tags.highway, width, laneOffset: lane, limit, name: way.tags.name ?? '', oneWay, points: piece.map(({ x, z }) => ({ x, z })) });
       start = k;
     });
   }
@@ -206,18 +208,63 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     }
   }
 
+  // The spots (tables.osm.spots), placed before the parked cars, which keep clear of their zones. A spot whose way the
+  // data doesn't have is left out (an inline fixture has none of the extract's ways).
   const spots = [];
+  let start = null;
+  for (const t of o.spots) {
+    const w = data.ways.find((w) => w.id === t.way);
+    if (!w) continue;
+    if (w.tags.name !== t.street) throw new Error(`Spot ${t.id}: way ${t.way} is ${w.tags.name}, not ${t.street}`);
+    const [x, z, u] = alongWay(w.points, t.at);
+    const near = graph.edges.filter((e) => e.way === t.way).map((e) => graph.project(e, x, z)).sort((a, b) => a.d - b.d)[0];
+    const e = near.edge;
+    // The kerb lane: on a two-way the one on the spot's side, a one-way's own; heading the way it runs.
+    const side = t.side === 'right' ? 1 : -1;
+    const lane = e.oneWay ? 0 : e.laneOffset;
+    const kerb = { x: near.x - u[1] * side * lane, z: near.z + u[0] * side * lane }; // right of u is (-u.z, u.x)
+    const [a, b] = [e.points[near.k], e.points[Math.min(near.k + 1, e.points.length - 1)]];
+    const forward = e.oneWay ? Math.sign((b.x - a.x) * u[0] + (b.z - a.z) * u[1]) || 1 : side; // along u, or against it
+    const heading = Math.atan2(u[0] * forward, u[1] * forward);
+    // A dock's bay: the middle of its dock edge and the heading a truck docked in it faces; its zone is where that
+    // truck stands, so the dock bonus can be earned while unloading.
+    const bay = t.bay && { x: t.bay[0], z: t.bay[1], heading: (t.bay[2] * Math.PI) / 180 };
+    const f = bay && [Math.sin(bay.heading), Math.cos(bay.heading)];
+    // The dock edge's platform (the renderer's, tables.buildings.dock.depth deep and as wide as buildings.js dockHalf)
+    // is solid, so a truck can't back past the edge where no wall stands behind it.
+    const { depth } = tables.buildings.dock;
+    if (bay) colliders.push({ kind: 'dock', ...outline(rect({ x: bay.x - (f[0] * depth) / 2, z: bay.z - (f[1] * depth) / 2 }, f, depth / 2, tables.vehicle.width / 2 + tables.orders.dockCentre + 0.5)) });
+    const centre = bay ? { x: bay.x + (f[0] * tables.vehicle.length) / 2, z: bay.z + (f[1] * tables.vehicle.length) / 2 } : kerb;
+    const r = o.zone / 2;
+    const zone = { minX: centre.x - r, maxX: centre.x + r, minZ: centre.z - r, maxZ: centre.z + r };
+    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), zone, pose: graph.nearest(centre.x, centre.z), bay });
+    if (t.id === o.start) start = { ...kerb, heading };
+  }
   colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.
   const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
-  return { bounds, spots, colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares } };
+  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares } };
+}
+
+// The point `at` m along a polyline of [x, z] points (clamped to its ends), and the unit direction there: [x, z, u].
+function alongWay(points, at) {
+  for (let k = 1, s = 0; k < points.length; k++) {
+    const [a, b] = [points[k - 1], points[k]];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (s + l >= at || k === points.length - 1) {
+      const t = Math.max(0, Math.min(1, (at - s) / l));
+      return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), [(b[0] - a[0]) / l, (b[1] - a[1]) / l]];
+    }
+    s += l;
+  }
 }
 
 // Parked cars (`car` colliders, with the `heading` they face) along one kerb of each edge of a tables.osm.parked class
 // whose width leaves room beside its lane for a car and `kerb` m, with `sideGap` from the AI cars (tables.traffic):
 // on Monti only one-way residential streets. One kerb per edge, seeded, as are the gaps: a `density` share of the
 // places every car length plus `gap` m along each straight stretch, clear of the junction boxes by `junction` m, of
-// each spot's zone by `spot` m, and of every lane path (any edge's, turns included) by half a car and `sideGap`.
+// each spot's zone by `spot` m, of the ends of a dock's street by `dock` m (trucks swing in and out there) and of every
+// lane path (any edge's, turns included) by half a car and `sideGap`.
 export function parkedCars(graph, spots, tables) {
   const o = tables.osm.parked;
   const car = tables.city.obstacles.car;
@@ -231,6 +278,7 @@ export function parkedCars(graph, spots, tables) {
       lanes.push(pose);
     }
   }
+  const mouths = spots.filter((s) => s.bay).flatMap((s) => [graph.nodes[s.pose.edge.from], graph.nodes[s.pose.edge.to]]);
   const laneCells = createCells(tables.city.cell);
   for (const q of lanes) laneCells.add(q, q.x, q.z, q.x, q.z);
   const out = [];
@@ -253,6 +301,7 @@ export function parkedCars(graph, spots, tables) {
         const onLane = (q) => Math.abs((q.x - c.x) * u[0] + (q.z - c.z) * u[1]) < car.length / 2 + clear && Math.abs(-(q.x - c.x) * u[1] + (q.z - c.z) * u[0]) < car.width / 2 + clear;
         if (laneCells.some(minX - clear, minZ - clear, maxX + clear, maxZ + clear, onLane)) continue;
         if (spots.some(({ zone: z }) => z.minX - o.spot < maxX && z.maxX + o.spot > minX && z.minZ - o.spot < maxZ && z.maxZ + o.spot > minZ)) continue;
+        if (mouths.some((m) => Math.hypot(m.x - c.x, m.z - c.z) < o.dock)) continue;
         out.push({ kind: 'car', ...outline(box), heading: Math.atan2(u[0], u[1]) });
       }
     }

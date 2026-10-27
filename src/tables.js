@@ -280,9 +280,34 @@ export const osm = {
   floors: [3, 5], // storeys of a building with no height or levels in OSM, seeded per building
   minArea: 2, // m²; smaller pieces left of a cut-back building are dropped
   // Parked cars (osm.js parkedCars) along one kerb of these classes where the width leaves room beside the lane: a
-  // `density` share of the places, `gap` m apart, `kerb` m off the road's edge, and `junction` m clear of junction
-  // boxes and `spot` m of spot zones
-  parked: { classes: ['residential', 'unclassified', 'service'], density: 0.6, gap: 1.2, kerb: 0.2, junction: 8, spot: 6 },
+  // `density` share of the places, `gap` m apart, `kerb` m off the road's edge, `junction` m clear of junction boxes,
+  // `spot` m of spot zones, and their middles `dock` m from the ends of a dock's street
+  parked: { classes: ['residential', 'unclassified', 'service'], density: 0.6, gap: 1.2, kerb: 0.2, junction: 8, spot: 6, dock: 20 },
+  zone: 10, // m, side of a spot's square zone
+  // The spot table (the glossary's), hand-picked on the part of the network every one-way leads back into: per spot its
+  // letter (`id`), a made-up business name (never a real one), the real street, the OSM way it stands on with `at` m
+  // along it (from the way's first point) and the `side` of the way it is on ('left' or 'right' of the way's own
+  // direction). Its zone is on the kerb lane there. A dock's `bay` is [x, z, heading in degrees]: the middle of its
+  // dock edge and the way a truck reversed into it faces (as the Sim's heading: 0 faces +z, 90 faces +x); its zone is
+  // where that truck stands.
+  // The docks are at the ends of dead-end streets, which a truck backs down from the street it passes them on.
+  spots: [
+    { id: 'A', name: 'Spedizioni Gatto Blu', street: 'Via Urbana', way: 189465655, at: 160, side: 'right' },
+    { id: 'B', name: 'Forno della Luna', street: 'Via dei Serpenti', way: 232940101, at: 91, side: 'right' },
+    { id: 'C', name: 'Magazzino Ventaglio', street: 'Via San Giuseppe Labre', way: 182930018, at: 36, side: 'right', bay: [-61.5, -59.6, -8] },
+    { id: 'D', name: 'Libreria Tre Gufi', street: 'Via in Selci', way: 23569690, at: 144, side: 'right' },
+    { id: 'E', name: "Ferramenta Chiodo d'Oro", street: 'Via Giovanni Lanza', way: 189558676, at: 260, side: 'right' },
+    { id: 'F', name: 'Cantina Volpe Rossa', street: 'Via dei Ciancaleoni', way: 190639862, at: 55, side: 'right', bay: [48.2, -96, 132] },
+    { id: 'G', name: 'Tipografia Fulmine', street: 'Via Cavour', way: 189465651, at: 60, side: 'right' },
+    { id: 'H', name: 'Drogheria Mezzaluna', street: 'Via delle Vasche', way: 23327917, at: 16, side: 'right', bay: [214.2, -145.6, -124] },
+    { id: 'I', name: 'Fioraio Pettirosso', street: 'Via Vittorino da Feltre', way: 50602036, at: 87, side: 'right' },
+    { id: 'J', name: 'Caffè Lanterna', street: 'Via del Colosseo', way: 42752307, at: 56, side: 'right' },
+    { id: 'K', name: 'Bottega del Rame', street: 'Via Cimarra', way: 202737280, at: 159, side: 'right' },
+    { id: 'L', name: 'Tessuti Arcobaleno', street: 'Via Caprareccia', way: 113687408, at: 66, side: 'right' },
+    { id: 'M', name: 'Pasticceria Nuvola', street: 'Via degli Zingari', way: 206908813, at: 57, side: 'right' },
+  ],
+  docks: ['C', 'F', 'H'], // spot ids with a loading dock
+  start: 'A', // spot id where a new game begins, in its kerb lane facing along it
 };
 
 // Procedural buildings on the building tiles (buildings.js), in the style of the Monti prototype (ADR 0001). Each run
@@ -365,6 +390,8 @@ export const minimap = {
   routeWidth: 1, // map tiles
   spotRadius: 2, // map tiles
   labelSize: 4, // map tiles, spot letter height
+  streetLabel: 2.5, // map tiles, height of a main street's name on an OSM map
+  streetLength: 150, // m of main road a street needs to be named
   rate: 15, // Hz, redraws of the truck marker and route; roads, spots and letters are drawn once
 };
 
@@ -401,20 +428,26 @@ export const perf = {
   window: 1200, // frames the overlay's medians and p95s cover (20 s at 60 Hz)
   refresh: 1, // s between overlay updates
   seed: 1, // Sim random seed under ?auto
+  spots: ['B', 'J', 'I', 'D', 'L', 'K'], // the loop on Monti: spot ids, driven in this order along the shortest legal routes
   route: [
-    // corners of the loop in m, driven in this order along the shortest roads between them
+    // the grid city's loop (until #67): corners in m, driven in this order along the shortest roads between them
     { x: 21, z: 119 },
     { x: 805, z: 119 },
     { x: 805, z: 511 },
     { x: 21, z: 511 },
   ],
   spacing: 14, // m between the points the autopilot steers by along the loop
-  lane: 2, // m right of the road's centre line
+  lane: 2, // m right of the road's centre line on the grid city (on Monti each edge's lane)
+  dodge: 1, // m off a one-way's middle, away from its parked cars
+  radius: 0, // m, the least turn radius its corners are rounded to (none on the grid city)
   cruiseSpeed: 12, // m/s on straights
   turnSpeed: 4.5, // m/s near corners and while off line
   steerGain: 2.5, // steering input per rad of heading error
   stuckTime: 2, // s at a standstill before the autopilot resets the truck to the road
   waitTime: 40, // s, the same while waiting behind an AI car (a light cycle is 38 s)
+  // Monti's settings in place of the above (the grid city's, until #67): its narrow streets need points close together,
+  // corners rounded to what the truck can turn (7.3 m at a crawl) and crawling through them, as the lock fades with speed
+  monti: { spacing: 3, radius: 8.5, turnSpeed: 2 },
 };
 
 export const camera = {

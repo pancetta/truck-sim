@@ -362,25 +362,25 @@ export function createRenderer(canvas, tables, map, onProgress) {
   loads.push(...cityModels, Promise.all(cityModels.map((m) => m.catch(() => null))).then((models) => addCity(models.filter(Boolean))));
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
 
-  // Dock bays, our own boxes: a dock edge (a low dark platform) in the floor of the opening in the building face
-  // (buildings.js), and painted lines on either side of the bay, as far apart as the docking check allows. They stand
-  // a little above the kerb so they show over the pavement too. The edge isn't solid; the building behind it is.
+  // Dock bays, our own boxes, from each dock's bay: a dock edge (a low dark platform) in the floor of the opening in the
+  // building face (buildings.js; on an OSM map the Sim's platform collider, wall or not), and painted lines on either
+  // side of the bay, as far apart as the docking check allows. They stand a little above the kerb so they show over the
+  // pavement too. On the grid city the edge isn't solid; the building behind it is.
   const bayHalf = tables.vehicle.width / 2 + tables.orders.dockCentre;
   const { dock } = tables.buildings;
   const bayLines = [];
   const dockEdges = [];
-  for (const { dir, zone } of map.spots.filter((s) => s.dock)) {
-    const [dc, dr] = DIRS[dir];
-    const { x, z } = centre(zone);
-    const [fx, fz] = [x - (dc * ts) / 2, z - (dr * ts) / 2]; // middle of the building face
-    // The box from `out0` to `out1` m out from the face and `side0` to `side1` m across the bay's centre line.
-    const bay = (out0, out1, side0, side1) => {
-      const [x0, x1] = [fx + dc * out0 - dr * side0, fx + dc * out1 - dr * side1];
-      const [z0, z1] = [fz + dr * out0 + dc * side0, fz + dr * out1 + dc * side1];
-      return { minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1) };
+  for (const { bay } of map.spots.filter((s) => s.dock)) {
+    const [fx, fz] = [Math.sin(bay.heading), Math.cos(bay.heading)]; // out of the bay
+    // The box from `out0` to `out1` m out from the dock edge and `side0` to `side1` m across the bay's centre line,
+    // turned with the bay (its local x across, z along).
+    const part = (out0, out1, side0, side1) => {
+      const [along, across] = [(out0 + out1) / 2, (side0 + side1) / 2];
+      const [x, z] = [bay.x + fx * along - fz * across, bay.z + fz * along + fx * across];
+      return { minX: x - (side1 - side0) / 2, maxX: x + (side1 - side0) / 2, minZ: z - (out1 - out0) / 2, maxZ: z + (out1 - out0) / 2, angle: bay.heading };
     };
-    dockEdges.push({ ...bay(-dock.depth, 0, -dockHalf(tables), dockHalf(tables)), height: dock.edge });
-    for (const side of [-bayHalf, bayHalf]) bayLines.push(bay(0, 10, side - 0.12, side + 0.12));
+    dockEdges.push({ ...part(-dock.depth, 0, -dockHalf(tables), dockHalf(tables)), height: dock.edge });
+    for (const side of [-bayHalf, bayHalf]) bayLines.push(part(0, 10, side - 0.12, side + 0.12));
   }
   addBoxes(palette.dark, dockEdges);
   addBoxes(palette.stopLine, bayLines, 0.07);
@@ -554,16 +554,18 @@ export function createRenderer(canvas, tables, map, onProgress) {
     });
   }
 
-  // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own. None for no
-  // boxes (an OSM map has no spots yet): WebGPU rejects an instanced mesh without instances.
+  // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own, and turned
+  // by their `angle` about their middle if they have one. None for no boxes (a map without docks): WebGPU rejects an
+  // instanced mesh without instances.
   function addBoxes(color, boxes, height) {
     if (!boxes.length) return;
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
     mesh.receiveShadow = true;
     const m = new THREE.Matrix4();
+    const size = new THREE.Vector3();
     boxes.forEach((b, i) => {
       const h = b.height ?? height;
-      m.makeScale(b.maxX - b.minX, h, b.maxZ - b.minZ).setPosition((b.minX + b.maxX) / 2, h / 2, (b.minZ + b.maxZ) / 2);
+      m.makeRotationY(b.angle ?? 0).scale(size.set(b.maxX - b.minX, h, b.maxZ - b.minZ)).setPosition((b.minX + b.maxX) / 2, h / 2, (b.minZ + b.maxZ) / 2);
       mesh.setMatrixAt(i, m);
     });
     scene.add(mesh);
@@ -573,7 +575,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // tall enough to show over the roofs. Premultiplied, because DirectRenderPipeline's output step expects premultiplied
   // colour; straight alpha would apply the opacity twice and wash the colour out.
   const marker = new THREE.Mesh(
-    new THREE.BoxGeometry(ts, city.markerHeight, ts),
+    new THREE.BoxGeometry(ts ?? tables.osm.zone, city.markerHeight, ts ?? tables.osm.zone), // as wide as a zone
     new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.35, depthWrite: false, premultipliedAlpha: true }),
   );
   marker.position.y = city.markerHeight / 2;

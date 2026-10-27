@@ -209,7 +209,11 @@ Which traffic goes first at a **Junction** without lights: the higher **Road cla
 A street leaving the map, where **AI cars** come and go and the truck meets a barrier.
 
 **Spot table**:
-The hand-picked list of **Spots** on **Monti**, each with a made-up business name on a real street.
+The hand-picked list of **Spots** on **Monti**, each with a made-up business name on a real street; a **Dock**'s
+**Dock bay** is at the end of a dead-end street or lane, which the truck backs down.
+
+**Start spot**:
+The **Spot** where a new game puts the truck, in its lane.
 
 ## Relationships
 

@@ -190,9 +190,83 @@ describe('OSM map: lights and signs', () => {
   });
 });
 
-describe('OSM map: no spots yet', () => {
-  test('asking for offers gets none', () => {
-    expect(createSim(tables, build(way('residential', [[-50, 0], [50, 0]]))).requestOffers()).toEqual([]);
+describe('OSM map: spots', () => {
+  // Tables with `spots` (and their docks and start) in place of the extract's.
+  const withSpots = (spots, docks = [], start = null) => ({ ...tables, osm: { ...tables.osm, spots, docks, start } });
+  const centre = ({ zone }) => ({ x: (zone.minX + zone.maxX) / 2, z: (zone.minZ + zone.maxZ) / 2 });
+  // East along z = 0 two-way, and from its east end a one-way south along x = 60 to a dead end, drawn north
+  // (oneway=-1: traffic runs against its points).
+  const street = way('residential', [[-90, 0], [0, 0], [60, 0]], { name: 'Via Prima' });
+  const oneWay = way('residential', [[60, 90], [60, 0]], { name: 'Via Seconda', oneway: '-1' });
+  const spots = [
+    { id: 'A', name: 'Forno Uno', street: 'Via Prima', way: street.id, at: 40, side: 'right' },
+    { id: 'B', name: 'Bottega Due', street: 'Via Prima', way: street.id, at: 120, side: 'left' },
+    { id: 'C', name: 'Vini Tre', street: 'Via Seconda', way: oneWay.id, at: 30, side: 'right' },
+  ];
+  const t = withSpots(spots, [], 'B');
+  const map = buildOsmMap({ bounds, ways: [street, oneWay] }, t);
+
+  test('stand on their street at their distance along the way, on the kerb lane of their side (a one-way: its own)', () => {
+    const { lane } = classes.residential;
+    expect(map.spots.map((s) => [s.id, s.name, s.street])).toEqual([['A', 'Forno Uno', 'Via Prima'], ['B', 'Bottega Due', 'Via Prima'], ['C', 'Vini Tre', 'Via Seconda']]);
+    expect(centre(map.spots[0])).toEqual({ x: -50, z: lane }); // east's right is +z
+    expect(centre(map.spots[1])).toEqual({ x: 30, z: -lane });
+    expect(centre(map.spots[2])).toEqual({ x: 60, z: 60 });
+    for (const s of map.spots) expect(s.zone.maxX - s.zone.minX).toBe(tables.osm.zone);
+    expect(map.spots.map((s) => s.pose.edge.name)).toEqual(['Via Prima', 'Via Prima', 'Via Seconda']);
+  });
+
+  test("a spot's street must be its way's name", () => {
+    expect(() => buildOsmMap({ bounds, ways: [street] }, withSpots([{ ...spots[0], street: 'Via Sbagliata' }]))).toThrow(/Via Prima, not Via Sbagliata/);
+  });
+
+  test('a new game starts on the start spot, in its kerb lane facing along it', () => {
+    const { truck, street: on } = createSim(t, map).state;
+    expect(on).toBe('Via Prima'); // the HUD's street name
+    expect(truck.x).toBeCloseTo(30);
+    expect(truck.z).toBeCloseTo(-classes.residential.lane);
+    expect(truck.heading).toBeCloseTo(-Math.PI / 2); // B is left of the way, in the westbound lane
+    const onOneWay = createSim(withSpots(spots, [], 'C'), buildOsmMap({ bounds, ways: [street, oneWay] }, withSpots(spots, [], 'C'))).state.truck;
+    expect(onOneWay.heading).toBeCloseTo(0); // south (+z), the way the one-way runs, against its points
+  });
+
+  test('offers pay by the legal route length between their spots', () => {
+    const sim = createSim(t, map, seeded(1));
+    const offers = sim.requestOffers();
+    expect(offers.length).toBeGreaterThan(0);
+    for (const o of offers) {
+      const [from, to] = [o.pickup, o.dropoff].map((id) => map.spots.find((s) => s.id === id));
+      expect(o.distance).toBeCloseTo(map.graph.route(from.pose, to.pose).length);
+      expect(o.pay).toBe(Math.round(tables.orders.basePay + (tables.orders.payPerKm * o.distance) / 1000));
+    }
+    // C is down the one-way, which leads away from Via Prima: there's no way back, so no offer from it.
+    expect(offers.some((o) => o.pickup === 'C')).toBe(false);
+  });
+
+  test("a dock's zone is where a truck reversed into its bay stands, and its dock edge stops a truck backing past it", () => {
+    // A dead end north off Via Prima, its dock edge 20 m up, the bay facing south, out to the street.
+    const dead = way('service', [[-40, 0], [-40, -40]], { name: 'Vicolo' });
+    const docks = withSpots([{ id: 'D', name: 'Magazzino', street: 'Vicolo', way: dead.id, at: 10, side: 'right', bay: [-40, -20, 0] }], ['D']);
+    const dockMap = buildOsmMap({ bounds, ways: [street, dead] }, docks);
+    const [d] = dockMap.spots;
+    expect(d.dock).toBe(true);
+    expect(d.bay).toEqual({ x: -40, z: -20, heading: 0 });
+    expect(centre(d)).toEqual({ x: -40, z: -20 + tables.vehicle.length / 2 });
+    // Backing north up the bay, heading south: stopped with its rear at the dock edge.
+    const sim = createSim(docks, dockMap);
+    Object.assign(sim.state.truck, { x: -40, z: -10, heading: 0, speed: -2 });
+    for (let i = 0; i < 300 && !sim.state.collision; i++) sim.step(1 / 60, { steer: 0, gas: 0, brake: 1 });
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.z - tables.vehicle.length / 2).toBeCloseTo(-20, 0);
+  });
+
+  test("parked cars keep clear of a dock's street ends", () => {
+    const dead = way('residential', [[0, 0], [0, -60]], { name: 'Vicolo', oneway: 'yes' });
+    const parkedWith = (spots, docks) => buildOsmMap({ bounds, ways: [way('residential', [[-90, 0], [0, 0], [90, 0]], { oneway: 'yes' }), dead] }, withSpots(spots, docks)).colliders.filter((c) => c.kind === 'car');
+    const dock = [{ id: 'D', name: 'Magazzino', street: 'Vicolo', way: dead.id, at: 10, side: 'right', bay: [0, -60, 180] }];
+    const near = (cars) => cars.filter((c) => Math.hypot((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2) < tables.osm.parked.dock);
+    expect(near(parkedWith([], []))).not.toEqual([]);
+    expect(near(parkedWith(dock, ['D']))).toEqual([]);
   });
 });
 
@@ -447,6 +521,17 @@ describe('OSM map: the real Monti extract', () => {
     expect(into).toEqual([]);
     const onRoad = map.graph.edges.flatMap((e) => e.points).filter((p) => map.buildings.some((b) => inside(p.x, p.z, b.points)));
     expect(onRoad).toEqual([]);
+  });
+
+  test('places every spot of the spot table on its street, each reachable from every other by the legal routes', () => {
+    expect(map.spots.map((s) => s.id)).toEqual(tables.osm.spots.map((s) => s.id));
+    expect(map.spots.filter((s) => s.dock).map((s) => s.id)).toEqual(tables.osm.docks);
+    for (const s of map.spots) {
+      expect(s.street).toBe(tables.osm.spots.find((t) => t.id === s.id).street);
+      if (!s.dock) expect(s.pose.edge.name).toBe(s.street); // a dock's zone may be down a lane off it
+      for (const to of map.spots) if (to !== s) expect(map.graph.route(s.pose, to.pose), `${s.id} → ${to.id}`).not.toBe(null);
+    }
+    expect(map.start).toMatchObject({ x: expect.any(Number), z: expect.any(Number), heading: expect.any(Number) });
   });
 
   test('puts most of OSM\'s street furniture in, and none of it reaching into a road', () => {

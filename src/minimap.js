@@ -1,9 +1,10 @@
 // Minimap: the whole city from above, north up (map row 0 at the top), with the spots, the truck and
 // the Sim's current route. Reads Sim state each frame but redraws only at tables.minimap.rate; never writes to it.
-// Sizes in map tiles are tables.city.tileSize m each on a map without tiles (an OSM map), whose roads are its edges.
+// Sizes in map tiles are tables.city.tileSize m each on a map without tiles (an OSM map), whose roads are its edges at
+// their widths, with the main streets (tables.osm.lightClasses) named.
 export function createMinimap(canvas, map, tables) {
   const { palette } = tables;
-  const { tile, truckSize, outline, routeWidth, spotRadius, labelSize, rate } = tables.minimap;
+  const { tile, truckSize, outline, routeWidth, spotRadius, labelSize, streetLabel, rate } = tables.minimap;
   const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
   const { bounds } = map;
   const unit = map.tileSize ?? tables.city.tileSize; // m per map tile
@@ -16,7 +17,6 @@ export function createMinimap(canvas, map, tables) {
   let scale; // canvas px per map tile
   let ratio; // devicePixelRatio the canvases are sized for
   let drawn = -Infinity; // performance.now() of the last redraw
-  const centre = (t) => [(t.col + 0.5) * scale, (t.row + 0.5) * scale];
   const at = (x, z) => [((x - bounds.minX) / unit) * scale, ((z - bounds.minZ) / unit) * scale]; // canvas px of a point
 
   // Sizes the canvases for the screen's pixel ratio, which changes with browser zoom or a move to another
@@ -38,11 +38,12 @@ export function createMinimap(canvas, map, tables) {
         for (const p of e.points) bctx.lineTo(...at(p.x, p.z));
         bctx.stroke();
       }
+      nameStreets();
     }
     bctx.fillStyle = hex(palette.spot);
     for (const s of map.spots) {
       bctx.beginPath();
-      bctx.arc(...centre(s.zoneTile), spotRadius * scale, 0, 2 * Math.PI);
+      bctx.arc(...zoneCentre(s), spotRadius * scale, 0, 2 * Math.PI);
       bctx.fill();
     }
     // Outlined so the letters stay readable on the truck marker.
@@ -54,12 +55,45 @@ export function createMinimap(canvas, map, tables) {
     lctx.strokeStyle = hex(palette.trim);
     lctx.fillStyle = hex(palette.light);
     for (const s of map.spots) {
-      const [x, y] = centre(s.zoneTile);
+      const [x, y] = zoneCentre(s);
       lctx.strokeText(s.id, x, y + 0.1 * scale);
       lctx.fillText(s.id, x, y + 0.1 * scale);
     }
     ctx.lineJoin = 'round'; // resizing resets the context; the truck marker's outline needs it without a route too
     drawn = -Infinity; // resizing clears the canvas, so the next update redraws
+  }
+  const zoneCentre = ({ zone }) => at((zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2);
+
+  // Each main street's name once, along the middle of its longest edge of a main class, upright and outlined; none for
+  // one with less than tables.minimap.streetLength m of main road (a square, a stub), which would only crowd the map.
+  function nameStreets() {
+    const longest = new Map(); // street name → its longest main edge
+    const length = new Map(); // street name → m of main road
+    for (const e of map.graph.edges) {
+      if (!e.name || !tables.osm.lightClasses.includes(e.class)) continue;
+      length.set(e.name, (length.get(e.name) ?? 0) + e.length);
+      if (e.length > (longest.get(e.name)?.length ?? 0)) longest.set(e.name, e);
+    }
+    for (const name of longest.keys()) if (length.get(name) < tables.minimap.streetLength) longest.delete(name);
+    bctx.font = `600 ${streetLabel * scale}px system-ui, sans-serif`;
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    bctx.lineJoin = 'round';
+    bctx.lineWidth = outline * scale;
+    bctx.strokeStyle = hex(palette.trim);
+    bctx.fillStyle = hex(palette.light);
+    for (const [name, e] of longest) {
+      const mid = e.length / 2;
+      const [a, b] = [map.graph.pointAt(e, mid - 1), map.graph.pointAt(e, mid + 1)];
+      let angle = Math.atan2(b.z - a.z, b.x - a.x);
+      if (Math.abs(angle) > Math.PI / 2) angle -= Math.sign(angle) * Math.PI;
+      bctx.save();
+      bctx.translate(...at(map.graph.pointAt(e, mid).x, map.graph.pointAt(e, mid).z));
+      bctx.rotate(angle);
+      bctx.strokeText(name, 0, 0);
+      bctx.fillText(name, 0, 0);
+      bctx.restore();
+    }
   }
   resize();
 

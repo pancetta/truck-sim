@@ -1,7 +1,6 @@
 // Headless game simulation. Must not import Three.js or touch the DOM.
 // Heading 0 faces +z; forward is (sin heading, cos heading) in the x/z plane.
 
-import { DIRS } from './map.js';
 import { createCells } from './cells.js';
 import { createTraffic } from './traffic.js';
 
@@ -37,7 +36,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
-  // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of.
+  // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
+  // `street` that edge's name ('' for none).
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
@@ -56,6 +56,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     policeSees: false,
     junctionRule: null,
     speedLimit: tables.speedLimit,
+    street: '',
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
     },
@@ -70,7 +71,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
-  let limitEdge = null; // edge whose limit state.speedLimit shows (see updateLimit)
+  let limitEdge = null; // edge whose limit and name state.speedLimit and state.street show (see updateLimit)
   let speedingFined = -Infinity; // clock at the last speeding fine
   const traffic = map ? createTraffic(tables, map, random) : null;
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
@@ -326,13 +327,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return on.ahead - nodes[on.next].radius <= tables.signs.hint ? ruleOf(on.next) : null;
   }
 
-  // The limit of the edge the truck is on: it keeps the one it has while it stays within that edge's width (its end
+  // The limit and name of the edge the truck is on: it keeps the one it has while it stays within that edge's width (its end
   // included), so a side street's centre line, nearer inside a junction, doesn't take over; past it, the nearest road's.
   function updateLimit(here) {
     if (limitEdge && map.graph.project(limitEdge, truck.x, truck.z).d <= limitEdge.width / 2) return;
     if (here.d > here.edge.width / 2) return;
     limitEdge = here.edge;
     state.speedLimit = limitEdge.limit;
+    state.street = limitEdge.name;
   }
 
   // Driving faster than the limit by more than tables.speeding.tolerance costs a fine if the police see it, then none
@@ -417,7 +419,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * care * order.pay) });
       }
       const to = targetOf(order);
-      const docked = to.dock && reversedInto(to);
+      const docked = to.dock && reversedInto(to.bay);
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
@@ -430,18 +432,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // Whether the truck stands reversed into a dock's bay: facing out of it, along the zone side, on its centre line,
-  // and with the middle of its rear at the dock edge (the building face, half a tile back from the zone's centre).
-  function reversedInto({ dir, zone }) {
-    const [dc, dr] = DIRS[dir];
-    const turn = truck.heading - Math.atan2(dc, dr);
-    const [dx, dz] = [truck.x - (zone.minX + zone.maxX) / 2, truck.z - (zone.minZ + zone.maxZ) / 2];
-    const rear = (dx - (Math.sin(truck.heading) * v.length) / 2) * dc + (dz - (Math.cos(truck.heading) * v.length) / 2) * dr;
-    return (
-      Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) <= o.dockHeading &&
-      Math.abs(dx * dr - dz * dc) <= o.dockCentre &&
-      rear + map.tileSize / 2 <= o.dockDepth
-    );
+  // Whether the truck stands reversed into a dock's bay (spot.bay: the middle of its dock edge and the heading a docked
+  // truck faces): facing out of it, on its centre line, and with the middle of its rear at the dock edge.
+  function reversedInto({ x, z, heading }) {
+    const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
+    const turn = truck.heading - heading;
+    const [dx, dz] = [truck.x - x, truck.z - z];
+    const rear = (dx - (Math.sin(truck.heading) * v.length) / 2) * fx + (dz - (Math.cos(truck.heading) * v.length) / 2) * fz;
+    return Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn))) <= o.dockHeading && Math.abs(dx * fz - dz * fx) <= o.dockCentre && Math.abs(rear) <= o.dockDepth;
   }
 
   function updateRank() {
@@ -635,9 +633,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   updateLights();
   if (map) {
-    // Start parked on the road nearest the middle of the city.
-    Object.assign(truck, { x: (map.bounds.minX + map.bounds.maxX) / 2, z: (map.bounds.minZ + map.bounds.maxZ) / 2 });
-    resetToRoad();
+    // A new game starts at the map's start pose (its start spot's), else on the road nearest the middle of the city.
+    Object.assign(truck, map.start ?? { x: (map.bounds.minX + map.bounds.maxX) / 2, z: (map.bounds.minZ + map.bounds.maxZ) / 2 });
+    if (!map.start || !fits(truck)) resetToRoad();
     updateTraffic(0);
     state.policeSees = policeSees();
     state.junctionRule = junctionAhead();

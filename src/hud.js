@@ -1,6 +1,6 @@
 // Dashboard overlay: speed (red above the limit), the speed limit, gear, RPM, rank and total distance, and above it
-// the next junction's rule while one is near and a police sign while a police car sees the truck. Reads Sim state;
-// never writes to it.
+// the name of the street the truck is on, the next junction's rule while one is near and a police sign while a police
+// car sees the truck. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, and the right before left warning sign.
 const RULE_ICONS = {
   light: '<rect x="7" y="1" width="10" height="22" rx="3" fill="#2b2d33"/><circle cx="12" cy="6" r="2.4" fill="#ff4a3d"/><circle cx="12" cy="12" r="2.4" fill="#e8c547"/><circle cx="12" cy="18" r="2.4" fill="#6cc551"/>',
@@ -18,6 +18,7 @@ export function createHud(root, tables, strings) {
     <div class="dash-rpm" aria-label="${strings.rpm}"><i></i><small></small></div>
     <div class="dash-rank" aria-label="${strings.rank}"><span></span><small aria-label="${strings.distance}"></small><div><i></i></div></div>
     <div class="dash-signs">
+      <div class="dash-street" aria-label="${strings.street}" hidden></div>
       <div class="dash-rule" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"></svg><span></span></div>
       <div class="dash-police" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5"/></svg>${strings.policeSees}</div>
     </div>`;
@@ -31,6 +32,7 @@ export function createHud(root, tables, strings) {
   const police = root.querySelector('.dash-police');
   const limit = root.querySelector('.dash-limit');
   const rule = root.querySelector('.dash-rule');
+  const street = root.querySelector('.dash-street');
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
@@ -42,7 +44,7 @@ export function createHud(root, tables, strings) {
   let shownRule = null;
 
   // In the cab view the 3D instruments show speed, gear and RPM, so the overlay hides (style.css).
-  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit }, inCab) {
+  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit, street: name }, inCab) {
     root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
@@ -58,6 +60,8 @@ export function createHud(root, tables, strings) {
     if (km !== shownKm) distance.textContent = `${(shownKm = km).toLocaleString('de-DE')} ${strings.km}`;
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
     if (police.hidden === policeSees) police.hidden = !policeSees;
+    if (street.hidden !== !name) street.hidden = !name;
+    set(street, name);
     if (junctionRule !== shownRule) {
       shownRule = junctionRule;
       rule.hidden = !junctionRule;

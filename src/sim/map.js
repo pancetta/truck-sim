@@ -48,8 +48,11 @@ export function parseMap(text, tables) {
         if (spots.some((s) => s.id === t)) throw new Error(`Map spot ${t} appears twice`);
         colliders.push({ kind: 'spot', ...box(x, z, half, half) });
         const zoneTile = { col: col + d[0], row: row + d[1] };
-        // `dir`: DIRS index from the spot to its zone; a dock's bay opens that way.
-        spots.push({ id: t, dir: DIRS.indexOf(d), dock: tables.city.docks.includes(t), zoneTile, zone: box(x + d[0] * tileSize, z + d[1] * tileSize, half, half) });
+        // `dir`: DIRS index from the spot to its zone; a dock's bay opens that way, its dock edge (`bay`: its middle and
+        // the heading a truck docked in it faces) in the building face.
+        const dock = tables.city.docks.includes(t);
+        const bay = dock ? { x: x + d[0] * half, z: z + d[1] * half, heading: Math.atan2(d[0], d[1]) } : null;
+        spots.push({ id: t, dir: DIRS.indexOf(d), dock, zoneTile, zone: box(x + d[0] * tileSize, z + d[1] * tileSize, half, half), bay });
       } else if (OBSTACLES[t]) {
         const d = DIRS.find(([dc, dr]) => !isRoad(col + dc, row + dr));
         if (!d) throw new Error(`Map obstacle ${t} ${where} needs a kerb (a non-road neighbour)`);

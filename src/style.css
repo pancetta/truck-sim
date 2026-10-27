@@ -505,6 +505,21 @@ body:has(.rear-inset:not([hidden])) .goal {
   white-space: nowrap;
 }
 
+/* The street the truck is on, as a street name sign. */
+.dash-street {
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 12px;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  background: rgb(40 40 48 / 0.85);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dash-street[hidden],
 .dash-rule[hidden],
 .dash-police[hidden] {
   display: none;

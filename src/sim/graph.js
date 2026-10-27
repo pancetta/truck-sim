@@ -111,15 +111,16 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     return [pointAt(e, a), ...(a < b ? inner : inner.reverse()), pointAt(e, b)];
   }
 
-  // Shortest ways by length to the pose `to`, one search for any number of starts: a function from a start pose to
-  // { length (m), points } (the polyline from the start to `to`, both ends included), or null where no road leads.
+  // Shortest legal ways by length to the pose `to`, one search for any number of starts: a function from a start pose
+  // to { length (m), points } (the polyline from the start to `to`, both ends included), or null where no road leads.
+  // One-way edges are only followed from their `from` node to their `to` node.
   function towards(to) {
     const t = to.edge;
     const dist = new Float64Array(nodes.length).fill(Infinity);
     const via = new Array(nodes.length).fill(null); // the edge on from each node towards `to`; null: on along t
     const done = new Uint8Array(nodes.length);
     dist[t.from] = to.s;
-    dist[t.to] = Math.min(dist[t.to], t.length - to.s);
+    if (!t.oneWay) dist[t.to] = Math.min(dist[t.to], t.length - to.s);
     for (;;) {
       let n = -1;
       for (let i = 0; i < nodes.length; i++) if (!done[i] && dist[i] < Infinity && (n < 0 || dist[i] < dist[n])) n = i;
@@ -127,6 +128,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       done[n] = 1;
       for (const id of nodes[n].arms) {
         const e = edges[id];
+        if (e.oneWay && e.to !== n) continue; // m → n would run against it
         const m = e.from === n ? e.to : e.from;
         if (dist[n] + e.length < dist[m]) [dist[m], via[m]] = [dist[n] + e.length, e];
       }
@@ -134,8 +136,8 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
 
     return (from) => {
       const f = from.edge;
-      const direct = f === t ? Math.abs(from.s - to.s) : Infinity;
-      const [back, ahead] = [from.s + dist[f.from], f.length - from.s + dist[f.to]];
+      const direct = f === t && (!f.oneWay || to.s >= from.s) ? Math.abs(from.s - to.s) : Infinity;
+      const [back, ahead] = [f.oneWay ? Infinity : from.s + dist[f.from], f.length - from.s + dist[f.to]];
       const length = Math.min(direct, back, ahead);
       if (length === Infinity) return null;
       if (length === direct) return { length, points: tidy(cut(t, from.s, to.s)) };

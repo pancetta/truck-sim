@@ -133,7 +133,8 @@ function look(tables, random, floors, height, spot) {
 // grid's, with the height from the map and as many floors as fit under it. Each has its `points`, turned so its sides
 // run with the outside to their left, and a side per wall from each corner to the next; `dir` is the DIRS direction
 // nearest to the way it faces. A side is a street side unless another building stands against it: a party wall,
-// left blank. No spots yet (#64), so no spot buildings or dock openings.
+// left blank. Monti's spots are on the street (the spot table), so no building is a spot's and none has a dock opening:
+// a dock's edge stands on its own (see the renderer's dock bays).
 function planOutlines(map, tables) {
   const t = tables.buildings;
   const random = seeded(t.seed);

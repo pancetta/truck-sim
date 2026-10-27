@@ -69,6 +69,19 @@ test('a one-way edge has one lane, along its centre line, and no turn leads into
   expect(centre.slots[1].in).toBe(null);
 });
 
+test('routes obey one-ways: the shortest legal way, round the block where the short one runs against one', () => {
+  // A 100 m square, its north side one-way east (node 0 to 1), the rest two-way.
+  const nodes = [{ x: 0, z: 0 }, { x: 100, z: 0 }, { x: 100, z: 100 }, { x: 0, z: 100 }];
+  const edges = [0, 1, 2, 3].map((from) => ({ from, to: (from + 1) % 4, class: 'residential', width: 7, name: '', oneWay: from === 0, points: [nodes[from], nodes[(from + 1) % 4]] }));
+  const { route } = createGraph(nodes, edges, laneOffset, TILE);
+  const [north, east] = edges;
+
+  expect(route({ edge: north, s: 20 }, { edge: north, s: 80 }).length).toBeCloseTo(60); // along it
+  expect(route({ edge: north, s: 80 }, { edge: north, s: 20 }).length).toBeCloseTo(20 + 300 + 20); // on and round
+  expect(route({ edge: east, s: 50 }, { edge: north, s: 50 }).length).toBeCloseTo(50 + 200 + 50); // not back along it
+  expect(route({ edge: north, s: 50 }, { edge: east, s: 50 }).length).toBeCloseTo(100);
+});
+
 const pose = (p, s) => {
   const out = { x: 0, z: 0, heading: 0 };
   poseAt(p, s, out);

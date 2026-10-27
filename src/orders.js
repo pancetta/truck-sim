@@ -19,9 +19,14 @@ export function createOrders(root, sim, map, tables, strings) {
   const eur = (n) => `${n.toLocaleString('de-DE')} €`;
   const km = (m) => `${(m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
   const clock = (s) => `${Math.floor(Math.ceil(s) / 60)}:${String(Math.ceil(s) % 60).padStart(2, '0')}`;
+  // A spot as the player knows it: business and street on Monti, its letter on the grid city.
+  const place = (id) => {
+    const s = map.spots.find((s) => s.id === id);
+    return s.name ? `${s.name}, ${s.street}` : id;
+  };
   const offerHtml = (o) =>
-    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${o.pickup} → ${o.dropoff} · ${km(o.distance)} · ` +
-    `${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
+    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${place(o.pickup)} → ${place(o.dropoff)}</small><br>` +
+    `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
     `<small>${strings.offerTypes[o.type]}</small><strong>${eur(o.pay)}</strong>`;
   let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.profile.money;
@@ -118,7 +123,7 @@ export function createOrders(root, sim, map, tables, strings) {
       set(
         goalText,
         'textContent',
-        `${pickup ? strings.toPickup : strings.toDropoff} ${target} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
+        `${pickup ? strings.toPickup : strings.toDropoff} ${place(target)} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
         `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`,
       );
       set(hint, 'textContent', pickup ? strings.stopToLoad : dock ? strings.stopToDock : strings.stopToUnload);
