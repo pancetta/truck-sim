@@ -787,6 +787,19 @@ The cab interior is our own geometry: about ten meshes merged by material (dash,
 
 **Verdict:** no measurable frame cost. Both hold 60 fps in Chrome, and the run-to-run spread on main is larger than any difference. The adaptive resolution picked dpr 1.25–2 across runs, so the call counts move with the view.
 
+## German light layout (#70)
+
+The posts move to the near right corner and the stop lines 9 m before them. AI cars stop at the line, and the lights gain a red-and-amber phase. The geometry is the same per light, so only the traffic step can change.
+
+**How measured:** the traffic bench and `?perf&auto` in headless Chrome as for #57 (1180×820, cab view), main `6251417` against this change, alternating. The machine was under outside load (load average 5–20), so these numbers are noisy.
+
+| | traffic step, 100 (+2 police) cars | allocated per step | busy ms mean (2 runs) |
+|---|---|---|---|
+| main | 164–167 µs; 229–283 µs under load | 26–27 KB | 6.89, 3.76 |
+| this change | 139–147 µs; 261–365 µs under load; 104 µs alone | 24–28 KB | 8.19, 3.29 |
+
+**Verdict:** within the bench's budget (1 ms, 32 KB). There is no measurable frame cost: draw calls and triangles are unchanged, and the busy times move with the load, not the change.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
