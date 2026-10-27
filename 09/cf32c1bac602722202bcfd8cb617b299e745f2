@@ -1,0 +1,32 @@
+src/tables.js
+  s_be62fde7b10fc2::t_42a1d473408823 139-141
+src/renderer.js
+  s_be62fde7b10fc2::t_11bc4ba8a34be7 353-355
+src/sim/sim.js
+  s_be62fde7b10fc2::t_e27191e5ed50cf 149,166,236-237,239,242,246-251
+src/sim/map.js
+  s_be62fde7b10fc2::t_d45333da747057 64-66,69,71-72
+src/sim/traffic.js
+  s_be62fde7b10fc2::t_e8aedf8d911f3b 30
+  s_be62fde7b10fc2::t_0ac9cb94bd285b 550
+  s_be62fde7b10fc2::t_e385d4321efc95 554,556,560-562
+src/sim/sim.test.js
+  s_be62fde7b10fc2::t_6a3a541b9b55ca 1378,1380-1381,1385-1399,1548,1580-1595,1636,1668-1669
+  s_be62fde7b10fc2::t_b00758ba2d1607 1781-1804
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09cf32c1bac602722202bcfd8cb617b299e745f2",
+  "prompts": {},
+  "sessions": {
+    "s_be62fde7b10fc2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34c1d130-f288-4b95-aebd-ac32477bb3a3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
