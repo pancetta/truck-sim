@@ -92,6 +92,9 @@ describe('the autopilot on Monti', () => {
     expect(run(sim, there.update, () => inZone(sim.state.truck, dock), 200)).toEqual({ done: true, contacts: 0 });
 
     // Out of the bay forwards and on along the street, as the truck backs in later: kinematics run both ways.
+    // shortcut: the back-in replays the truck's own way out with a test-only reverse controller, so it proves a way in
+    // from that side of the street exists, not that the autopilot could find one; give the autopilot a reverse mode if
+    // docking itself comes under test.
     const { x, z, heading } = dock.bay;
     const docked = { x: x + (Math.sin(heading) * tables.vehicle.length) / 2, z: z + (Math.cos(heading) * tables.vehicle.length) / 2, heading };
     const out = createAutopilot(sim, monti, empty, [id, tables.osm.start], false);

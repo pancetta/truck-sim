@@ -374,12 +374,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.route = routeFrom(here, onRoad, target.pose)?.points ?? [];
   }
 
-  // The truck's shortest road route ({ length (m), points }) to the graph pose `to`, from `here`, its nearest graph
-  // pose; null where no road leads there. On the road it runs from `here`, its first point (the truck's own) left
-  // out. Off it, it joins the road where straight across plus on by road is shortest, along a line clear of
-  // buildings, and starts at that join.
+  // The truck's shortest legal road route ({ length (m), points }) to the graph pose `to`, from `here`, its nearest graph
+  // pose; where none leads there (the truck may drive against one-ways, into streets that only lead out of the map), the
+  // shortest against them; null where no road leads there at all. On the road it runs from `here`, its first point (the
+  // truck's own) left out. Off it, it joins the road where straight across plus on by road is shortest, along a line
+  // clear of buildings, and starts at that join.
   function routeFrom(here, onRoad, to) {
-    const way = map.graph.towards(to);
+    return wayFrom(here, onRoad, map.graph.towards(to)) ?? wayFrom(here, onRoad, map.graph.towards(to, false));
+  }
+  function wayFrom(here, onRoad, way) {
     if (onRoad) {
       const r = way(here);
       return r && { length: r.length, points: r.points.slice(1) };

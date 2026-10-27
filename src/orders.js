@@ -25,7 +25,7 @@ export function createOrders(root, sim, map, tables, strings) {
     return s.name ? `${s.name}, ${s.street}` : id;
   };
   const offerHtml = (o) =>
-    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small>${place(o.pickup)} → ${place(o.dropoff)}</small><br>` +
+    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${place(o.pickup)} → ${place(o.dropoff)}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
     `<small>${strings.offerTypes[o.type]}</small><strong>${eur(o.pay)}</strong>`;
   let shown = null; // what the open panel shows, so it only redraws on a change

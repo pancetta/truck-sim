@@ -334,8 +334,14 @@ body:has(.rear-inset:not([hidden])) .goal {
 }
 
 .orders-panel li p {
+  min-width: 0;
   margin: 0;
   white-space: nowrap;
+}
+
+/* Business and street names (Monti) wrap, so the pay and the button stay in the panel. */
+.orders-panel .places {
+  white-space: normal;
 }
 
 .orders-panel small {
@@ -367,6 +373,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   grid-template-columns: auto 1fr;
   column-gap: 12px;
   align-items: center;
+  max-width: calc(100% - 2 * 240px); /* clear of the buttons on either side */
   padding: 8px 16px 8px 12px;
   white-space: nowrap;
 }
@@ -385,6 +392,7 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 .goal span {
   font-weight: 600;
+  white-space: normal; /* a business and street name (Monti) can be long */
 }
 
 .goal small {

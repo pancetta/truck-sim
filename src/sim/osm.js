@@ -215,9 +215,13 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   for (const t of o.spots) {
     const w = data.ways.find((w) => w.id === t.way);
     if (!w) continue;
-    if (w.tags.name !== t.street) throw new Error(`Spot ${t.id}: way ${t.way} is ${w.tags.name}, not ${t.street}`);
-    const [x, z, u] = alongWay(w.points, t.at);
-    const near = graph.edges.filter((e) => e.way === t.way).map((e) => graph.project(e, x, z)).sort((a, b) => a.d - b.d)[0];
+    const fail = (why) => {
+      throw new Error(`Spot ${t.id}: ${why}`);
+    };
+    if (w.tags.name !== t.street) fail(`way ${t.way} is ${w.tags.name}, not ${t.street}`);
+    if (o.docks.includes(t.id) !== !!t.bay) fail(t.bay ? 'has a bay but is no dock' : 'is a dock without a bay');
+    const [x, z, u] = alongWay(w.points, t.at) ?? fail(`way ${t.way} is shorter than ${t.at} m`);
+    const near = graph.edges.filter((e) => e.way === t.way).map((e) => graph.project(e, x, z)).sort((a, b) => a.d - b.d)[0] ?? fail(`way ${t.way} isn't drivable`);
     const e = near.edge;
     // The kerb lane: on a two-way the one on the spot's side, a one-way's own; heading the way it runs.
     const side = t.side === 'right' ? 1 : -1;
@@ -246,13 +250,13 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   return { bounds, spots, start, colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares } };
 }
 
-// The point `at` m along a polyline of [x, z] points (clamped to its ends), and the unit direction there: [x, z, u].
+// The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.
 function alongWay(points, at) {
   for (let k = 1, s = 0; k < points.length; k++) {
     const [a, b] = [points[k - 1], points[k]];
     const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (s + l >= at || k === points.length - 1) {
-      const t = Math.max(0, Math.min(1, (at - s) / l));
+    if (l > 0 && s + l >= at) {
+      const t = Math.max(0, (at - s) / l);
       return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), [(b[0] - a[0]) / l, (b[1] - a[1]) / l]];
     }
     s += l;

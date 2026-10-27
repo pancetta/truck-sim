@@ -294,7 +294,7 @@ export const osm = {
   spots: [
     { id: 'A', name: 'Spedizioni Gatto Blu', street: 'Via Urbana', way: 189465655, at: 160, side: 'right' },
     { id: 'B', name: 'Forno della Luna', street: 'Via dei Serpenti', way: 232940101, at: 91, side: 'right' },
-    { id: 'C', name: 'Magazzino Ventaglio', street: 'Via San Giuseppe Labre', way: 182930018, at: 36, side: 'right', bay: [-61.5, -59.6, -8] },
+    { id: 'C', name: 'Magazzino Ventaglio', street: 'Via San Giuseppe Labre', way: 182930018, at: 36, side: 'right', bay: [-62, -56.3, -8] },
     { id: 'D', name: 'Libreria Tre Gufi', street: 'Via in Selci', way: 23569690, at: 144, side: 'right' },
     { id: 'E', name: "Ferramenta Chiodo d'Oro", street: 'Via Giovanni Lanza', way: 189558676, at: 260, side: 'right' },
     { id: 'F', name: 'Cantina Volpe Rossa', street: 'Via dei Ciancaleoni', way: 190639862, at: 55, side: 'right', bay: [48.2, -96, 132] },
@@ -391,7 +391,7 @@ export const minimap = {
   spotRadius: 2, // map tiles
   labelSize: 4, // map tiles, spot letter height
   streetLabel: 2.5, // map tiles, height of a main street's name on an OSM map
-  streetLength: 150, // m of main road a street needs to be named
+  streetLength: 120, // m of main road a street needs to be named (squares and stubs would crowd the map)
   rate: 15, // Hz, redraws of the truck marker and route; roads, spots and letters are drawn once
 };
 

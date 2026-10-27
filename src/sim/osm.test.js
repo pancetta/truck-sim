@@ -216,8 +216,22 @@ describe('OSM map: spots', () => {
     expect(map.spots.map((s) => s.pose.edge.name)).toEqual(['Via Prima', 'Via Prima', 'Via Seconda']);
   });
 
-  test("a spot's street must be its way's name", () => {
-    expect(() => buildOsmMap({ bounds, ways: [street] }, withSpots([{ ...spots[0], street: 'Via Sbagliata' }]))).toThrow(/Via Prima, not Via Sbagliata/);
+  test("a spot's street must be its way's name, its distance on it, and a dock needs a bay (and only a dock has one)", () => {
+    const fails = (spot, docks = []) => () => buildOsmMap({ bounds, ways: [street] }, withSpots([spot], docks));
+    expect(fails({ ...spots[0], street: 'Via Sbagliata' })).toThrow(/Via Prima, not Via Sbagliata/);
+    expect(fails({ ...spots[0], at: 200 })).toThrow(/shorter than 200 m/);
+    expect(fails(spots[0], ['A'])).toThrow(/dock without a bay/);
+    expect(fails({ ...spots[0], bay: [0, 0, 0] })).toThrow(/bay but is no dock/);
+  });
+
+  test('the route leads on against the one-ways where no legal way leads to the target', () => {
+    const sim = createSim(t, map, seeded(1));
+    const offer = sim.requestOffers().find((o) => o.pickup === 'A');
+    sim.acceptOrder(offer.id);
+    Object.assign(sim.state.truck, { x: 60, z: 50, heading: 0, speed: 0 }); // down the one-way, which only leads on to its dead end
+    sim.step(1 / 60, { steer: 0, gas: 0, brake: 0 });
+    expect(sim.state.route.length).toBeGreaterThan(0);
+    expect(sim.state.route.at(-1).x).toBeCloseTo(-50); // A's place on Via Prima
   });
 
   test('a new game starts on the start spot, in its kerb lane facing along it', () => {

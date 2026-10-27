@@ -9,18 +9,19 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   const { route, spacing, lane, dodge, radius, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = map.roads ? tables.perf : { ...tables.perf, ...tables.perf.monti };
   // Which side of each edge its parked cars stand on: 1 right of the edge's way, -1 left.
   const parkedSide = new Map();
-  for (const c of map.colliders.filter((c) => c.kind === 'car')) {
+  for (const c of map.roads ? [] : map.colliders.filter((c) => c.kind === 'car')) {
     const p = map.graph.nearest((c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2);
     const [a, b] = [p.edge.points[p.k], p.edge.points[Math.min(p.k + 1, p.edge.points.length - 1)]];
     parkedSide.set(p.edge, Math.sign(-(b.z - a.z) * ((c.minX + c.maxX) / 2 - p.x) + (b.x - a.x) * ((c.minZ + c.maxZ) / 2 - p.z)));
   }
   // m right of the centre line at (x, z): tables.perf.lane on the grid city; else its edge's lane, but the middle where
-  // the road is too narrow for two trucks (a one-way or a service lane), `dodge` m away from its parked cars, as they
-  // leave the truck only centimetres there
+  // the road is too narrow for two trucks (a one-way or a service lane), on a one-way (driven its own way, along the
+  // edge) `dodge` m away from its parked cars, as they leave the truck only centimetres there
   const laneAt = (x, z) => {
     if (map.roads) return lane;
     const { edge } = map.graph.nearest(x, z);
-    return edge.oneWay || edge.width < 2 * tables.vehicle.width ? -(parkedSide.get(edge) ?? 0) * dodge : edge.laneOffset;
+    if (edge.oneWay) return -(parkedSide.get(edge) ?? 0) * dodge;
+    return edge.width < 2 * tables.vehicle.width ? 0 : edge.laneOffset;
   };
   const corners = map.roads ? route.map(({ x, z }) => map.graph.nearest(x, z)) : stops.map((id) => map.spots.find((s) => s.id === id).pose);
   const legs = corners.slice(0, loop ? corners.length : -1).flatMap((c, i) => map.graph.route(c, corners[(i + 1) % corners.length]).points);
