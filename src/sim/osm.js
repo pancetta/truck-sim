@@ -131,7 +131,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   });
   // Give-way signs on the right-hand pavement of each approach to a junction without lights where another arm cars come
   // in by ranks higher (tables.traffic.priority, as the Sim's junction rule has it), tables.signs.along m before the
-  // junction's mouth, facing the traffic; none that would stand on a road.
+  // junction's mouth, facing the traffic; none that would stand on a road or in another junction.
   const lit = new Set(lights.map((l) => l.node));
   const rank = (a) => tables.traffic.priority[a.e.class] ?? 0;
   nodes.forEach((_, n) => {
@@ -139,8 +139,11 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     for (const a of arms[n]) {
       const others = arms[n].filter((b) => b !== a);
       if (!a.in || !others.some((b) => b.in && rank(b) > rank(a))) continue;
-      const p = beside(n, a, mouth(a, others) + tables.signs.along, -(a.e.width / 2 + o.pavement / 2)); // travel is against u
-      if (graph.onRoad(p.x, p.z)) continue; // a short arm's: it would stand on the next road
+      const along = mouth(a, others) + tables.signs.along;
+      const p = beside(n, a, along, -(a.e.width / 2 + o.pavement / 2)); // travel is against u
+      // A short arm's would stand past its far end, on the next road, or in the next junction, whose rule the HUD shows there.
+      const inJunction = graph.nodes.some((m, k) => k !== n && m.arms.length >= 3 && Math.hypot(m.x - p.x, m.z - p.z) < m.radius);
+      if (along > a.e.length || graph.onRoad(p.x, p.z) || inJunction) continue;
       signs.push({ kind: 'giveWay', ...p, angle: Math.atan2(a.u[0], a.u[1]) });
     }
   });

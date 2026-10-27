@@ -390,19 +390,21 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Driving towards a junction on an approach that gives way, the cars with priority there are `owed`: those coming in by
-  // an arm of higher rank, or in the junction from one, each with its speed a step ago. From tables.giveWay.near m before
-  // the junction's box, in it and for tables.giveWay.within s after, one of them shedding more than
-  // tables.giveWay.hardBrake m/s² costs a fine if the police see it, once (the cars brake as the truck's footprint meets
-  // the box, a little before its front bumper does).
+  // an arm of higher rank, or in the junction from one, each with its speed a step ago. Once the truck drives forwards
+  // within tables.giveWay.near m of the junction's box or in it, and for tables.giveWay.within s after, one of them
+  // shedding more than tables.giveWay.hardBrake m/s² costs a fine if the police see it, once per junction (the cars
+  // brake as the truck's footprint meets the box, a little before its front bumper does).
   // shortcut: only cars at that one node count, not ones coming in by another node of a crossing of several; upgrade if a
   // forced brake there goes unfined in play.
   let owed = [];
   let owedUntil = -Infinity; // clock at which the owed cars stop counting
   let settled = false; // whether one of them has braked hard since the truck came near
+  let owedNode = -1; // the junction they are owed at
   function checkGiveWay(dt) {
     const { hardBrake, near, within } = tables.giveWay;
     const giving = truck.speed > -v.stopSpeed && state.junctionRule === 'giveWay'; // junctionAhead() looked ahead
-    if (giving && (boxNode >= 0 || approachShort <= near)) owedUntil = clock + within;
+    // Only while driving in: a truck waiting at the line has given way.
+    if (giving && truck.speed > v.stopSpeed && (boxNode >= 0 || approachShort <= near)) owedUntil = clock + within;
     for (const o of owed) {
       if (!settled && clock <= owedUntil && dt > 0 && o.speed - o.car.speed > hardBrake * dt) {
         if (state.policeSees) fine('giveWay');
@@ -411,6 +413,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       o.speed = o.car.speed;
     }
     if (giving && boxNode < 0) {
+      if (approachNode !== owedNode) [owedNode, owedUntil, settled] = [approachNode, -Infinity, false];
       const higher = (e) => rank(e) > rank(approachEdge);
       const comes = ({ lane: p }) => (p.kind === 'run' ? p.to === approachNode && higher(p.edge) : p.node === approachNode && higher(p.in.edge));
       owed = state.traffic.filter(comes).map((car) => ({ car, speed: car.speed }));

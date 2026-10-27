@@ -189,6 +189,8 @@ describe('OSM map: lights and signs', () => {
     const giveWay = (map) => map.signs.filter((s) => s.kind === 'giveWay').map(({ x, z, angle }) => [x, z, angle].map((v) => Math.round(v * 100) / 100));
     // Coming north up the residential street (right of -z is +x), Via A's half width plus `along` before its middle.
     expect(giveWay(tee)).toEqual([[classes.residential.width / 2 + pavement / 2, classes.tertiary.width / 2 + tables.signs.along, 0]]);
+    // None on a side street that meets another 9 m on: its sign would stand on the cross street.
+    expect(giveWay(build(via('Via A', 'tertiary', [[-50, 0], [0, 0], [50, 0]]), way('residential', [[0, 0], [0, 9], [0, 50]]), way('residential', [[-50, 9], [0, 9], [50, 9]])))).toEqual([]);
     // None where all arms rank the same, nor at lights.
     expect(giveWay(build(...cross('residential', 'residential')))).toEqual([]);
     expect(giveWay(build(...cross('tertiary', 'secondary')))).toEqual([]);
