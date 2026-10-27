@@ -1,0 +1,23 @@
+src/save.js
+  s_a990cdec4bd1cd::t_00f07c842bbeeb 13-16,73
+  s_a990cdec4bd1cd::t_73e198ef99375d 10,84
+src/save.test.js
+  s_a990cdec4bd1cd::t_fbf31848df17c4 87-94,99-100
+  s_a990cdec4bd1cd::t_73e198ef99375d 95-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c9eaa3d19853b6eb5df2e01603e2d41fe5bd1b2",
+  "prompts": {},
+  "sessions": {
+    "s_a990cdec4bd1cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90abf575-d1cd-46ca-9fc8-7164c90a12e4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
