@@ -203,6 +203,7 @@ export function parseMap(text, tables) {
   for (const l of lights) {
     const node = nodeAt.get(key(l));
     const slot = nodes[node].slots.findIndex(({ angle }) => Math.abs(Math.cos(angle) + l.dx) < 1e-9 && Math.abs(Math.sin(angle) + l.dz) < 1e-9);
+    if (slot < 0) throw new Error(`Map light at column ${l.col + 1}, row ${l.row + 1} has no arm on the road graph`);
     Object.assign(l, { node, slot });
   }
   // A spot's place on the graph: the pose nearest its zone's centre.

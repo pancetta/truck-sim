@@ -314,10 +314,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const back = truck.speed < -v.stopSpeed ? -1 : 1;
     const fx = Math.sin(truck.heading) * back;
     const fz = Math.cos(truck.heading) * back;
-    const on = map.graph.along(truck.x + (fx * v.length) / 2, truck.z + (fz * v.length) / 2, fx, fz);
-    if (!on) return null;
+    const [x, z] = [truck.x + (fx * v.length) / 2, truck.z + (fz * v.length) / 2];
     const { nodes } = map.graph;
-    if (on.behind < nodes[on.last].radius && ruleOf(on.last)) return ruleOf(on.last); // the bumper still in the one it is leaving
+    // In a junction's box, that junction's whatever the heading: near its middle the nearest edge is the cross street.
+    const { edge } = map.graph.nearest(x, z);
+    for (const n of [edge.from, edge.to]) if (ruleOf(n) && Math.hypot(nodes[n].x - x, nodes[n].z - z) < nodes[n].radius) return ruleOf(n);
+    const on = map.graph.along(x, z, fx, fz);
+    if (!on) return null;
     return on.ahead - nodes[on.next].radius <= tables.signs.hint ? ruleOf(on.next) : null;
   }
 

@@ -170,9 +170,10 @@ export function createTraffic(tables, map, random) {
     }
   }
 
-  // shortcut: "out of view" is far enough away and not within `spawnView` of the truck's heading, ahead or behind,
-  // the street the cameras look along; the blocks hide the rest. Across open ground cars can still appear or vanish in
-  // view; upgrade to a real line-of-sight test if players notice.
+  // shortcut: "out of view" is far enough away and not within `spawnView` of the truck's heading, ahead or behind, nor
+  // of the line across it: the street the cameras look along and the one the truck may stand at a junction of; the
+  // blocks hide the rest. Across open ground cars can still appear or vanish in view; upgrade to a real line-of-sight
+  // test if players notice.
   const viewCos = Math.cos(t.spawnView);
   // `at` is a car or a spawn place: passing its x and z would box them on every call.
   function hidden(at, truck, distance) {
@@ -180,7 +181,8 @@ export function createTraffic(tables, map, random) {
     const dz = at.z - truck.z;
     const away = dx * dx + dz * dz;
     const along = dx * Math.sin(truck.heading) + dz * Math.cos(truck.heading);
-    return away >= distance ** 2 && along * along < away * viewCos * viewCos;
+    const across = dx * Math.cos(truck.heading) - dz * Math.sin(truck.heading);
+    return away >= distance ** 2 && along * along < away * viewCos * viewCos && across * across < away * viewCos * viewCos;
   }
 
   // Where a new car may appear: every 10 m along each lane run, clear of its ends by half a car.
@@ -194,22 +196,25 @@ export function createTraffic(tables, map, random) {
     }
   }
 
-  // One new car on a random hidden lane place in the spawn ring (for a police car, from outside its sight radius as
-  // far out as the city goes, so it never witnesses as it appears), standing, unless another car is within the
-  // look-ahead there. The place is drawn at random until one lies in the ring, up to SPAWN_TRIES times, so every
-  // place in it is as likely; with none found, the next step tries again.
-  const SPAWN_TRIES = 64; // the grid city's ring is ~1/10 of its places: ~0.1 % of calls find none
+  // One new car, standing, on a random hidden lane place in the spawn ring (for a police car, from outside its sight
+  // radius as far out as the city goes, so it never witnesses as it appears) with no other car within the look-ahead.
+  // The place is drawn at random until one fits, up to SPAWN_TRIES times, so every place that does is as likely; with
+  // none found, the next step tries again.
+  const SPAWN_TRIES = 64; // the grid city's ring is ~1/13 of its places: under 1 % of calls in an empty city find none
+  const clear = (p) => {
+    for (let i = 0; i < cars.length; i++) if ((cars[i].x - p.x) ** 2 + (cars[i].z - p.z) ** 2 < t.lookAhead ** 2) return false;
+    return true;
+  };
   function spawn(truck, police) {
     const near = police ? Math.max(t.spawnDistance[0], tables.police.radius) : t.spawnDistance[0];
     const far = police ? Infinity : t.spawnDistance[1];
     let at = null;
     for (let i = 0; i < SPAWN_TRIES && !at && slots.length; i++) {
       const p = pick(slots);
-      if (hidden(p, truck, near) && (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2 <= far ** 2) at = p;
+      if (hidden(p, truck, near) && (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2 <= far ** 2 && clear(p)) at = p;
     }
     if (!at) return;
-    const { path, s, x, z } = at;
-    for (let i = 0; i < cars.length; i++) if ((cars[i].x - x) ** 2 + (cars[i].z - z) ** 2 < t.lookAhead ** 2) return;
+    const { path, s } = at;
     const route = [path];
     extend(route);
     const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0 };

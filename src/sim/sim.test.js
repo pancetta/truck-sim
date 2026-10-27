@@ -1537,6 +1537,7 @@ describe('Sim: traffic lights', () => {
     expect(ruleAt(8 * TILE - hint - front - 1, SOUTH)).toBe(null);
     expect(ruleAt(8 * TILE - hint - front + 1, SOUTH)).toBe('rightBeforeLeft');
     expect(ruleAt(8 * TILE + 2 - front, SOUTH)).toBe('rightBeforeLeft'); // its front in the crossing
+    expect(ruleAt(8.5 * TILE - front, SOUTH)).toBe('rightBeforeLeft'); // its front in the middle, nearest the cross street
     // Northbound from the crossing: the light junction, whose near edge is at z = 4 tiles.
     expect(ruleAt(4 * TILE + hint + front - 1, NORTH)).toBe('light');
     expect(ruleAt(4 * TILE + hint + front + 1, NORTH)).toBe(null);
@@ -1966,9 +1967,11 @@ describe('Sim: traffic', () => {
   // How far a car is from the truck, and whether it is out of the truck's view: off the line its heading runs along.
   const away = (car, truck) => Math.hypot(car.x - truck.x, car.z - truck.z);
   const offView = (car, truck) =>
-    Math.abs((car.x - truck.x) * Math.sin(truck.heading) + (car.z - truck.z) * Math.cos(truck.heading)) < away(car, truck) * Math.cos(tables.traffic.spawnView);
+    [truck.heading, truck.heading + Math.PI / 2].every(
+      (h) => Math.abs((car.x - truck.x) * Math.sin(h) + (car.z - truck.z) * Math.cos(h)) < away(car, truck) * Math.cos(tables.traffic.spawnView),
+    );
 
-  test("new cars appear out of the truck's view: far enough away and off the line it looks along, ahead or behind", () => {
+  test("new cars appear out of the truck's view: far enough away, off the line it looks along and the line across it", () => {
     const sim = trafficSim(GRID, 4);
     const [near, far] = tables.traffic.spawnDistance;
     const seen = new Set();

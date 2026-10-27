@@ -195,8 +195,9 @@ export const traffic = {
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars
-  // rad either side of the truck's heading, ahead and behind, in which no car appears or leaves: the street the
-  // cameras look along (17° holds the 7 m either side of the truck's line from 23 m out on)
+  // rad either side of the truck's heading, ahead and behind, and of the line across it, in which no car appears or
+  // leaves: the street the cameras look along and the cross street at a junction (17° holds the 7 m either side of
+  // such a line from 23 m out on)
   spawnView: 0.3,
   despawnDistance: 180, // m from the truck past which a car out of view leaves
   // Priority at junctions without lights by road class, higher first; right before left between equal ones
