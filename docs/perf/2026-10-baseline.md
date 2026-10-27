@@ -800,6 +800,24 @@ The posts move to the near right corner and the stop lines 9 m before them. AI c
 
 **Verdict:** within the bench's budget (1 ms, 32 KB). There is no measurable frame cost: draw calls and triangles are unchanged, and the busy times move with the load, not the change.
 
+## Turn stutter (#73)
+
+Play-testers saw stutter in quick turns. `?perf` now also records a per-frame trace (frame interval, Sim steps, the drawn truck, the camera, dpr), which `perfTrace()` in the console returns.
+
+**How measured:** dev build at 1180×820, `?perf&auto` with the truck put 6 tiles before each of the loop's four corners at 12 m/s, the autopilot taking the turn, 9 s per corner. The chase arm was measured separately with the truck held at a junction (col 8, row 8, and three spots off its centre) and turned on the spot at 1.5 rad/s. Judder is how far a frame's camera turn rate is off its 13-frame mean. Turning frames are those turning at over 0.25 rad/s. **Headed Chrome is needed:** headless Chrome paces frames perfectly (every frame one Sim step), which hides the bug.
+
+| headed Chrome, 60 Hz | 0- or 2-step frames | turning frames with judder > 50 % | arm jump per frame, max |
+|---|---|---|---|
+| main `a1e324f`, chase (2 runs) | 1–31 % per corner | 1–27 % per corner; all 0/2-step turning frames | 2.2 m (junction spin) |
+| main `a1e324f`, cab | 2–32 % | 1–33 %; all 0/2-step turning frames | – |
+| this change, chase | 0–41 % | 1 % | 0.26 m |
+| this change, cab | 0–39 % | 1–2 % | – |
+| headless Chrome, either (control) | 0 % | 1 % | – |
+
+No frame was over 25 ms from the turns (max 18.8 ms; one 34 ms frame in 4,000, not repeated) and the pixel ratio never changed, so frame spikes and resolution steps are ruled out. The headless busy time is unchanged (2.6 ms mean with the blend, 3.0 without, within noise; the blend runs outside the timers).
+
+**Verdict:** the stutter was the frame loop drawing the latest fixed step while the display's frames don't line up with it (`src/blend.js` now draws between the last two steps), plus the chase arm's instant pull-in (now at most `camera.chasePullIn`). These are Chrome numbers. The iPad check is the owner's `?perf&auto` run.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

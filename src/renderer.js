@@ -613,6 +613,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let orbit = 0; // rad, showroom camera angle round the truck
   let arm = 0; // m, showroom camera distance from the truck
   let chaseArm = cam.chaseDistance; // m, chase camera distance behind the truck
+  let chased = false; // whether the last frame drew the chase view
   let shifted = false; // whether the picture is moved aside for the Werkstatt panel
 
   // Reversing camera as an inset over the view (owner's decision on #43): while the gear is R and `rearHold` s
@@ -710,6 +711,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       if (rearTime) measureInset();
     }
     inCab = showroom ? showroom === 'cab' : cabView;
+    const wasChased = chased;
+    chased = !showroom && !inCab;
     // From the seat the outside of the truck isn't drawn, but it still casts its shadow. Visual items' parts are
     // built on first show, so they are set up here too.
     for (const outside of [exterior, parts.exterior]) {
@@ -741,7 +744,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
       // back out, as the Werkstatt's camera does.
       const [dx, dz] = [-Math.sin(heading), -Math.cos(heading)];
       const room = Math.min(chaseRoom(x, z, dx, dz), canopyRoom(x, z, dx, dz));
-      chaseArm = room < chaseArm ? Math.max(room, chaseArm - cam.chasePullIn * dt) : Math.min(room, chaseArm + tables.showroom.armSpeed * dt);
+      // Switched to from another view: straight to the room it has, not through a building.
+      if (!wasChased) chaseArm = room;
+      else chaseArm = room < chaseArm ? Math.max(room, chaseArm - cam.chasePullIn * dt) : Math.min(room, chaseArm + tables.showroom.armSpeed * dt);
       const height = cam.chaseHeight + (cam.chaseDistance - chaseArm) * cam.chaseRise;
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
