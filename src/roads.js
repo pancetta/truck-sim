@@ -50,9 +50,9 @@ const ribbon = (points, half) => [
   ...points.map((p) => disc(p, half)),
 ];
 
-// The road as convex pieces ({ ring, round }): a box per edge segment, a centimetre past its ends so the pieces of a
-// bend overlap, a disc on each of its points, and a disc on each node as wide as its widest arm, which closes the
-// junction and rounds its corners.
+// The road as convex pieces ({ ring, points, round }, `points` the ring as { x, z }): a box per edge segment, a
+// centimetre past its ends so the pieces of a bend overlap, a disc on each of its points, and a disc on each node as
+// wide as its widest arm, which closes the junction and rounds its corners.
 export function roadPieces(graph) {
   const pieces = [];
   for (const e of graph.edges) {
@@ -63,7 +63,7 @@ export function roadPieces(graph) {
     for (const p of e.points.slice(1, -1)) pieces.push({ ring: disc(p, e.width / 2), round: true });
   }
   for (const n of graph.nodes) pieces.push({ ring: disc(n, Math.max(...n.arms.map((id) => graph.edges[id].width / 2))), round: true });
-  return pieces;
+  return pieces.map((piece) => ({ points: xz(piece.ring), ...piece }));
 }
 
 // The road surface at height y, facing up; no UVs.
@@ -101,10 +101,7 @@ export function osmPavements(map, pieces, tables) {
   for (const square of map.pedestrian.squares) sources.push(square.map(({ x, z }) => [x, z]));
 
   const roads = createCells(cell);
-  for (const piece of pieces) {
-    piece.points ??= xz(piece.ring);
-    roads.add(piece, ...bounds(piece.ring));
-  }
+  for (const piece of pieces) roads.add(piece, ...bounds(piece.ring));
   const onRoad = (x, z) => roads.some(x, z, x, z, (r) => inside(x, z, r.points));
   const tops = [];
   for (const source of sources.filter(Boolean)) {

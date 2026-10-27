@@ -139,7 +139,9 @@ function planOutlines(map, tables) {
   const random = seeded(t.seed);
   const index = createCells(tables.city.cell);
   const buildings = map.buildings.map(({ points, height }) => {
-    const ring = THREE.ShapeUtils.isClockWise(points.map((p) => new THREE.Vector2(p.x, p.z))) ? points : points.toReversed();
+    // Without corners within a centimetre of the next, whose side would face any way.
+    const corners = points.filter((p, k) => Math.hypot(points[(k + 1) % points.length].x - p.x, points[(k + 1) % points.length].z - p.z) > 0.01);
+    const ring = THREE.ShapeUtils.isClockWise(corners.map((p) => new THREE.Vector2(p.x, p.z))) ? corners : corners.toReversed();
     const floors = Math.max(1, Math.floor((height - t.groundFloor - t.parapet) / t.floor) + 1);
     const [xs, zs] = [ring.map((p) => p.x), ring.map((p) => p.z)];
     const b = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), points: ring, ...look(tables, random, floors, height, null) };
