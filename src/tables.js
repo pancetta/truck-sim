@@ -369,6 +369,10 @@ export const camera = {
   chaseDistance: 14, // m behind the truck
   chaseHeight: 6, // m above the ground
   chaseRise: 0.5, // m the chase camera rises per m it is pulled in before a building (see renderer.js)
+  // m/s the chase camera moves in at most before a building; when the arm's line swept onto a block corner in a turn,
+  // pulling it in at once jumped the view up to 2 m in one frame (#73). In a quick turn the camera can then be a few m
+  // inside the building for a moment, which only leaves out that building's near wall.
+  chasePullIn: 15,
   lookHeight: 2, // m above the truck's position the camera aims at
   cabEye: [0.55, 1.95, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the headliner (cab.js)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead

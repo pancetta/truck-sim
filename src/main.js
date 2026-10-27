@@ -11,6 +11,7 @@ import { createHud } from './hud.js';
 import { createOrders } from './orders.js';
 import { createMinimap } from './minimap.js';
 import { createWerkstatt } from './werkstatt.js';
+import { createBlend } from './blend.js';
 
 const { step, maxFrame, maxSteps } = tables.loop;
 // ?perf loads the dev-only perf harness; ?perf&auto also lets the autopilot drive, unsaved (see perf.js).
@@ -37,6 +38,7 @@ try {
 }
 const save = createSave(auto ? null : storage, tables);
 const sim = createSim(tables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
+const blend = createBlend();
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
 const loading = document.getElementById('loading');
@@ -63,7 +65,10 @@ const resetButton = document.createElement('button');
 resetButton.type = 'button';
 resetButton.className = 'reset';
 resetButton.textContent = strings.resetToRoad;
-resetButton.addEventListener('click', () => sim.resetToRoad());
+resetButton.addEventListener('click', () => {
+  sim.resetToRoad();
+  blend.remember(sim.state);
+});
 document.getElementById('controls').append(resetButton);
 
 let last = performance.now();
@@ -84,10 +89,12 @@ function frame(now) {
   pending = werkstatt.open ? 0 : Math.min(pending + dt, maxSteps * step);
   if (werkstatt.open) orders.dismissNotices();
   while (pending >= step) {
+    blend.remember(sim.state);
     sim.step(step, input);
     pending -= step;
   }
-  view.render(sim.state, input, werkstatt.look, werkstatt.showroom);
+  // Drawn between the last two steps, by the time left over, so the motion is even whatever steps this frame had.
+  view.render(blend.at(sim.state, pending / step), input, werkstatt.look, werkstatt.showroom);
   hud.update(sim.state, view.inCab);
   orders.update(sim.state);
   minimap.update(sim.state);

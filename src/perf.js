@@ -11,6 +11,11 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
   const parts = { sim: 0, render: 0, dom: 0, minimap: 0 }; // ms spent in the current frame
   const rows = ['frame', 'busy', ...Object.keys(parts), 'steps'];
   const rings = Object.fromEntries(rows.map((row) => [row, new Float64Array(size)]));
+  // Per-frame trace of what was drawn, for judging smoothness (#73): perfTrace() in the console returns it.
+  const traced = ['t', 'truckX', 'truckZ', 'camX', 'camZ', 'camYaw', 'dpr'];
+  const trace = Object.fromEntries(traced.map((row) => [row, new Float64Array(size)]));
+  const camera = view.camera;
+  const look = camera.position.clone();
   let frames = 0;
   let steps = 0;
 
@@ -24,6 +29,9 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       return result;
     };
   };
+  let drawn = sim.state; // the state the last frame drew (main.js draws between the last two Sim steps)
+  const render = view.render;
+  view.render = (state, ...rest) => render((drawn = state), ...rest);
   time(sim, 'step', 'sim');
   time(view, 'render', 'render');
   time(hud, 'update', 'dom');
@@ -53,10 +61,26 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       }
       rings.steps[i] = steps;
       steps = 0;
+      // The frame drawn in the callback at `last` (this one runs before the app's).
+      trace.t[i] = last;
+      trace.truckX[i] = drawn.truck.x;
+      trace.truckZ[i] = drawn.truck.z;
+      trace.camX[i] = camera.position.x;
+      trace.camZ[i] = camera.position.z;
+      camera.getWorldDirection(look);
+      trace.camYaw[i] = Math.atan2(look.x, look.z);
+      trace.dpr[i] = renderer.getPixelRatio();
     }
     last = now;
     requestAnimationFrame(tick);
   });
+
+  // Oldest first: the frame interval and Sim steps of each traced frame next to its camera.
+  window.perfTrace = () => {
+    const n = Math.min(frames, size);
+    const order = (a) => Array.from({ length: n }, (_, k) => a[(frames - n + k) % size]);
+    return Object.fromEntries([...['frame', 'steps'].map((row) => [row, order(rings[row])]), ...traced.map((row) => [row, order(trace[row])])]);
+  };
 
   const box = document.createElement('pre'); // below the goal banner, so manual ?perf driving still shows the goal
   box.style.cssText =

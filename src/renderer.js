@@ -737,10 +737,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.lookAt(truck.localToWorld(lookAt.fromArray(showroom ? cam.gimmickLook : cam.cabLook)));
     } else {
       // Chase camera: behind and above the truck, pulled in before a building in the way (as after reversing
-      // into a dock) and raised as it does so the truck doesn't fill the view; eases back out, as the Werkstatt's
-      // camera does.
+      // into a dock) and raised as it does so the truck doesn't fill the view; quickly but not at once, and eases
+      // back out, as the Werkstatt's camera does.
       const [dx, dz] = [-Math.sin(heading), -Math.cos(heading)];
-      chaseArm = Math.min(chaseRoom(x, z, dx, dz), canopyRoom(x, z, dx, dz), chaseArm + tables.showroom.armSpeed * dt);
+      const room = Math.min(chaseRoom(x, z, dx, dz), canopyRoom(x, z, dx, dz));
+      chaseArm = room < chaseArm ? Math.max(room, chaseArm - cam.chasePullIn * dt) : Math.min(room, chaseArm + tables.showroom.armSpeed * dt);
       const height = cam.chaseHeight + (cam.chaseDistance - chaseArm) * cam.chaseRise;
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
@@ -906,6 +907,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     toggleCamera,
     ready,
     renderer,
+    camera,
     get inCab() {
       return inCab;
     },
