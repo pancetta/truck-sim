@@ -22,8 +22,6 @@ export function dialAngle(value, max, sweep) {
   return sweep / 2 - THREE.MathUtils.clamp(value / max, 0, 1) * sweep;
 }
 
-const css = (hex) => `#${hex.toString(16).padStart(6, '0')}`;
-
 // One dial at (x, y) canvas px, radius r px: ticks every `minor`, numbers every `major` (shown divided by `unit`),
 // red from `redFrom` to the end, and the unit label under the centre.
 function drawDial(ctx, x, y, r, { max, major, minor, unit = 1, redFrom = Infinity, label }, sweep) {
@@ -206,7 +204,7 @@ export function createCab(tables, strings) {
     shownGear = gear;
     gearCtx.fillStyle = '#0b0c10';
     gearCtx.fillRect(0, 0, gearCanvas.width, gearCanvas.height);
-    gearCtx.fillStyle = css(palette.lampAmber);
+    gearCtx.fillStyle = new THREE.Color(palette.lampAmber).getStyle();
     gearCtx.font = `700 ${Math.round(gearCanvas.height * 0.8)}px system-ui, sans-serif`;
     gearCtx.textAlign = 'center';
     gearCtx.textBaseline = 'middle';
