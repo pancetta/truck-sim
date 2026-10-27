@@ -1,0 +1,31 @@
+src/renderer.js
+  s_a02b9a6bee8c08::t_55a004ce552393 345-346,818
+src/vehicles.js
+  s_a02b9a6bee8c08::t_55a004ce552393 15,115-116,152,159-160,251
+src/sim/sim.test.js
+  s_a02b9a6bee8c08::t_620003e9b9a8f7 1565
+  s_a02b9a6bee8c08::t_5dfdbbd0e8f4be 1563-1564,1566-1567
+src/sim/traffic.js
+  s_a02b9a6bee8c08::t_55a004ce552393 164-166,169
+src/sim/sim.js
+  s_a02b9a6bee8c08::t_55a004ce552393 251-254,257-259,264-270
+  s_a02b9a6bee8c08::t_f28c64f169d496 271-272
+src/vehicles.test.js
+  s_a02b9a6bee8c08::t_2b114e9875cf63 4,8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b2de943df27568230328440457c64ca9d13ac46",
+  "prompts": {},
+  "sessions": {
+    "s_a02b9a6bee8c08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f793183-d5ec-40d1-9a28-808bd81ff8f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
