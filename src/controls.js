@@ -7,6 +7,7 @@ export function createControls(root, tables, strings) {
 
   const wheel = touchTarget('wheel');
   wheel.setAttribute('aria-label', strings.wheel);
+  wheel.innerHTML = WHEEL_SVG;
   const gas = touchTarget('pedal gas');
   gas.textContent = strings.gas;
   const brake = touchTarget('pedal brake');
@@ -56,6 +57,25 @@ export function createControls(root, tables, strings) {
 
   return { update };
 }
+
+// Our own design: a padded rim with finger grips and a light top marker, three spokes and a round hub.
+// Units are the wheel's CSS pixels (180 px, centre at 0,0); the rim spans radius 72–90 like the old ring.
+const WHEEL_SVG = `<svg viewBox="-90 -90 180 180" aria-hidden="true">
+  <defs>
+    <linearGradient id="wheel-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a4d56" /><stop offset="1" stop-color="#1c1d22" />
+    </linearGradient>
+  </defs>
+  <path d="M-72 -9 L-26 -12 L-26 12 L-72 9 Z M72 -9 L26 -12 L26 12 L72 9 Z M-12 24 L-17 72 L17 72 L12 24 Z"
+    fill="#33353c" stroke="#5c606b" stroke-width="1.5" />
+  <circle r="81" fill="none" stroke="url(#wheel-rim)" stroke-width="18" />
+  <circle r="81" fill="none" stroke="#15161a" stroke-width="18" stroke-dasharray="1.5 6" opacity="0.5" />
+  <circle r="89" fill="none" stroke="#8a8e98" stroke-width="1.5" />
+  <circle r="73" fill="none" stroke="#0e0f12" stroke-width="1.5" />
+  <rect x="-4" y="-90" width="8" height="18" rx="2" fill="#e8b23a" />
+  <circle r="27" fill="#26272d" stroke="#5c606b" stroke-width="2" />
+  <circle r="15" fill="#33353c" stroke="#1a1b20" stroke-width="3" />
+</svg>`;
 
 function touchTarget(className) {
   const node = document.createElement('div');

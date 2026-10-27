@@ -64,13 +64,16 @@ body:has(.rear-inset:not([hidden])) .goal {
   bottom: max(24px, env(safe-area-inset-bottom));
   width: 180px;
   height: 180px;
-  box-sizing: border-box;
-  border-radius: 50%;
-  border: 18px solid rgb(40 40 48 / 0.85);
-  background:
-    linear-gradient(rgb(40 40 48 / 0.85), rgb(40 40 48 / 0.85)) center / 100% 16px no-repeat,
-    linear-gradient(rgb(40 40 48 / 0.85), rgb(40 40 48 / 0.85)) center bottom / 16px 50% no-repeat;
+  border-radius: 50%; /* the round hit area */
   cursor: grab;
+}
+
+/* Hits land on the wheel itself, which captures the pointer and stays round. */
+.wheel svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .pedals {
@@ -82,15 +85,25 @@ body:has(.rear-inset:not([hidden])) .goal {
   align-items: flex-end;
 }
 
+/* Pedals, our own design: a metal frame round a ribbed rubber pad, hinged at the bottom so a press tips it away. */
 .pedal {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  border-radius: 14px;
-  background: rgb(40 40 48 / 0.85);
+  box-sizing: border-box;
+  padding-bottom: 10px;
+  border: 3px solid #8a8e98;
+  border-radius: 12px 12px 18px 18px;
+  --pad: #3e4048, #202126;
+  background:
+    repeating-linear-gradient(transparent 0 7px, rgb(0 0 0 / 0.45) 7px 11px) center 10px / calc(100% - 16px) calc(100% - 44px) no-repeat,
+    linear-gradient(var(--pad));
+  box-shadow: inset 0 -5px 0 rgb(0 0 0 / 0.35);
   color: #fff;
   font-weight: 600;
+  text-shadow: 0 1px 2px #000;
   cursor: pointer;
+  transform-origin: 50% 100%;
 }
 
 .pedal.brake {
@@ -104,8 +117,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 }
 
 .pedal.down {
-  background: rgb(20 20 24 / 0.95);
-  transform: scale(0.96);
+  --pad: #2a2b31, #141518;
+  transform: perspective(300px) rotateX(16deg);
 }
 
 #rotate {
