@@ -1,0 +1,19 @@
+src/cab.js
+  s_40320e9843d96e::t_839f82f7876cbf 207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1759d4f1765bf86a2e0bf013aada0b7cf292dac4",
+  "prompts": {},
+  "sessions": {
+    "s_40320e9843d96e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf449cc8-cfb6-4ce1-bf83-7a7fbd0255cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
