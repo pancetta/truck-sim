@@ -744,6 +744,21 @@ A generated ring of background buildings now stands round the grid city (`src/sk
 - *Budget:* the download budget check passes, with nothing added to `public/`.
 - *Real iPad:* still unmeasured.
 
+## Police patrols (#68)
+
+Two police cars (`tables.police`) drive on top of the tier's AI cars and stay anywhere in the city. Each step the Sim checks whether one sees the truck: police cars within 60 m only, two lines of at most 120 samples each. The renderer gains one car kind, which means four instanced meshes (near and far, body and details). They are hidden while no police car is in view. There is also a second sedan skin, and the details atlas grows from 256×64 to 512×256.
+
+**How measured:** Chrome headless on the M2 (WebGPU, 1180×820, DPR 1), `?perf&auto` on the dev servers of main `d938a17` and this change, in two alternating rounds of 40 s each, load average 5–11. These are relative checks only; the iPad wasn't measured. The traffic bench (`traffic.bench.test.js`) ran alternately on both, at load average under 5.
+
+| | main | police |
+|---|---|---|
+| busy, mean ms | 2.45, 2.49 | 1.85, 2.43 |
+| sim, mean ms | 0.08, 0.08 | 0.07, 0.09 |
+| render, mean ms | 2.34, 2.37 | 1.76, 2.30 |
+| traffic step, 100 (+2 police) cars | 99.1, 98.9 µs | 107.0, 108.0 µs |
+
+**Verdict:** no measurable frame cost. The bench step is about 8 % slower with 2 % more cars. The police cars drive far from the truck, and their spawns change the random draws, so the replayed traffic is not the same. It stays far under the bench's 1 ms limit.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
