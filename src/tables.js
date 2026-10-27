@@ -197,8 +197,8 @@ export const traffic = {
   // truck doesn't hold up the city
   truckHold: 10,
   truckLine: 6, // m
-  // s a car waits at an unsignalled crossing, giving way, before the others let it go first: no one else drives in,
-  // and it goes once the crossing is clear
+  // s a car waits at an unsignalled crossing on Monti, giving way, before the others let it go first: no one else
+  // drives in, and it goes once the crossing is clear
   patience: 20,
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact

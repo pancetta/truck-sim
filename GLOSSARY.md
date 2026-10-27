@@ -203,7 +203,7 @@ One **Edge** meeting a **Junction** on the **Road graph**; a **Junction** may ha
 A street's importance from OpenStreetMap (secondary, tertiary, residential, service); it sets the street's width, **Speed limit** and **Priority**.
 
 **Priority**:
-Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes. An **AI car** that has given way for long goes next all the same, so a steady stream can't hold it up for good.
+Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes. On **Monti**, an **AI car** that has given way for long goes next all the same, so a steady stream can't hold it up for good.
 
 **Edge exit**:
 A street leaving the map, where **AI cars** come and go and the truck meets a barrier.

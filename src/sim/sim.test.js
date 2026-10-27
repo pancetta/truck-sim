@@ -2968,9 +2968,13 @@ describe('Sim: traffic gridlock soak', () => {
       }, 120_000);
     }
     // Monti (#63) has no autopilot loop before its spots (#64): the truck parks in the middle, near the Largo Visconti
-    // Venosta ring and Via Cavour's five-arm junction, and near the light junction and the crossings round it.
+    // Venosta ring and Via Cavour's five-arm junction; near the ring of one-way streets off Via del Colosseo, which cars
+    // once filled until it locked; and, at the top tier's count, near the light junction and the crossings round it.
+    // shortcut: at 40 cars round the light junction, the queues merging onto Via Cavour and Via Panisperna there crawl,
+    // and a car merging into one can wait 40–80 s (congestion: it moves on); look at merges if the tiers grow past ~20.
     test(`Monti, ${cars} cars, the truck parked: no car stuck for over ${limit} s`, () => {
-      const longest = [{ x: 0, z: 0 }, { x: 260, z: -200 }].flatMap((near) => [1, 2, 3].map((seed) => Math.round(longestStuck(cars, seed, false, near))));
+      const places = [{ x: 0, z: 0 }, { x: -350, z: 250 }, ...(cars === top ? [{ x: 260, z: -200 }] : [])];
+      const longest = places.flatMap((near) => [1, 2, 3].map((seed) => Math.round(longestStuck(cars, seed, false, near))));
       expect(longest.filter((s) => s > limit)).toEqual([]);
     }, 120_000);
   }

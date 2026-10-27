@@ -242,7 +242,7 @@ describe('OSM map: traffic (#63)', () => {
   const IDLE = { steer: 0, gas: 0, brake: 0 };
   const car = tables.city.obstacles.car;
 
-  test('AI cars come in at an edge exit, past its barrier, and leave at the other before reaching its barrier', () => {
+  test('AI cars come in at an edge exit, half a m past its barrier, and leave at the other half a m before reaching it', () => {
     const t = withCars(1, { exitSpawn: 1, spawnDistance: [0, 500], despawnDistance: 600 });
     const map = buildOsmMap({ bounds, ways: [way('residential', [[-150, 0], [150, 0]])] }, t);
     const sim = createSim(t, map, seeded(1));
@@ -251,7 +251,8 @@ describe('OSM map: traffic (#63)', () => {
     const [first] = sim.state.traffic;
     const start = first.x;
     const inner = bounds.maxX - 1.5 * tables.osm.barrier; // the barriers' map-side faces
-    expect(Math.abs(start)).toBeCloseTo(inner - car.length / 2, 1);
+    expect(inner - Math.abs(start) - car.length / 2).toBeGreaterThanOrEqual(0.5 - 1e-9);
+    expect(inner - Math.abs(start) - car.length / 2).toBeLessThan(0.75); // found in 0.25 m steps
     let last = start;
     for (let s = 0; s < 60 && sim.state.traffic.includes(first); s += 1 / 60) {
       last = first.x;
@@ -259,8 +260,8 @@ describe('OSM map: traffic (#63)', () => {
     }
     expect(sim.state.traffic.includes(first)).toBe(false);
     expect(Math.sign(last)).toBe(-Math.sign(start)); // gone at the far end
-    expect(Math.abs(last) + car.length / 2).toBeLessThanOrEqual(inner);
-    expect(Math.abs(last) + car.length / 2).toBeGreaterThan(inner - 0.5);
+    expect(inner - Math.abs(last) - car.length / 2).toBeGreaterThanOrEqual(0.5 - 1e-9);
+    expect(inner - Math.abs(last) - car.length / 2).toBeLessThan(1); // 0.25 m steps, and a step's driving
   });
 
   test("AI cars cruise at the limit of the edge they are on and are down to the next edge's by the time they reach it", () => {
