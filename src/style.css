@@ -717,7 +717,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   pointer-events: none;
 }
 
-@media (max-height: 435px) {
+@media (max-height: 480px) {
   #minimap {
     display: none;
   }
@@ -761,8 +761,12 @@ body:has(.rear-inset:not([hidden])) .goal {
   background: rgb(40 40 48 / 0.85);
 }
 
-@media (max-height: 435px) {
+/* Too short for it there (it would cover the wheel): on the right under the buttons, where the minimap was, clear of
+   the pedals. */
+@media (max-height: 480px) {
   .dash.cab .dash-rank {
     top: calc(max(24px, env(safe-area-inset-top)) + 120px);
+    right: max(24px, env(safe-area-inset-right));
+    left: auto;
   }
 }
