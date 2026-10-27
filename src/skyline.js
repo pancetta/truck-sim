@@ -225,8 +225,8 @@ export function skylineMeshes(buildings, tables, materials) {
 // The real ring round an OSM map (#66): the buildings in public/maps/monti-ring.json, OSM outlines in m, as the
 // prototype made them ([{ r: [[x, z]], h?: courtyards, top, base (m), dome?, stone? }]; see scripts/maps.js). Two
 // meshes as skylineMeshes makes them: walls from `base` to `top`, with the window picture in one of the tints (on
-// churches and monuments, in stone and stretched into tall arches), and flat roofs, with a dome where OSM has one (`dome` its height, or true for a
-// half sphere).
+// churches and monuments, in stone and stretched into tall arches), and flat roofs, with a dome where OSM has one
+// (`dome` its height, or true for a half sphere).
 export function ringMeshes(items, tables, materials) {
   const t = tables.skyline;
   const random = seeded(t.seed);

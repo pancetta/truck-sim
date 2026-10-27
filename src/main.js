@@ -31,9 +31,9 @@ document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventD
 
 // ?map=monti loads the Monti map (spec #59) instead of the grid city, for development until it replaces it (#67).
 const fetchJson = async (file) => (await fetch(`${import.meta.env.BASE_URL}${file}`)).json();
-const map = params.get('map') === 'monti'
-  ? (await import('./sim/osm.js')).buildOsmMap(await fetchJson(tables.osm.file), tables, await fetchJson(tables.osm.furniture))
-  : parseMap(cityMap, tables);
+const monti = params.get('map') === 'monti';
+const [osmData, furniture] = monti ? await Promise.all([fetchJson(tables.osm.file), fetchJson(tables.osm.furniture)]) : [];
+const map = monti ? (await import('./sim/osm.js')).buildOsmMap(osmData, tables, furniture) : parseMap(cityMap, tables);
 let storage = null;
 try {
   storage = window.localStorage;

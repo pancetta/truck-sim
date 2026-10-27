@@ -211,7 +211,7 @@ describe('OSM map: reset to road', () => {
 });
 
 describe('OSM map: street furniture', () => {
-  test('trees, bollards, fountains and waste baskets stand where OSM puts them, as solid props, but none on the road', () => {
+  test('trees, bollards, fountains and waste baskets stand where OSM puts them, as solid props, but none reaching into the road', () => {
     const node = (x, z, tags) => ({ x, z, tags });
     const map = buildOsmMap({ bounds, ways: [way('residential', [[-50, 0], [50, 0]])] }, tables, {
       nodes: [
@@ -220,6 +220,7 @@ describe('OSM map: street furniture', () => {
         node(20, 7, { amenity: 'drinking_water' }),
         node(-20, 30, { amenity: 'waste_basket' }),
         node(0, 3, { natural: 'tree' }), // on the road, 7 m wide
+        node(5, 3.6, { natural: 'tree' }), // its trunk over the kerb
         node(30, 6, { amenity: 'bench' }), // not one of ours
       ],
     });
@@ -266,12 +267,12 @@ describe('OSM map: the real Monti extract', () => {
     expect(onRoad).toEqual([]);
   });
 
-  test('puts most of OSM\'s street furniture in, and none of it on a road', () => {
+  test('puts most of OSM\'s street furniture in, and none of it reaching into a road', () => {
     const props = map.colliders.filter((c) => ['tree', 'bollard', 'fountain', 'bin'].includes(c.kind));
     expect(props.length).toBeGreaterThan(0.8 * read(tables.osm.furniture).nodes.length);
     const onRoad = ({ minX, maxX, minZ, maxZ }) => {
       const [x, z] = [(minX + maxX) / 2, (minZ + maxZ) / 2];
-      return map.graph.edges.some((e) => e.points.some((b, k) => k && segment(x, z, e.points[k - 1], b) <= e.width / 2));
+      return map.graph.edges.some((e) => e.points.some((b, k) => k && segment(x, z, e.points[k - 1], b) <= e.width / 2 + (maxX - minX) / 2));
     };
     expect(props.filter(onRoad)).toEqual([]);
   });

@@ -852,7 +852,7 @@ Monti gets its street furniture, lanterns, plants and skyline. OSM's trees, boll
 | main, cab by a fountain (Via Leonina) | 127 / 376k | 1.1 / 2.9 | | 19.6 MB |
 | #66, cab by a fountain (Via Leonina) | 141 / 460k | 3.0 / 4.1 | | 24.1 MB |
 
-Frames held 16.7 ms throughout. The dressing adds about 15 draw calls: the ring's two, plus the instanced props, lanterns and trees. The ring accounts for most of the 85k added triangles, since it is never culled. Texture memory doesn't grow: the tree pictures and lantern textures stay within #40's budget. On the iPad, the first things to cut are still `lantern.cull` and `flowers` (#40), and then the ring's triangles (one roof and wall mesh per side, so each can be culled).
+Frames held 16.7 ms throughout. The dressing adds about 15 draw calls: the ring's two, plus the instanced props, lanterns and trees. The ring accounts for most of the 85k added triangles, since it is never culled. three counts 7 more textures (the tree pictures and the lantern's), but its texture bytes stay at 56.2 MB. On the iPad, the first things to cut are still `lantern.cull` and `flowers` (#40), and then the ring's triangles (one roof and wall mesh per side, so each can be culled).
 
 ## Files
 

@@ -11,7 +11,7 @@
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
 //   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit.
 //   Props: the furniture's trees, bollards, fountains and waste baskets, solid, as the grid's plaza props (kinds
-//     'tree', 'bollard', 'fountain' and 'bin'); none on the road.
+//     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
 // The map has no spots yet (#64) and no tiles: Sim and renderer parts that still need tiles skip it.
 
 import { createGraph } from './graph.js';
@@ -175,10 +175,11 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   const { size } = tables.city.plaza;
   for (const p of bollards) colliders.push({ kind: 'bollard', ...outline(rect(p, [1, 0], size.bollard / 2, size.bollard / 2)) });
 
-  // The street furniture where OSM puts it, unless that is on the road.
+  // The street furniture where OSM puts it, unless that reaches into the road.
   for (const { x, z, tags } of furniture.nodes) {
     const kind = PROPS.find(([tag, value]) => tags[tag] === value)?.[2];
-    if (kind && !graph.onRoad(x, z)) colliders.push({ kind, ...outline(rect({ x, z }, [1, 0], size[kind] / 2, size[kind] / 2)) });
+    const road = graph.nearest(x, z);
+    if (kind && road.d > road.edge.width / 2 + size[kind] / 2) colliders.push({ kind, ...outline(rect({ x, z }, [1, 0], size[kind] / 2, size[kind] / 2)) });
   }
 
   // Buildings, cut back out of the corridors, with their height: OSM's `height`, else from `building:levels`, else a
