@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets, budget, maps, MAPS, outputs } from './assets.config.js';
+import { makeMaps, xz } from './maps.js';
 import { buildings, ground, lighting, osm, streets } from '../src/tables.js';
 
 // Every file under `dir`, relative to it, leaving out dotfiles such as Finder's .DS_Store (gitignored, never served).
@@ -40,6 +41,13 @@ describe('asset budget', () => {
     expect(made).toContain(osm.file);
     const credits = readFileSync('CREDITS.md', 'utf8');
     expect(made.filter((f) => !credits.includes(`public/${f}`))).toEqual([]);
+  });
+
+  // Catches a hand-edited map file, one left stale after the extracts or the trimming changed, or a broken script.
+  it('serves exactly what npm run maps makes from data/osm/, projected round the extract\'s origin', async () => {
+    for (const { out, json } of await makeMaps()) expect(json === readFileSync(join('public', out), 'utf8'), out).toBe(true);
+    expect(xz(...maps.origin).map(Math.abs)).toEqual([0, 0]);
+    expect(xz(maps.origin[0] + 0.001, maps.origin[1])[1]).toBe(-110.6); // north is -z, 0.001° about 111 m
   });
 
   it('serves the Basis transcoder of the installed three, which its KTX2Loader expects', () => {

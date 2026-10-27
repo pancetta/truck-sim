@@ -160,6 +160,19 @@ describe('OSM map: lights and signs', () => {
     }
   });
 
+  test("driving straight through a junction keeps the limit of the street the truck is on, not a side street's", () => {
+    const map = build(way('secondary', [[-50, 0], [0, 0], [50, 0]]), way('residential', [[0, 0], [0, 50]]));
+    const sim = createSim(tables, map);
+    Object.assign(sim.state.truck, { x: -30, z: classes.secondary.lane, heading: Math.PI / 2 }); // east, beside the side street's mouth
+    const limits = new Set();
+    for (let t = 0; t < 10; t += 1 / 60) {
+      sim.step(1 / 60, GAS);
+      limits.add(sim.state.speedLimit);
+    }
+    expect(sim.state.truck.x).toBeGreaterThan(10);
+    expect([...limits]).toEqual([classes.secondary.limit]);
+  });
+
   test('limit signs stand where the limit changes, facing the traffic onto the new limit, and on the way in from an edge exit', () => {
     const map = build(way('secondary', [[-50, 0], [0, 0]]), way('residential', [[0, 0], [50, 0]]), way('residential', [[50, 0], [150, 0]]));
     const { along } = tables.signs;
@@ -173,6 +186,12 @@ describe('OSM map: lights and signs', () => {
       { limit: 30, x: bounds.maxX - along, z: -side(classes.residential.width), angle: 1.57 },
     ]));
     expect(signs).toHaveLength(3);
+  });
+});
+
+describe('OSM map: no spots yet', () => {
+  test('asking for offers gets none', () => {
+    expect(createSim(tables, build(way('residential', [[-50, 0], [50, 0]]))).requestOffers()).toEqual([]);
   });
 });
 

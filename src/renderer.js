@@ -305,6 +305,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     // Bollards and the barriers at the edge exits, plain boxes on their colliders (each a box turned any way).
     for (const [kind, height, color] of [['bollard', city.bollardHeight, palette.signal], ['barrier', city.barrierHeight, palette.red]]) {
       const boxes = map.colliders.filter((c) => c.kind === kind);
+      if (!boxes.length) continue; // WebGPU rejects an instanced mesh without instances
       const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
       mesh.castShadow = mesh.receiveShadow = true;
       const m = new THREE.Matrix4();
@@ -435,7 +436,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const [bx, bz] = [l.x - dc * 0.5 - dr * lane, l.z - dr * 0.5 + dc * lane];
     stopLines.push({ minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: Math.min(az, bz), maxZ: Math.max(az, bz) });
   });
-  scene.add(signals, lamps);
+  if (map.lights.length) scene.add(signals, lamps); // an OSM map may have no light junction
   addBoxes(palette.stopLine, stopLines, 0.045);
   let shownLights = null;
 

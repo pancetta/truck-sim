@@ -70,6 +70,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
+  let limitEdge = null; // edge whose limit state.speedLimit shows (see updateLimit)
   const traffic = map?.roads && createTraffic(tables, map, random); // AI cars still drive tiles: the grid city only (#61, #63)
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
@@ -196,7 +197,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       loadOrUnload(dt);
     }
     const here = map ? map.graph.nearest(truck.x, truck.z) : null;
-    if (here && here.d <= here.edge.width / 2) state.speedLimit = here.edge.limit;
+    if (here) updateLimit(here);
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
 
     updateRoute(here);
@@ -321,6 +322,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (rule) return rule;
     }
     return null;
+  }
+
+  // The limit of the edge the truck is on: it keeps the one it has while it stays within that edge's width (its end
+  // included), so a side street's centre line, nearer inside a junction, doesn't take over; past it, the nearest road's.
+  function updateLimit(here) {
+    if (limitEdge && map.graph.project(limitEdge, truck.x, truck.z).d <= limitEdge.width / 2) return;
+    if (here.d > here.edge.width / 2) return;
+    limitEdge = here.edge;
+    state.speedLimit = limitEdge.limit;
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
@@ -620,7 +630,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateTraffic(0);
     state.policeSees = policeSees();
     if (map.rule) state.junctionRule = junctionAhead();
-    state.speedLimit = map.graph.nearest(truck.x, truck.z).edge.limit;
+    updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };
