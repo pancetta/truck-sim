@@ -773,6 +773,20 @@ The city gains 5 light junctions (12 in all, 48 lights) and 208 right before lef
 
 **Verdict:** within the bench's budget (1 ms, 32 KB). Frame times weren't measured with `?perf`. The added signs and lights are static geometry in batches that already exist.
 
+## Cab interior and instruments (#57)
+
+The cab interior is our own geometry: about ten meshes merged by material (dash, trim, headliner, cluster, chrome, wheel, needles), a dial texture drawn once on a canvas, and a small gear texture redrawn only when the gear changes. It is drawn in the cab view only.
+
+**How measured:** `?perf&auto` in headless Chrome (WebGPU, Metal) at 1180×820 with deviceScaleFactor 2, the overlay read after 30 s, on the M2. Main `c33e600` against this change, one heavy process at a time. These are relative Chrome numbers, not iPad numbers. The real-iPad run is the owner's `?perf&auto`.
+
+| | frame ms median / p95 | render ms median / p95 | calls |
+|---|---|---|---|
+| main, cab view (2 runs) | 16.7 / 33.3, 16.7 / 16.8 | 5.8 / 12.3, 5.9 / 10.4 | 201–217 |
+| this change, cab view | 16.7 / 16.8 | 5.5 / 8.6 | 176 |
+| this change, chase view | 16.7 / 16.7 | 5.7 / 8.5 | 288 |
+
+**Verdict:** no measurable frame cost. Both hold 60 fps in Chrome, and the run-to-run spread on main is larger than any difference. The adaptive resolution picked dpr 1.25–2 across runs, so the call counts move with the view.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
