@@ -322,7 +322,7 @@ const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable p
 // One geometry of quads, each [corners, normal]: four corners round the quad, turned so the quad faces along its
 // normal; a null normal keeps the corners' order and takes straight up as the normal. With `repeat`, UVs from world x
 // and z, that many m per copy of the texture.
-function quads(list, repeat) {
+export function quads(list, repeat) {
   const positions = [];
   const normals = [];
   const [pa, ab, ac] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];

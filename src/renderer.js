@@ -13,7 +13,7 @@ import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets } from './streets.js';
 import { planSkyline, skylineMeshes, paintSkylineWindows } from './skyline.js';
-import { roadSurface, plainBuildings } from './plainCity.js';
+import { roadPieces, roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { createCells } from './sim/cells.js';
 import { inside } from './sim/sim.js';
 import assetInfo from './assetInfo.json';
@@ -227,8 +227,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   ground.renderOrder = 1; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
   scene.add(ground);
 
-  // City from the parsed map, built from kit models; an OSM map (?map=monti, no tiles) is drawn plain (plainCity.js)
-  // until #65 gives it the look.
+  // City from the parsed map: on the grid, built from kit models; on an OSM map (?map=monti, no tiles), from the road
+  // graph and the building outlines (roads.js, buildings.js).
   const grid = !!map.roads;
   const ts = map.tileSize;
   const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place
@@ -240,10 +240,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Road tiles: asphalt as one mesh, a square per tile at the kit's road level, under the kit pieces' pavements and
   // markings; the pieces' own road surfaces are left out (see loadModel). Pushed back a few depth steps, so the
   // markings at the same height always win; an offset by depth slope sank it under the ground at grazing angles.
-  // On an OSM map, the road surface along the graph's edges.
+  // On an OSM map, the road surface along the graph's edges, with its junctions.
+  const pieces = grid ? null : roadPieces(map.graph);
   const roadGeometry = grid
     ? mergeGeometries(map.roads.map(({ col, row }) => new THREE.PlaneGeometry(ts, ts).rotateX(-Math.PI / 2).translate((col + 0.5) * ts, roadHeight / 2, (row + 0.5) * ts)))
-    : roadSurface(map.graph, roadHeight / 2);
+    : roadSurface(pieces, roadHeight / 2);
   const asphalt = new THREE.Mesh(
     worldUVs(roadGeometry, tables.ground.road.repeat),
     Object.assign(groundMaterial(tables.ground.road), { polygonOffset: true, polygonOffsetUnits: 4 }),
@@ -277,31 +278,40 @@ export function createRenderer(canvas, tables, map, onProgress) {
     blockCells.some(x, z, x, z, (b) => inside(x, z, b.points) && (found = b));
     return found;
   };
+  // Procedural buildings (buildings.js), a few meshes per chunk of the map, each culled whole against the view. Their
+  // facade pictures are painted at load; their wall and roof textures load after the first frame.
   const buildingParts = { meshes: [], near: [] };
+  const cells = atlasCells(map.spots.map((s) => s.id));
+  const buildingMaterials = {
+    walls: tables.buildings.walls.map((wall) => groundMaterial(wall, { vertexColors: true, flatShading: true }, true)),
+    roof: groundMaterial(tables.buildings.roof, { flatShading: true }, true),
+    parts: new THREE.MeshStandardMaterial({ ...paintFacadePictures(cells, palette.spot), vertexColors: true, flatShading: true }),
+  };
+  // Built once the model and texture requests are out, as building them takes a few hundred ms. What stands on them
+  // (lanterns, pots and flower boxes; streets.js) is placed then too.
+  loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
+    const plan = planBuildings(map, tables);
+    Object.assign(buildingParts, buildingMeshes(plan, tables, palette.spot, cells, buildingMaterials));
+    scene.add(...buildingParts.meshes);
+    streets.dress(plan);
+  }));
   if (grid) {
-    // Procedural buildings (buildings.js), a few meshes per chunk of the map, each culled whole against the view. Their
-    // facade pictures are painted at load; their wall and roof textures load after the first frame.
-    const cells = atlasCells(map.spots.map((s) => s.id));
-    const buildingMaterials = {
-      walls: tables.buildings.walls.map((wall) => groundMaterial(wall, { vertexColors: true, flatShading: true }, true)),
-      roof: groundMaterial(tables.buildings.roof, { flatShading: true }, true),
-      parts: new THREE.MeshStandardMaterial({ ...paintFacadePictures(cells, palette.spot), vertexColors: true, flatShading: true }),
-    };
-    // Built once the model and texture requests are out, as building them takes a few hundred ms. What stands on them
-    // (lanterns, pots and flower boxes; streets.js) is placed then too.
-    loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
-      const plan = planBuildings(map, tables);
-      Object.assign(buildingParts, buildingMeshes(plan, tables, palette.spot, cells, buildingMaterials));
-      scene.add(...buildingParts.meshes);
-      streets.dress(plan);
-    }));
     // The skyline ring outside the map (skyline.js): two meshes, its roofs in the buildings' roof material.
     const skylineWalls = new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 });
     loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, { walls: skylineWalls, roof: buildingMaterials.roof }))));
   } else {
-    const plain = new THREE.Mesh(plainBuildings(map.buildings, tables.buildings.tints), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 }));
-    plain.castShadow = plain.receiveShadow = true;
-    scene.add(plain);
+    // Raised pavements with kerbs along the roads, and over the pedestrian ways and squares (roads.js), built with the
+    // buildings, a few hundred ms too. The paving's texture loads after the first frame.
+    const { pavement } = tables.streets;
+    const pavers = groundMaterial(pavement, {}, true);
+    const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
+    loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
+      const { top, stones } = pavementGeometry(osmPavements(map, pieces, tables), pavement);
+      for (const mesh of [new THREE.Mesh(top, pavers), new THREE.Mesh(stones, kerbs)]) {
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+      }
+    }));
     // Bollards and the barriers at the edge exits, plain boxes on their colliders (each a box turned any way).
     for (const [kind, height, color] of [['bollard', city.bollardHeight, palette.signal], ['barrier', city.barrierHeight, palette.red]]) {
       const boxes = map.colliders.filter((c) => c.kind === kind);
@@ -440,8 +450,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   addBoxes(palette.stopLine, stopLines, 0.045);
   let shownLights = null;
 
-  // Pavements, lanterns (also on the poles), and the trees and props on open ground; none yet on an OSM map.
-  const streets = grid ? createStreets(scene, map, tables, { pavers: groundMaterial(tables.streets.pavement, {}, true), loadTexture, loader, models: MODELS }) : { load: async () => {}, update() {} };
+  // Pavements, lanterns (also on the poles), and the trees and props on open ground; on an OSM map, its pavements are
+  // drawn above and its dressing comes with #66.
+  const streets = grid ? createStreets(scene, map, tables, { pavers: groundMaterial(tables.streets.pavement, {}, true), loadTexture, loader, models: MODELS }) : { dress() {}, load: async () => {}, update() {} };
   laterLoads.push(streets.load);
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only
@@ -818,7 +829,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     shadowCentre(focus, light, shadowTexel, sun.target.position);
     sun.position.copy(sun.target.position).addScaledVector(light.z, SUN_DISTANCE);
     sun.shadow.needsUpdate = true;
-    // Window surrounds, sills and open shutters only near the camera, and only on facades facing it.
+    // Window surrounds, sills and open shutters only near the camera, and only on facades facing it. On an OSM map,
+    // whose facades stand at any angle, that test is per DIRS direction within 45° of theirs; a chunk's facades seen
+    // from beside it at a grazing angle can lose their detail, where it hardly shows.
     const { x: cx, z: cz } = camera.position;
     for (const { mesh, dir } of buildingParts.near) {
       const { min, max } = mesh.geometry.boundingBox;

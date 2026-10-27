@@ -3,6 +3,8 @@ import * as tables from './tables.js';
 import { parseMap, DIRS } from './sim/map.js';
 import { planBuildings, facadeParts, dockHalf } from './buildings.js';
 import city from './city.txt?raw';
+import { buildOsmMap } from './sim/osm.js';
+import { inside } from './sim/sim.js';
 
 const map = parseMap(city, tables);
 const ts = map.tileSize;
@@ -112,6 +114,47 @@ describe('facadeParts', () => {
           expect(out).toBeGreaterThanOrEqual(side.hole ? -tables.buildings.dock.depth : 0);
           expect(p.y + p.size[1] / 2).toBeLessThanOrEqual(b.height + 1e-9);
         }
+      }
+    }
+  });
+});
+
+describe('planBuildings on an OSM map (#65)', () => {
+  // A road along z = 0, and two buildings north of it, back to back along x = 10; the second's outline runs the other
+  // way round.
+  const block = (id, ring, height) => ({ id, tags: { building: 'yes', height: String(height) }, points: [...ring, ring[0]] });
+  const osm = buildOsmMap({
+    bounds: { minX: -100, minZ: -100, maxX: 100, maxZ: 100 },
+    ways: [
+      { id: 1, tags: { highway: 'residential' }, nodes: ['a', 'b'], points: [[-50, 0], [50, 0]] },
+      block(2, [[0, -30], [10, -30], [10, -10], [0, -10]], 15),
+      block(3, [[10, -10], [20, -10], [20, -30], [10, -30]], 9),
+    ],
+  }, tables);
+  const buildings = planBuildings(osm, tables);
+
+  it('builds each outline at the map\'s height, with as many floors as fit under it', () => {
+    expect(buildings.map((b) => b.height)).toEqual([15, 9]);
+    const t = tables.buildings;
+    for (const b of buildings) expect(t.groundFloor + (b.floors - 1) * t.floor + t.parapet).toBeLessThanOrEqual(b.height);
+  });
+
+  it('gives each wall a side, outside to its left, and leaves the party wall blank', () => {
+    for (const b of buildings) {
+      expect(b.sides).toHaveLength(4);
+      for (const side of b.sides) {
+        const [x, z] = [side.x + (side.ux * side.length) / 2 - side.uz * 0.5, side.z + (side.uz * side.length) / 2 + side.ux * 0.5];
+        expect(inside(x, z, b.points)).toBe(false);
+        expect(side.street).toBe(Math.abs(side.x + (side.ux * side.length) / 2 - 10) > 1e-6); // only the wall along x = 10 is shared
+        expect(DIRS[side.dir][0] * -side.uz + DIRS[side.dir][1] * side.ux).toBeGreaterThan(0.7); // dir is the way it faces
+      }
+    }
+  });
+
+  it('puts the facades on the outside of the walls', () => {
+    for (const b of buildings) {
+      for (const side of b.sides.filter((s) => s.street)) {
+        for (const p of facadeParts(b, side, tables, 0xffffff)) expect(inside(p.x, p.z, b.points)).toBe(false);
       }
     }
   });

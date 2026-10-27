@@ -286,6 +286,7 @@ export const buildings = {
   closedShutters: 0.3, // share of windows with their shutters closed
   chunk: 196, // m square, the pieces the city's building meshes are cut into and culled by
   detailDistance: 120, // m from the camera within which facades show their window surrounds, sills and open shutters
+  nearChunk: 49, // m square, on an OSM map the pieces that close-up detail is cut into, within a chunk
   // Wall materials: CC0 textures from `npm run assets` (CREDITS.md), each for a `share` of the buildings, `repeat` m
   // per copy; a `tinted` one takes a colour from `tints`.
   walls: [

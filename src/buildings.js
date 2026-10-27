@@ -4,22 +4,25 @@ import * as THREE from 'three/webgpu';
 import { DIRS } from './sim/map.js';
 import { seeded } from './autopilot.js';
 import { ATLAS } from './facadePictures.js';
+import { createCells } from './sim/cells.js';
+import { inside } from './sim/sim.js';
 
 // Half the width of a dock's opening in its building's face: the bay the docking check allows, and 0.5 m each side.
 export const dockHalf = (tables) => tables.vehicle.width / 2 + tables.orders.dockCentre + 0.5;
 
-// The city's buildings. Every building tile (building or spot) that faces a tile that isn't one is built on: each run
+// The city's buildings. On an OSM map (no tiles), one per (cut-back) outline in the map; see planOutlines. On the grid,
+// every building tile (building or spot) that faces a tile that isn't one is built on: each run
 // of such tiles along a face of a block is a row of buildings one tile deep, cut at random widths, a spot's tile always
 // a building of its own. North and south faces go first, so their rows take the block's corners. Tiles further in
 // stay empty, as courtyards. Each building has its footprint, `floors`, `height`, `wall` (index into
 // tables.buildings.walls), `tint`, `brightness`, `offset` (m, of the wall texture), `seed` (for its facades), `spot`
 // and `sides`.
 export function planBuildings(map, tables) {
+  if (!map.roads) return planOutlines(map, tables);
   const t = tables.buildings;
   const ts = map.tileSize;
   const random = seeded(t.seed);
   const between = ([lo, hi]) => lo + random() * (hi - lo);
-  const pick = (list) => list[Math.floor(random() * list.length)];
   const key = (col, row) => `${col},${row}`;
   const tiles = map.colliders.filter((c) => c.kind === 'building' || c.kind === 'spot').map((c) => ({ col: Math.floor(c.minX / ts), row: Math.floor(c.minZ / ts) }));
   const tileSet = new Set(tiles.map(({ col, row }) => key(col, row)));
@@ -80,22 +83,7 @@ export function planBuildings(map, tables) {
 
   function building(box, spot) {
     const floors = t.floors[0] + Math.floor(random() * (t.floors[1] - t.floors[0] + 1));
-    let r = random();
-    const drawn = t.walls.findIndex((w) => (r -= w.share) < 0);
-    const wall = drawn < 0 ? t.walls.length - 1 : drawn; // the shares' rounding
-    const b = {
-      ...box,
-      floors,
-      height: t.groundFloor + (floors - 1) * t.floor + t.parapet,
-      // A spot's building is plastered (the first, tinted wall material) in a light shade of the spot colour, so it
-      // shows from down the street.
-      wall: spot ? 0 : wall,
-      tint: spot ? new THREE.Color(tables.palette.spot).lerp(new THREE.Color(0xffffff), t.spotTint).getHex() : t.walls[wall].tinted ? pick(t.tints) : 0xffffff,
-      brightness: between(t.brightness),
-      offset: [random() * 20, random() * 20],
-      seed: Math.floor(random() * 2 ** 32),
-      spot: spot ?? null,
-    };
+    const b = { ...box, ...look(tables, random, floors, t.groundFloor + (floors - 1) * t.floor + t.parapet, spot) };
     const { minX, maxX, minZ, maxZ } = box;
     // Each side from its start corner, along (ux, uz) to its end, with the outside to its left: seen from outside, it
     // runs left to right. In DIRS order, so a side's index is the direction it faces. A side is a street side if the
@@ -114,10 +102,64 @@ export function planBuildings(map, tables) {
       const half = dockHalf(tables);
       // A dock's opening: m along the side, and up.
       const hole = spotSide && spot.dock ? { from: side.length / 2 - half, to: side.length / 2 + half, height: t.dock.height } : null;
-      return { ...side, dir, street, spot: spotSide ? spot : null, hole };
+      return { ...side, dir, index: dir, street, spot: spotSide ? spot : null, hole };
     });
     return b;
   }
+}
+
+// A building's look: its `floors` and `height`, `wall` (index into tables.buildings.walls), `tint`, `brightness`,
+// `offset` (m, of the wall texture), `seed` (for its facades) and `spot`, drawn from `random`.
+function look(tables, random, floors, height, spot) {
+  const t = tables.buildings;
+  let r = random();
+  const drawn = t.walls.findIndex((w) => (r -= w.share) < 0);
+  const wall = drawn < 0 ? t.walls.length - 1 : drawn; // the shares' rounding
+  return {
+    floors,
+    height,
+    // A spot's building is plastered (the first, tinted wall material) in a light shade of the spot colour, so it
+    // shows from down the street.
+    wall: spot ? 0 : wall,
+    tint: spot ? new THREE.Color(tables.palette.spot).lerp(new THREE.Color(0xffffff), t.spotTint).getHex() : t.walls[wall].tinted ? t.tints[Math.floor(random() * t.tints.length)] : 0xffffff,
+    brightness: t.brightness[0] + random() * (t.brightness[1] - t.brightness[0]),
+    offset: [random() * 20, random() * 20],
+    seed: Math.floor(random() * 2 ** 32),
+    spot: spot ?? null,
+  };
+}
+
+// The buildings of an OSM map, one per outline (map.buildings, cut back from the roads), as planBuildings plans the
+// grid's, with the height from the map and as many floors as fit under it. Each has its `points`, turned so its sides
+// run with the outside to their left, and a side per wall from each corner to the next; `dir` is the DIRS direction
+// nearest to the way it faces. A side is a street side unless another building stands against it: a party wall,
+// left blank. No spots yet (#64), so no spot buildings or dock openings.
+function planOutlines(map, tables) {
+  const t = tables.buildings;
+  const random = seeded(t.seed);
+  const index = createCells(tables.city.cell);
+  const buildings = map.buildings.map(({ points, height }) => {
+    const ring = THREE.ShapeUtils.isClockWise(points.map((p) => new THREE.Vector2(p.x, p.z))) ? points : points.toReversed();
+    const floors = Math.max(1, Math.floor((height - t.groundFloor - t.parapet) / t.floor) + 1);
+    const [xs, zs] = [ring.map((p) => p.x), ring.map((p) => p.z)];
+    const b = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), points: ring, ...look(tables, random, floors, height, null) };
+    index.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
+    return b;
+  });
+  const against = (own, x, z) => index.some(x, z, x, z, (b) => b !== own && inside(x, z, b.points));
+  for (const b of buildings) {
+    const ring = b.points;
+    b.sides = ring.map((p, index) => {
+      const q = ring[(index + 1) % ring.length];
+      const length = Math.hypot(q.x - p.x, q.z - p.z);
+      const [ux, uz] = [(q.x - p.x) / length, (q.z - p.z) / length];
+      const [nx, nz] = [-uz, ux];
+      const dir = DIRS.reduce((best, [dx, dz], d) => (dx * nx + dz * nz > DIRS[best][0] * nx + DIRS[best][1] * nz ? d : best), 0);
+      const street = !against(b, (p.x + q.x) / 2 + nx * 0.5, (p.z + q.z) / 2 + nz * 0.5);
+      return { x: p.x, z: p.z, ux, uz, length, dir, index, street, spot: null, hole: null };
+    });
+  }
+  return buildings;
 }
 
 // The parts on one street side of a building, in the prototype's style. Per window bay: on the ground floor a shop
@@ -131,7 +173,7 @@ export function planBuildings(map, tables) {
 // near (only drawn close up) }.
 export function facadeParts(building, side, tables, spotColour) {
   const t = tables.buildings;
-  const random = seeded(building.seed + side.dir);
+  const random = seeded(building.seed + side.index);
   const pick = (list) => list[Math.floor(random() * list.length)];
   const parts = [];
   const { length: L, ux, uz, spot, hole } = side;
@@ -225,7 +267,8 @@ export function facadeParts(building, side, tables, spotColour) {
 // culled piece by piece: per chunk its walls (a mesh per wall material), its roofs, and its facade parts, those always
 // drawn in one mesh and the `near` ones in a mesh per direction the facades face, for the renderer to draw only close
 // up and from in front. `cells` are the facade pictures' places (facadePictures.js), `materials` { walls: [...], roof,
-// parts }, flat-shaded: the meshes have no normals. Returns all `meshes`, and `near` as [{ mesh, dir }].
+// parts }, flat-shaded: the meshes have no normals. Returns all `meshes`, and `near` as [{ mesh, dir }]. An OSM map's
+// buildings (with `points`) get their roofs on their outlines.
 export function buildingMeshes(buildings, tables, spotColour, cells, materials) {
   const t = tables.buildings;
   const uvOf = Object.fromEntries(Object.entries(cells).map(([name, [x, y, w, h]]) => {
@@ -234,6 +277,8 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
     return [name, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]];
   }));
   const plainUV = [(uvOf.plain[0][0] + uvOf.plain[1][0]) / 2, (uvOf.plain[0][1] + uvOf.plain[2][1]) / 2];
+  // An OSM map's buildings face every way; their near parts go in the mesh of the DIRS direction nearest their facade's.
+  const outlines = !!buildings[0]?.points;
   const colour = new THREE.Color();
   const grimy = new THREE.Color();
   const lit = new THREE.Color();
@@ -256,7 +301,13 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
     const walls = t.walls.map(() => newData());
     const roofs = newData();
     const base = newData();
-    const near = DIRS.map(() => newData());
+    // Near parts by the direction they face, and on an OSM map also by `nearChunk` m square, as most of a chunk's lie
+    // further away than detailDistance.
+    const near = new Map();
+    const nearOf = (b, dir) => {
+      const key = outlines ? `${Math.floor((b.minX + b.maxX) / 2 / t.nearChunk)},${Math.floor((b.minZ + b.maxZ) / 2 / t.nearChunk)},${dir}` : dir;
+      return (near.get(key) ?? near.set(key, { data: newData(), dir }).get(key)).data;
+    };
     for (const b of list) {
       lit.setHex(b.tint).multiplyScalar(b.brightness);
       grimy.copy(lit).multiplyScalar(t.grimeShade);
@@ -264,7 +315,8 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
       const { repeat } = t.walls[b.wall];
       const data = walls[b.wall];
       let perimeter = b.offset[0];
-      for (const side of [0, 3, 2, 1].map((dir) => b.sides[dir])) {
+      // Round the building, so the wall texture runs on from side to side; a grid building's are in DIRS order.
+      for (const side of outlines ? b.sides : [0, 3, 2, 1].map((dir) => b.sides[dir])) {
         const [nx, nz] = [-side.uz, side.ux];
         const at = (a, y, o = 0) => [side.x + side.ux * a + nx * o, y, side.z + side.uz * a + nz * o];
         // A piece of wall `a0`..`a1` m along and `y0`..`y1` up, split where the grime fades out.
@@ -292,18 +344,27 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
         } else piece(0, side.length, 0, b.height);
         perimeter += side.length;
         if (!side.street) continue;
-        for (const p of facadeParts(b, side, tables, spotColour)) addPart(p.near ? near[side.dir] : base, p);
+        for (const p of facadeParts(b, side, tables, spotColour)) addPart(p.near ? nearOf(b, side.dir) : base, p);
       }
       const { minX, maxX, minZ, maxZ, height } = b;
       const r = t.roof.repeat;
       colour.setRGB(1, 1, 1);
-      quad(roofs, [[minX, height, maxZ], [maxX, height, maxZ], [maxX, height, minZ], [minX, height, minZ]], [[minX / r, -maxZ / r], [maxX / r, -maxZ / r], [maxX / r, -minZ / r], [minX / r, -minZ / r]], [colour, colour, colour, colour]);
+      if (outlines) {
+        // The outline's triangles, each turned to face up.
+        const first = roofs.position.length / 3;
+        for (const p of b.points) vertex(roofs, [p.x, height, p.z], [p.x / r, -p.z / r], colour);
+        for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(b.points.map((p) => new THREE.Vector2(p.x, p.z)), [])) {
+          const [p, q, o] = [b.points[i], b.points[j], b.points[k]];
+          const up = (q.x - p.x) * (o.z - p.z) - (q.z - p.z) * (o.x - p.x) < 0;
+          roofs.index.push(first + i, ...(up ? [first + j, first + k] : [first + k, first + j]));
+        }
+      } else quad(roofs, [[minX, height, maxZ], [maxX, height, maxZ], [maxX, height, minZ], [minX, height, minZ]], [[minX / r, -maxZ / r], [maxX / r, -maxZ / r], [maxX / r, -minZ / r], [minX / r, -minZ / r]], [colour, colour, colour, colour]);
     }
     walls.forEach((d, i) => d.position.length && meshes.push(mesh(d, materials.walls[i])));
     meshes.push(mesh(roofs, materials.roof));
     if (base.position.length) meshes.push(mesh(base, materials.parts));
     // The near parts cast no shadow: in the shadow map they held the iPad simulator under 60 fps at any resolution.
-    near.forEach((d, dir) => d.position.length && nearMeshes.push({ mesh: mesh(d, materials.parts, false), dir }));
+    for (const { data, dir } of near.values()) nearMeshes.push({ mesh: mesh(data, materials.parts, false), dir });
   }
   return { meshes: [...meshes, ...nearMeshes.map((n) => n.mesh)], near: nearMeshes };
 

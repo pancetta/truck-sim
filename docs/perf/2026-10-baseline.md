@@ -818,6 +818,25 @@ No frame was over 25 ms from the turns (max 18.8 ms; one 34 ms frame in 4,000, n
 
 **Verdict:** the stutter was the frame loop drawing the latest fixed step while the display's frames don't line up with it (`src/blend.js` now draws between the last two steps), plus the chase arm's instant pull-in (now at most `camera.chasePullIn`). These are Chrome numbers. The iPad check is the owner's `?perf&auto` run.
 
+## Monti look (#65)
+
+With `?map=monti`, Monti gets the realistic look. Roads are ribbons along the graph's edges with a disc on each junction, in #37's asphalt. Raised pavements with stone kerbs (#40's materials) run along every road edge and over the pedestrian ways and squares (`src/roads.js`). Buildings use #39's facades on the real outlines (`planBuildings` in `src/buildings.js`): one facade run per wall, with party walls left blank. No textures are added.
+
+- *Pavements:* each is a strip along a road, less every convex road piece cut out of it with `subtract` from the map builder, so it stops exactly where the road surface starts. A test on the real extract checks that no paving covers a road piece by more than 1 cm and that no lane runs under paving. They come to 18k triangles of paving and 61k of kerb stones, in two meshes, built in about 330 ms with the buildings, after the first requests go out.
+- *Close-up detail:* Monti's facades face every way, so their close-up meshes are bucketed by the nearest of the four directions, as on the grid, and also cut into `tables.buildings.nearChunk` (49 m) squares. With whole 196 m chunks, the cab view drew 513k triangles; with 49 m squares it draws 340k.
+
+**How measured:** Chrome on the M2, dev build, `?map=monti&perf`, 1257×856 at dpr 2, truck standing, vsync, the overlay read after 7–10 s. The grid was measured in the same sitting with `?perf`. These are relative numbers; the iPad check is the owner's `?perf&auto` run.
+
+| | draw calls / triangles | render ms median / p95 | texture memory (three's `info.memory`) | geometry buffers |
+|---|---|---|---|---|
+| Monti before (#62, plain blocks), cab | 25 / 78k | – | – | – |
+| Monti, cab at the start | 105 / 340k | 2.1 / 3.4 | 56.2 MB (49 textures) | 17.4 MB |
+| Monti, chase at the start | 99 / 356k | 1.9 / 3.2 | | |
+| Monti, cab at the five-arm junction | 114 / 318k | 1.9 / 3.0 | | |
+| Grid, cab at the start (10 cars) | 370 / 241k | 3.5 / 5.5 | 56.3 MB (56 textures) | 12.1 MB |
+
+Frames held 16.7 ms throughout. Against #37–#42's budget, Monti draws under a third of the grid's draw calls with the same texture memory, and spends less render CPU. It draws about 1.4× the grid's triangles and holds 1.4× its geometry buffers. AI traffic isn't on Monti yet (#63). Monti has no lanterns, plants, trees or skyline yet (#66).
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

@@ -4,7 +4,8 @@
 // metres, x east and z south. The city is flat.
 //   Drivable network: ways of a tables.osm.classes highway class, but no tunnels or areas, cut where they leave the
 //     bounds (an edge exit, closed by a truck-only barrier) and split at every node they share into edges.
-//   Pedestrian ways and squares: not drivable, closed by bollards where the road and its pavements meet them.
+//   Pedestrian ways and squares: not drivable, closed by bollards where the road and its pavements meet them; the map
+//     keeps them as `pedestrian` { lines, squares } for the renderer to pave.
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
 //   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit.
@@ -190,7 +191,9 @@ export function buildOsmMap(data, tables) {
     }
   }
 
-  return { bounds, spots: [], colliders, lights, signs, graph, buildings, traffic: false }; // no AI cars until #63
+  // The pedestrian ways and squares, which the renderer paves.
+  const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
+  return { bounds, spots: [], colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares }, traffic: false }; // no AI cars until #63
 }
 
 // The part of segment a→b inside the bounds as [t0, t1] (0..1 along it), or null where it misses them (Liang–Barsky).
