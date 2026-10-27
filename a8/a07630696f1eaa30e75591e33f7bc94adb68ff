@@ -1,0 +1,61 @@
+src/style.css
+  s_30dbd08b37dd38::t_d7f2572cad8133 288-292,543-544,573-574,586-595
+  s_30dbd08b37dd38::t_f4b41cc8a1ea8e 596
+src/sim/sim.js
+  s_30dbd08b37dd38::t_c852ab3eb51e7c 58-63,95-103,111,166,174-175,260,266-282,291-293,295,301,304,307,311-313,316-318,754,761
+  s_30dbd08b37dd38::t_d071650376367b 296-297,308,314-315
+src/sim/osm.js
+  s_30dbd08b37dd38::t_d211b246285210 270-271
+  s_30dbd08b37dd38::t_3d61f73aa7c308 279-280
+  s_30dbd08b37dd38::t_7dc6ca935c0176 20-21,273,275-277
+src/strings.js
+  s_30dbd08b37dd38::t_61a44bac4c3f0c 98
+  s_30dbd08b37dd38::t_b44f3432b0c38c 99-102
+src/hud.js
+  s_30dbd08b37dd38::t_61a44bac4c3f0c 1-2,4,32,39,55-56,69-70,74,102-110
+  s_30dbd08b37dd38::t_4c118261c6e9c9 111
+src/minimap.js
+  s_30dbd08b37dd38::t_772dbd476e724f 1-2,38,53-54,77-96
+  s_30dbd08b37dd38::t_247f57ef578b68 97
+src/renderer.js
+  s_30dbd08b37dd38::t_15394f7cc0ad03 325,327,329-338,341-343,352-367,371
+src/sim/sim.test.js
+  s_30dbd08b37dd38::t_8e40daef8ded73 320
+src/tables.js
+  s_30dbd08b37dd38::t_4e7752192b30bf 638
+  s_30dbd08b37dd38::t_8a310096b78689 180-194
+  s_30dbd08b37dd38::t_35a23b9f8eb176 374,379
+  s_30dbd08b37dd38::t_aeb9e5504dd54d 207-216
+  s_30dbd08b37dd38::t_72f21be28b90b4 375
+src/sim/energy.test.js
+  s_30dbd08b37dd38::t_0d09975e585227 1-3,5-16,18-25,27,30-98,100-112,114-117,119-162
+  s_30dbd08b37dd38::t_55ec810528905a 4,26,28-29
+  s_30dbd08b37dd38::t_02916a0df36d15 17,99,113,118
+src/cab.js
+  s_30dbd08b37dd38::t_dedce4b4673131 17-18,25,88,125-126,132-133,137-138,238
+src/sim/fixtures.js
+  s_30dbd08b37dd38::t_c852ab3eb51e7c 19-23
+GLOSSARY.md
+  s_30dbd08b37dd38::t_75ca30632136a6 89
+  s_30dbd08b37dd38::t_b2f771b7a0a0eb 36-44,90-92,96-98,262
+src/main.js
+  s_30dbd08b37dd38::t_b44f3432b0c38c 44-45
+src/orders.js
+  s_30dbd08b37dd38::t_b44f3432b0c38c 1,128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8a07630696f1eaa30e75591e33f7bc94adb68ff",
+  "prompts": {},
+  "sessions": {
+    "s_30dbd08b37dd38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ec62009-0cad-46f0-8695-64bed7a10d78",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
