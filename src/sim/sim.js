@@ -34,6 +34,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
+  // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
+  // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit where the truck is.
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
@@ -50,6 +52,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lightsVersion: 0,
     traffic: [],
     policeSees: false,
+    junctionRule: null,
+    speedLimit: tables.speedLimit,
     get garageAvailable() {
       return truck.speed === 0 && !state.order;
     },
@@ -165,6 +169,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     updateTraffic(dt);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
+    if (map) state.junctionRule = junctionAhead();
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -268,6 +273,23 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (map.isBuilding(Math.floor((a.x + ((b.x - a.x) * i) / n) / map.tileSize), Math.floor((a.z + ((b.z - a.z) * i) / n) / map.tileSize))) return false;
     }
     return true;
+  }
+
+  // The rule (map.rule) of the next junction along the road axis the truck heads closest to, its front bumper in it or
+  // within tables.signs.hint m of it; null if the road ends or the truck isn't on one.
+  function junctionAhead() {
+    const fx = Math.sin(truck.heading);
+    const fz = Math.cos(truck.heading);
+    const [dc, dr] = DIRS.reduce((a, d) => (d[0] * fx + d[1] * fz > a[0] * fx + a[1] * fz ? d : a));
+    const x = truck.x + (fx * v.length) / 2;
+    const z = truck.z + (fz * v.length) / 2;
+    const ts = map.tileSize;
+    for (let col = Math.floor(x / ts), row = Math.floor(z / ts); map.isRoad(col, row); col += dc, row += dr) {
+      if (((col + 0.5) * ts - x) * dc + ((row + 0.5) * ts - z) * dr - ts / 2 > tables.signs.hint) return null; // to its near edge
+      const rule = map.rule(col, row);
+      if (rule) return rule;
+    }
+    return null;
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
@@ -543,6 +565,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     resetToRoad();
     updateTraffic(0);
     state.policeSees = policeSees();
+    state.junctionRule = junctionAhead();
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };

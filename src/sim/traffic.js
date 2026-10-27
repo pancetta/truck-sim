@@ -5,7 +5,8 @@
 // view anywhere and leave only at a dead end, whereupon a new one appears.
 // A car's `route` is its lane ahead, one piece per road tile: { col, row, from, to }, where `from` is the DIRS
 // index it travels into the tile and `to` the one it leaves by; `lane` is the piece it is on, `s` the m
-// driven along it and `prev` the piece before. A piece runs `laneOffset` right of the centre line: straight
+// driven along it and `prev` the piece before; `at`, `seen` and `since` are the crossing group it was last the first
+// car of an approach to, the last step it was and the step it became that (see rightOfWay). A piece runs `laneOffset` right of the centre line: straight
 // across the tile, or a quarter circle round the tile corner between its entry and exit edges.
 // At unsignalled crossings one approach at a time drives in, chosen right before left (see rightOfWay); at
 // light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No car
@@ -45,7 +46,7 @@ export function createTraffic(tables, map, random) {
   // car waits inside one of them for the next.
   for (const c of crossings) {
     if (c.group) continue;
-    c.group = { stamp: -1, inside: 0, insideDir: 0, mixed: false, fronts: DIRS.map(() => ({ on: false, car: null, short: 0 })), way: -1, truck: -1 };
+    c.group = { stamp: -1, inside: 0, insideDir: 0, mixed: false, fronts: DIRS.map(() => ({ on: false, car: null, short: 0, since: 0 })), way: -1, truck: -1 };
     for (const queue = [c]; queue.length; ) {
       const { col, row } = queue.pop();
       for (const [dc, dr] of DIRS) {
@@ -181,7 +182,7 @@ export function createTraffic(tables, map, random) {
     if (!out.length) return;
     const route = [{ col, row, from, to: pick(out) }];
     extend(route);
-    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: laneLength(route[0]) / 2, police };
+    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: laneLength(route[0]) / 2, police, at: null, seen: -1, since: 0 };
     place(car);
     if (cars.some((c) => (c.x - car.x) ** 2 + (c.z - car.z) ** 2 < t.lookAhead ** 2)) return;
     cars.push(car);
@@ -274,10 +275,15 @@ export function createTraffic(tables, map, random) {
   // the DIRS index of travel into it of the approach that may go, or -1 for none. Vehicles in a crossing, or
   // too close to stop before it at `maxBrake`, hold it for their approach (the truck for none). A free
   // crossing goes to the nearest car of an approach with no car or truck arriving on its right (travelling
-  // dir + 3); when all four approaches have a car, none would, so the one that came into the city first goes.
-  // Of several that may go the same, also the first. The truck counts as arriving only while it drives
-  // towards the crossing: a player waiting there is letting the cars go.
+  // dir + 3); when all four approaches have a car or the truck, none would, so the first to arrive goes (the
+  // first vehicle of its approach the longest), and if that is the truck the cars wait for it. Of several that
+  // may go the same, also the first to arrive. The truck counts as arriving while it drives towards the crossing,
+  // and while it stands short of it for up to `truckHold` s: after that a player waiting there is letting the
+  // cars go, and a parked truck doesn't hold them up for good.
   const atCrossings = []; // scratch: the groups with traffic at them this step
+  let truckAt = null; // the crossing group the truck is the first vehicle of an approach to, since step `truckSince`
+  let truckSince = 0;
+  let truckStill = 0; // s the truck has stood still
   function at(g) {
     if (g.stamp === now) return g;
     g.stamp = now;
@@ -334,7 +340,7 @@ export function createTraffic(tables, map, random) {
       if (moving) hold(c.group, -1);
     }
     for (const j of junctions) if (truckIn(j, truck)) j.truck = now;
-    const n = truckAhead(truck);
+    const n = truckAhead(truck, truckStill < t.truckHold);
     for (let k = 1; k < n; k++) {
       const { dir, col, row, short } = truckTiles[k];
       const [bc, br] = [col - DIRS[dir][0], row - DIRS[dir][1]]; // the tile before
@@ -344,6 +350,27 @@ export function createTraffic(tables, map, random) {
       break;
     }
 
+    // When each first vehicle arrived: a car or the truck that was already the first of an approach to this
+    // crossing a step ago keeps its step, a new one gets this one.
+    const truckWas = truckAt;
+    truckAt = null;
+    for (const g of atCrossings) {
+      for (const w of g.fronts) {
+        if (!w.on) continue;
+        const c = w.car;
+        if (c) {
+          if (c.at !== g || c.seen !== now - 1) c.since = now;
+          c.at = g;
+          c.seen = now;
+          w.since = c.since;
+        } else {
+          if (truckWas !== g) truckSince = now;
+          truckAt = g;
+          w.since = truckSince;
+        }
+      }
+    }
+
     for (const g of atCrossings) {
       if (g.inside) {
         g.way = g.mixed ? -1 : g.insideDir;
@@ -351,28 +378,34 @@ export function createTraffic(tables, map, random) {
       }
       const f = g.fronts;
       let all = true;
-      for (const w of f) all &&= w.on && w.car !== null;
-      g.way = -1;
+      for (const w of f) all &&= w.on;
+      // The approach that goes: a free car's, the first to arrive (the lowest id on the same step, the truck's 0).
+      let first = -1;
       for (let dir = 0; dir < 4; dir++) {
-        const free = f[dir].on && f[dir].car && (all || !f[(dir + 3) % 4].on);
-        if (free && (g.way < 0 || f[dir].car.id < f[g.way].car.id)) g.way = dir;
+        const w = f[dir];
+        if (!w.on || (!all && (!w.car || f[(dir + 3) % 4].on))) continue;
+        const v = first < 0 ? null : f[first];
+        if (!v || w.since < v.since || (w.since === v.since && (w.car?.id ?? 0) < (v.car?.id ?? 0))) first = dir;
       }
+      g.way = first >= 0 && f[first].car ? first : -1;
     }
   }
 
   const truckIn = (tile, truck) =>
     Math.abs((tile.col + 0.5) * ts - truck.x) < ts && Math.abs((tile.row + 0.5) * ts - truck.z) < ts && boxesOverlap(truckBox, tile.box);
 
-  // The tiles the truck drives into while it drives forwards along a road axis, from the one under its front
-  // bumper to two ahead, into the scratch `truckTiles`: each with that axis' DIRS index and the m from the
-  // bumper to the tile's near edge (negative for the tile under it). Returns how many: 3, or 0 otherwise.
+  // The tiles the truck drives into while it drives forwards along a road axis (or stands, if `still` counts),
+  // from the one under its front bumper to two ahead, into the scratch `truckTiles`: each with that axis' DIRS
+  // index and the m from the bumper to the tile's near edge (negative for the tile under it). Returns how many: 3,
+  // or 0 otherwise.
   const truckTiles = [0, 1, 2].map(() => ({ dir: 0, col: 0, row: 0, short: 0 }));
-  function truckAhead(truck) {
+  function truckAhead(truck, still) {
     const fx = Math.sin(truck.heading);
     const fz = Math.cos(truck.heading);
     let dir = -1;
     for (let k = 0; k < 4 && dir < 0; k++) if (DIRS[k][0] * fx + DIRS[k][1] * fz > Math.SQRT1_2) dir = k;
-    if (dir < 0 || truck.speed <= tables.vehicle.stopSpeed) return 0;
+    const stopSpeed = tables.vehicle.stopSpeed;
+    if (dir < 0 || !(truck.speed > stopSpeed || (still && Math.abs(truck.speed) <= stopSpeed))) return 0;
     const dc = DIRS[dir][0];
     const dr = DIRS[dir][1];
     const x = truck.x + (fx * truckSize.length) / 2;
@@ -405,9 +438,10 @@ export function createTraffic(tables, map, random) {
     }
     return j;
   }
-  function see(col, row, dir, bits) {
+  // Adds travel `dir` to the junction's `inside` bits, if (col, row) is one.
+  function inside(col, row, dir) {
     const j = junction(col, row);
-    if (j) j[bits] |= 1 << dir;
+    if (j) j.inside |= 1 << dir;
   }
   // Whether a car driving into the light junction on piece `p` must let the others there go first.
   const yields = (p) => {
@@ -421,26 +455,35 @@ export function createTraffic(tables, map, random) {
   function atJunctions(truck) {
     for (const car of cars) {
       let dist = -car.s; // centre to the start of the piece
-      for (const p of car.route) {
+      for (let i = 0; i < car.route.length; i++) {
+        const p = car.route[i];
         const short = dist - size.length / 2;
-        const j = short <= t.giveWay && junction(p.col, p.row);
+        const j = short <= t.giveWay ? junction(p.col, p.row) : undefined;
         if (j) j.first[p.from] = Math.min(j.first[p.from], short);
         dist += laneLength(p);
       }
     }
     for (const car of cars) {
-      if (car.prev && car.s < size.length / 2) see(car.prev.col, car.prev.row, car.prev.from, 'inside'); // its rear
-      see(car.lane.col, car.lane.row, car.lane.from, 'inside');
+      if (car.prev && car.s < size.length / 2) inside(car.prev.col, car.prev.row, car.prev.from); // its rear
+      inside(car.lane.col, car.lane.row, car.lane.from);
       let dist = -car.s; // centre to the start of the piece
-      for (const p of car.route) {
+      for (let i = 0; i < car.route.length; i++) {
+        const p = car.route[i];
         const short = dist - size.length / 2;
-        const bits = p.to !== (p.from + 3) % 4 ? 'seen' : stoppable(car, short) ? 'left' : 'leftIn';
-        if (short <= t.giveWay && junction(p.col, p.row)?.first[p.from] === short) see(p.col, p.row, p.from, bits);
+        const j = short <= t.giveWay ? junction(p.col, p.row) : undefined;
+        if (j && j.first[p.from] === short) {
+          if (p.to !== (p.from + 3) % 4) j.seen |= 1 << p.from;
+          else if (stoppable(car, short)) j.left |= 1 << p.from;
+          else j.leftIn |= 1 << p.from;
+        }
         dist += laneLength(p);
       }
     }
-    const n = truckAhead(truck);
-    for (let k = 0; k < n; k++) if (truckTiles[k].short <= t.giveWay) see(truckTiles[k].col, truckTiles[k].row, truckTiles[k].dir, 'seen');
+    const n = truckAhead(truck, false);
+    for (let k = 0; k < n; k++) {
+      const j = truckTiles[k].short <= t.giveWay ? junction(truckTiles[k].col, truckTiles[k].row) : undefined;
+      if (j) j.seen |= 1 << truckTiles[k].dir;
+    }
   }
 
   // Don't block the box: whether the lane just past the box (crossing or light junction) that route piece `i`
@@ -545,6 +588,7 @@ export function createTraffic(tables, map, random) {
     if (police < tables.police.count) spawn(truck, true);
 
     now++;
+    truckStill = Math.abs(truck.speed) > tables.vehicle.stopSpeed ? 0 : truckStill + dt;
     for (let i = 0; i < cars.length; i++) corners(cars[i], size, (footprints[i] ??= newBox()));
     corners(truck, truckSize, truckBox);
     fillGrid();

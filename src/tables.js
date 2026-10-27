@@ -147,15 +147,19 @@ export const fines = {
 // km/h in town, everywhere: AI cars cruise at it and the speedometer turns red above it. No fine for speeding.
 export const speedLimit = 50;
 
-// Speed limit signs (map.signs, not solid): where a street begins, that is on its first tile out of a
-// light junction or out of the road round the city's edge, on the right-hand pavement, facing the traffic.
+// Road signs (map.signs, not solid), on the right-hand pavement facing the traffic. Speed limit signs where a street
+// begins, that is on its first tile out of a light junction or out of the road round the city's edge; right before
+// left warning signs on the last tile before an unsignalled junction.
 export const signs = {
-  along: 3, // m from the tile edge the street begins at
+  along: 3, // m from the tile edge the street begins at, for a speed limit sign
   inset: 0.7, // m from the kerb-side tile edge, mid-pavement
   height: 2.6, // m, middle of the plate
   radius: 0.45, // m, the plate; the red ring is the outer `ring` of it
   ring: 0.09, // m
   post: 0.08, // m square
+  side: 1, // m, the warning sign's triangle; its red border is `border` of it, measured square to each side
+  border: 0.12, // m
+  hint: 50, // m from the truck's front bumper to the next junction ahead within which the HUD shows its rule
 };
 
 // AI cars (sizes from city.obstacles.car). The lane runs `laneOffset` right of the road's centre line, so a
@@ -175,6 +179,9 @@ export const traffic = {
   // (and from a light junction, for a car turning left there): more than stopping from cruise at `brake`. The
   // truck looks two tiles ahead, so more than ~28 m has no effect for it.
   giveWay: 28,
+  // s a truck standing short of an unsignalled crossing keeps its right of way, so the cars on its left wait for it
+  // to drive in or back off; after that it lets them go, so a parked truck doesn't hold up the city
+  truckHold: 10,
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars (never on the truck's street)

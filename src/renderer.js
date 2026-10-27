@@ -278,8 +278,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const colours = file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
     return loadModel(file, colours).then((geometry) => [unitBox(geometry), list]);
   });
-  // The speed limit signs, our own geometry, join the city's batch so they are culled and fogged with it.
-  cityModels.push(Promise.resolve([speedSign(), map.signs.map(({ x, z, dir }) => ({ x, z, angle: Math.atan2(-DIRS[dir][0], -DIRS[dir][1]), size: [1, 1, 1] }))]));
+  // The road signs, our own geometry, join the city's batch so they are culled and fogged with it.
+  const signsOf = (kind) => map.signs.filter((s) => s.kind === kind).map(({ x, z, dir }) => ({ x, z, angle: Math.atan2(-DIRS[dir][0], -DIRS[dir][1]), size: [1, 1, 1] }));
+  cityModels.push(Promise.resolve([speedSign(), signsOf('speed')]), Promise.resolve([warningSign(), signsOf('rightBeforeLeft')]));
   // A model that fails is logged (through `loads`) and left out; the rest of the city still goes up.
   loads.push(...cityModels, Promise.all(cityModels.map((m) => m.catch(() => null))).then((models) => addCity(models.filter(Boolean))));
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
@@ -410,11 +411,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.add(batch);
   }
 
-  // A speed limit sign as one flat-coloured geometry like the kit's, its post at the origin and its face towards
-  // +z: a round plate, grey at the back, its face a red ring round a white disc with the limit in dark
-  // seven-segment bars.
-  function speedSign() {
-    const { height, radius, ring, post } = tables.signs;
+  // A road sign as one flat-coloured geometry like the kit's, its post at the origin and its face towards +z: the
+  // post, and the plate `draw(add, face)` adds (`add(geometry, colour)` per part), its back layer's front `face` m out.
+  // Each layer of a plate stands 1.5 cm proud of the one behind, against depth fighting.
+  function roadSign(draw) {
+    const { height, post } = tables.signs;
     const parts = [];
     const add = (geometry, colour) => {
       const part = geometry.toNonIndexed().deleteAttribute('normal').deleteAttribute('uv');
@@ -423,28 +424,55 @@ export function createRenderer(canvas, tables, map, onProgress) {
       for (let i = 0; i < colours.length; i += 3) c.toArray(colours, i);
       parts.push(part.setAttribute('color', new THREE.BufferAttribute(colours, 3)));
     };
-    const disc = (r, depth, front) => new THREE.CylinderGeometry(r, r, depth, 20).rotateX(Math.PI / 2).translate(0, height, front - depth / 2);
     add(new THREE.BoxGeometry(post, height, post).translate(0, height / 2, 0), palette.signal);
-    const face = post / 2 + 0.03; // each layer stands 1.5 cm proud of the one behind, against depth fighting
-    add(disc(radius, 0.015, face - 0.015), palette.signal);
-    add(disc(radius, 0.015, face), palette.red);
-    add(disc(radius - ring, 0.015, face + 0.015), palette.stopLine);
-    // Segments a–g of a digit w × h, bars t thick: top, upper right, lower right, bottom, lower left, upper left, middle.
-    const [w, h, t] = [0.16, 0.32, 0.045];
-    const SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
-    const bars = { a: [0, h / 2, 1], b: [w / 2, h / 4, 0], c: [w / 2, -h / 4, 0], d: [0, -h / 2, 1], e: [-w / 2, -h / 4, 0], f: [-w / 2, h / 4, 0], g: [0, 0, 1] };
-    const digits = String(tables.speedLimit);
-    [...digits].forEach((digit, i) => {
-      const cx = (i - (digits.length - 1) / 2) * (w + t + 0.08);
-      for (const s of SEGMENTS[digit]) {
-        const [x, y, across] = bars[s];
-        const bar = across ? new THREE.BoxGeometry(w + t, t, 0.015) : new THREE.BoxGeometry(t, h / 2 + t, 0.015);
-        add(bar.translate(cx + x, height + y, face + 0.0225), palette.trim);
-      }
-    });
+    draw(add, post / 2 + 0.015);
     const geometry = mergeGeometries(parts);
     geometry.computeBoundingBox();
     return geometry;
+  }
+
+  // A layer of a sign's plate: `n` sides, `r` m from its middle to a corner (one pointing up), centred on the sign's
+  // height, 1.5 cm deep with its front `front` m out.
+  function plate(n, r, front) {
+    return new THREE.CylinderGeometry(r, r, 0.015, n).rotateX(-Math.PI / 2).translate(0, tables.signs.height, front - 0.0075);
+  }
+
+  // A speed limit sign: a round plate, grey at the back, its face a red ring round a white disc with the limit in
+  // dark seven-segment bars.
+  function speedSign() {
+    const { height, radius, ring } = tables.signs;
+    return roadSign((add, face) => {
+      add(plate(20, radius, face), palette.signal);
+      add(plate(20, radius, face + 0.015), palette.red);
+      add(plate(20, radius - ring, face + 0.03), palette.stopLine);
+      // Segments a–g of a digit w × h, bars t thick: top, upper right, lower right, bottom, lower left, upper left, middle.
+      const [w, h, t] = [0.16, 0.32, 0.045];
+      const SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+      const bars = { a: [0, h / 2, 1], b: [w / 2, h / 4, 0], c: [w / 2, -h / 4, 0], d: [0, -h / 2, 1], e: [-w / 2, -h / 4, 0], f: [-w / 2, h / 4, 0], g: [0, 0, 1] };
+      const digits = String(tables.speedLimit);
+      [...digits].forEach((digit, i) => {
+        const cx = (i - (digits.length - 1) / 2) * (w + t + 0.08);
+        for (const s of SEGMENTS[digit]) {
+          const [x, y, across] = bars[s];
+          const bar = across ? new THREE.BoxGeometry(w + t, t, 0.015) : new THREE.BoxGeometry(t, h / 2 + t, 0.015);
+          add(bar.translate(cx + x, height + y, face + 0.0375), palette.trim);
+        }
+      });
+    });
+  }
+
+  // A warning sign for a junction with priority from the right, our own drawing: a triangle, point up and centred on
+  // the sign's height, grey at the back, its face a red border round white with a dark upright crossed by a thinner bar.
+  function warningSign() {
+    const { height, side, border } = tables.signs;
+    const r = side / Math.sqrt(3); // middle to corner
+    return roadSign((add, face) => {
+      add(plate(3, r, face), palette.signal);
+      add(plate(3, r, face + 0.015), palette.red);
+      add(plate(3, r - 2 * border, face + 0.03), palette.stopLine); // `border` in from each side is 2 × as far from the corners
+      add(new THREE.BoxGeometry(0.07, 0.33, 0.015).translate(0, height + 0.035, face + 0.0375), palette.trim);
+      add(new THREE.BoxGeometry(0.3, 0.04, 0.015).translate(0, height - 0.02, face + 0.0375), palette.trim);
+    });
   }
 
   // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.

@@ -106,30 +106,38 @@ export function parseMap(text, tables) {
     }
   }
 
-  // Speed limit signs (tables.signs) where a street begins: on every way out of a light junction, and on every
-  // way into the city out of a junction on the road round its edge. Each stands on the right-hand pavement of
-  // the street's first tile, facing the traffic that drives in (`dir`, its DIRS index); none on a spot's zone
-  // tile, where the truck backs across the pavement into a dock, nor where the right side is road. Not solid
-  // (#43): a wide turn sweeps the pavement there, and the plate is too wide to set the post back to the wall.
+  // Road signs (tables.signs), each on the right-hand pavement of a road tile facing the traffic that drives along it
+  // (`dir`, its DIRS index), `along` m past where it drives into the tile; none on a dock's zone tile, where the truck
+  // backs across the pavement into a dock, nor where the right side is road. Not solid (#43): a wide turn sweeps the
+  // pavement there, and the plate is too wide to set the post back to the wall. `kind` 'speed', a speed limit sign
+  // where a street begins: on every way out of a light junction, and on every way into the city out of a junction
+  // on the road round its edge, `tables.signs.along` m into the street; 'rightBeforeLeft', a warning sign on every
+  // approach to an unsignalled junction, in the middle of the tile before it (clear of a speed sign on that tile).
   const signs = [];
-  const junction = (col, row) => DIRS.filter(([dc, dr]) => isRoad(col + dc, row + dr)).length >= 3;
+  const junction = (col, row) => isRoad(col, row) && DIRS.filter(([dc, dr]) => isRoad(col + dc, row + dr)).length >= 3;
   const cs = roads.map((r) => r.col);
   const rs = roads.map((r) => r.row);
   const [minCol, maxCol, minRow, maxRow] = [Math.min(...cs), Math.max(...cs), Math.min(...rs), Math.max(...rs)];
   const onEdge = (col, row) => col === minCol || col === maxCol || row === minRow || row === maxRow;
+  function sign(kind, c, r, dir, along) {
+    const [dc, dr] = DIRS[dir];
+    const kerb = !isRoad(c - dr, r + dc); // right of travel (dc, dr) is (-dr, dc)
+    if (!isRoad(c, r) || !kerb || junction(c, r) || spots.some((s) => s.dock && s.zoneTile.col === c && s.zoneTile.row === r)) return;
+    const { inset } = tables.signs;
+    const [a, side] = [along - tileSize / 2, tileSize / 2 - inset]; // from the tile's centre, ahead and right
+    const [x, z] = [(c + 0.5) * tileSize + dc * a - dr * side, (r + 0.5) * tileSize + dr * a + dc * side];
+    signs.push({ kind, x, z, dir });
+  }
   for (const { col, row } of roads) {
+    if (!junction(col, row)) continue;
     const light = tiles[row][col] === '+';
-    if (!junction(col, row) || !(light || onEdge(col, row))) continue;
     DIRS.forEach(([dc, dr], dir) => {
-      const [c, r] = [col + dc, row + dr];
-      const kerb = !isRoad(c - dr, r + dc); // right of travel (dc, dr) is (-dr, dc)
-      if (!isRoad(c, r) || !kerb || junction(c, r) || (!light && onEdge(c, r)) || spots.some((s) => s.zoneTile.col === c && s.zoneTile.row === r)) return;
-      const { along, inset } = tables.signs;
-      const [a, side] = [along - tileSize / 2, tileSize / 2 - inset]; // from the tile's centre, ahead and right
-      const [x, z] = [(c + 0.5) * tileSize + dc * a - dr * side, (r + 0.5) * tileSize + dr * a + dc * side];
-      signs.push({ x, z, dir });
+      if (!light) sign('rightBeforeLeft', col - dc, row - dr, dir, tileSize / 2);
+      if (light || (onEdge(col, row) && !onEdge(col + dc, row + dr))) sign('speed', col + dc, row + dr, dir, tables.signs.along);
     });
   }
+  // The rule at a junction tile (three or more road sides): 'light' or 'rightBeforeLeft'; null off a junction.
+  const rule = (col, row) => (!junction(col, row) ? null : tiles[row][col] === '+' ? 'light' : 'rightBeforeLeft');
 
   const key = ({ col, row }) => row * cols + col;
 
@@ -188,7 +196,7 @@ export function parseMap(text, tables) {
     return exits.length ? pathFrom(next, exits.reduce((a, b) => (trip(b) < trip(a) ? b : a))) : null;
   }
 
-  return { cols, rows, tileSize, isRoad, isBuilding, roads, open, spots, colliders, lights, signs, route, routeFrom };
+  return { cols, rows, tileSize, isRoad, isBuilding, roads, open, spots, colliders, lights, signs, rule, route, routeFrom };
 }
 
 function box(x, z, hx, hz) {

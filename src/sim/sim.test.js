@@ -1392,10 +1392,65 @@ describe('Sim: traffic lights', () => {
     const at = ({ x, z, dir }) => [Math.floor(x / TILE), Math.floor(z / TILE), dir];
 
     // Not on the edge road itself, one per way out of the light junction.
-    expect(map.signs.map(at).sort()).toEqual([[2, 3, 3], [3, 1, 2], [3, 2, 0], [3, 4, 2], [4, 3, 1]].sort());
+    expect(map.signs.filter((s) => s.kind === 'speed').map(at).sort()).toEqual([[2, 3, 3], [3, 1, 2], [3, 2, 0], [3, 4, 2], [4, 3, 1]].sort());
     // Southbound: `along` m into the street, on the west (right-hand) pavement.
-    expect(map.signs.find((s) => at(s)[1] === 1)).toMatchObject({ x: 3 * TILE + inset, z: TILE + along });
+    expect(map.signs.find((s) => s.kind === 'speed' && at(s)[1] === 1)).toMatchObject({ x: 3 * TILE + inset, z: TILE + along });
     expect(map.colliders.filter((c) => c.kind === 'sign')).toEqual([]); // #43: not solid, so wide turns don't catch on them
+  });
+
+  test('right before left warning signs stand on every approach to an unsignalled junction, none at lights', () => {
+    // The same T, and a T one tile below the light junction, whose east arm is a dock's zone tile.
+    const map = parseMap('.......\n###.###\n###.###\n...+...\n###.###\n###....\n###.C##', { ...tables, city: { ...tables.city, docks: ['C'] } });
+    const { inset } = tables.signs;
+    const at = ({ x, z, dir }) => [Math.floor(x / TILE), Math.floor(z / TILE), dir];
+
+    // Into the top T from west, east and south; into the lower one from north and south, not on the dock's zone.
+    expect(map.signs.filter((s) => s.kind === 'rightBeforeLeft').map(at).sort()).toEqual([[2, 0, 1], [4, 0, 3], [3, 1, 0], [3, 4, 2], [3, 6, 0]].sort());
+    // Northbound into the top T: mid-tile before it, on the east (right-hand) pavement.
+    expect(map.signs.find((s) => s.kind === 'rightBeforeLeft' && s.dir === 0 && at(s)[1] === 1)).toMatchObject({ x: 4 * TILE - inset, z: 1.5 * TILE });
+    // Clear of the speed sign out of the light junction on the same pavement.
+    const [warning, speed] = ['rightBeforeLeft', 'speed'].map((k) => map.signs.find((s) => s.kind === k && at(s)[1] === 4));
+    expect(Math.hypot(warning.x - speed.x, warning.z - speed.z)).toBeGreaterThan(2);
+    expect([map.rule(3, 0), map.rule(3, 3), map.rule(3, 5), map.rule(3, 1), map.rule(0, 0)]).toEqual(['rightBeforeLeft', 'light', 'rightBeforeLeft', null, null]);
+  });
+
+  test('every approach to an unsignalled junction in the city has its warning sign, clear of every other sign', () => {
+    const map = parseMap(city, tables);
+    for (const { col, row } of map.roads) {
+      if (map.rule(col, row) !== 'rightBeforeLeft') continue;
+      DIRS.forEach(([dc, dr], dir) => {
+        if (!map.isRoad(col - dc, row - dr)) return;
+        const sign = map.signs.find((s) => s.kind === 'rightBeforeLeft' && s.dir === dir && Math.floor(s.x / TILE) === col - dc && Math.floor(s.z / TILE) === row - dr);
+        expect(sign, `into (${col}, ${row}) travelling ${dir}`).toBeDefined();
+      });
+    }
+    for (const a of map.signs) for (const b of map.signs) if (a !== b) expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(2);
+  });
+
+  test("the state has the speed limit, and the rule of the next junction ahead within the hint distance", () => {
+    // A light junction at (3, 3) and a crossing at (3, 8) on a north–south street.
+    const grid = '###.###\n###.###\n###.###\n...+...\n###.###\n###.###\n###.###\n###.###\n.......\n#######';
+    const sim = createSim(noPolice, parseMap(grid, noPolice), seeded(1));
+    const { hint } = tables.signs;
+    const front = tables.vehicle.length / 2;
+    const ruleAt = (z, heading) => {
+      Object.assign(sim.state.truck, { x: 3.5 * TILE + laneOffsetOf(heading), z, heading, speed: 0 });
+      sim.step(0, IDLE);
+      return sim.state.junctionRule;
+    };
+    const [NORTH, SOUTH] = [Math.PI, 0];
+    const laneOffsetOf = (h) => (h === SOUTH ? -1 : 1) * tables.traffic.laneOffset;
+
+    expect(sim.state.speedLimit).toBe(tables.speedLimit);
+    // Southbound from the light junction to the crossing, whose near edge is at z = 8 tiles.
+    expect(ruleAt(8 * TILE - hint - front - 1, SOUTH)).toBe(null);
+    expect(ruleAt(8 * TILE - hint - front + 1, SOUTH)).toBe('rightBeforeLeft');
+    expect(ruleAt(8 * TILE + 2 - front, SOUTH)).toBe('rightBeforeLeft'); // its front in the crossing
+    // Northbound from the crossing: the light junction, whose near edge is at z = 4 tiles.
+    expect(ruleAt(4 * TILE + hint + front - 1, NORTH)).toBe('light');
+    expect(ruleAt(4 * TILE + hint + front + 1, NORTH)).toBe(null);
+    // Northbound past the light junction, towards the street's dead end.
+    expect(ruleAt(2.5 * TILE, NORTH)).toBe(null);
   });
 
   test('each axis cycles green, amber, red with the table timings, never green together, offset per junction', () => {
@@ -1841,24 +1896,52 @@ describe('Sim: right of way and collisions', () => {
     expect(sim.state.lastFine).toBe(null);
   });
 
-  test('a truck waiting at the crossing lets the car on its left go', () => {
+  const { truckHold } = tables.traffic;
+
+  test('a truck stopped at the line keeps its right of way: the car on its left waits until it drives in', () => {
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 4 * TILE + 3 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    const a = addCar(sim, 1, through[NORTH]);
+
+    expect(watch(sim, [a], truckHold - 2).entered.has(a)).toBe(false);
+    expect(shortOfCrossing(a)).toBeCloseTo(stopGap, 1);
+    timeUntil(sim, GAS, () => sim.state.truck.x + tables.vehicle.length / 2 < 3 * TILE, 20); // its rear is through
+    const { entered } = watch(sim, [a], 10);
+
+    expect(entered.has(a)).toBe(true);
+    expect(sim.state.lastFine).toBe(null);
+  });
+
+  test(`a truck standing at the line longer than ${tables.traffic.truckHold} s lets the car on its left go`, () => {
     const sim = crossSim();
     Object.assign(sim.state.truck, { x: 4 * TILE + 5 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
     const a = addCar(sim, 1, through[NORTH]);
 
-    const { entered } = watch(sim, [a], 10);
+    const { entered } = watch(sim, [a], truckHold + 6);
+
+    expect(entered.get(a)).toBeGreaterThan(truckHold - 1);
+  });
+
+  test('a truck backing off from the line lets the car on its left go', () => {
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 4 * TILE + 3 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
+    const a = addCar(sim, 1, through[NORTH]);
+    const BRAKE = { steer: 0, gas: 0, brake: 1 };
+    drive(sim, tables.vehicle.reverseDelay + 0.5, BRAKE); // into reverse
+
+    const { entered } = watch(sim, [a], 8, BRAKE);
 
     expect(entered.has(a)).toBe(true);
   });
 
-  test('a truck waiting at the crossing lets the car on its left go, even with a car queued behind it', () => {
+  test('a truck waiting at the crossing lets the car on its left go after the hold, even with a car queued behind it', () => {
     // #43 QA: the car behind can't go first, so it mustn't hold the crossing for its approach.
     const sim = crossSim();
     Object.assign(sim.state.truck, { x: 4 * TILE + 3 + tables.vehicle.length / 2, z: 3.5 * TILE - laneOffset, heading: WEST });
     const behind = addCar(sim, 1, through[WEST]);
     const a = addCar(sim, 2, through[NORTH]);
 
-    const { entered } = watch(sim, [a, behind], 10);
+    const { entered } = watch(sim, [a, behind], truckHold + 6);
 
     expect(entered.has(a)).toBe(true);
     expect(entered.has(behind)).toBe(false);
@@ -1872,6 +1955,25 @@ describe('Sim: right of way and collisions', () => {
     const { entered } = watch(sim, cars, 40);
 
     expect(entered.size).toBe(3);
+  });
+
+  test('with all four approaches taken, the first car to arrive goes, not the one that came into the city first', () => {
+    const sim = crossSim();
+    // Arriving one step apart, from car 4 on round to the right, so each has the next on its right.
+    const cars = [[4, NORTH], [1, EAST], [2, SOUTH], [3, WEST]].map(([id, h]) => addCar(sim, id, through[h]));
+
+    const { entered } = watch(sim, cars, 10);
+
+    expect([...entered.keys()][0]?.id).toBe(4);
+  });
+
+  test('with all four approaches taken and the truck first to arrive, the cars wait for it', () => {
+    const sim = crossSim();
+    Object.assign(sim.state.truck, { x: 3.5 * TILE + laneOffset, z: 4 * TILE + 3 + tables.vehicle.length / 2, heading: NORTH });
+    sim.step(0, IDLE);
+    const cars = [WEST, SOUTH, EAST].map((h, i) => addCar(sim, i + 1, through[h]));
+
+    expect(watch(sim, cars, truckHold - 2).entered.size).toBe(0);
   });
 
   test('four cars arriving at once all get through, one at a time', () => {

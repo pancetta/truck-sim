@@ -161,8 +161,8 @@ body:has(.rear-inset:not([hidden])) .goal {
   box-sizing: border-box;
   padding: 10px 14px 12px;
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px 12px;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px 10px;
   align-items: center;
   border-radius: 14px;
   background: rgb(40 40 48 / 0.85);
@@ -185,6 +185,21 @@ body:has(.rear-inset:not([hidden])) .goal {
   margin-left: 6px;
   font-size: 12px;
   opacity: 0.7;
+}
+
+/* The speed limit: a round sign, red ring on white (state.speedLimit). */
+.dash-limit {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 4px solid #d1495b;
+  border-radius: 50%;
+  background: #fff;
+  color: #2b2d33;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .dash-gear {
@@ -451,12 +466,21 @@ body:has(.rear-inset:not([hidden])) .goal {
   transform-origin: left;
 }
 
-/* Police sign, above the dashboard while a police car sees the truck (rule fines apply). */
-.dash-police {
+/* Above the dashboard: the next junction's rule while one is near, and the police sign while a police car sees the
+   truck (rule fines apply). */
+.dash-signs {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.dash-rule,
+.dash-police {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -468,8 +492,18 @@ body:has(.rear-inset:not([hidden])) .goal {
   white-space: nowrap;
 }
 
+.dash-rule[hidden],
 .dash-police[hidden] {
   display: none;
+}
+
+.dash-rule {
+  background: rgb(40 40 48 / 0.85);
+}
+
+.dash-rule svg {
+  width: 20px;
+  height: 20px;
 }
 
 .dash-police svg {
