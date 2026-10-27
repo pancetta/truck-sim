@@ -199,7 +199,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
     const here = map ? map.graph.nearest(truck.x, truck.z) : null;
     if (here) updateLimit(here);
-    checkSpeeding();
+    if (map && !map.roads) checkSpeeding(); // not on the grid city, which keeps its 50 everywhere until it goes (#59, #67)
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
 
     updateRoute(here);

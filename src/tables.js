@@ -149,7 +149,7 @@ export const lights = {
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
   redLight: 100, // only while a police car sees the truck (see police)
-  speeding: 50, // only while a police car sees the truck, at most once per `speeding.cooldown`
+  speeding: 50, // on Monti, only while a police car sees the truck, at most once per `speeding.cooldown`
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
 };
 
@@ -157,8 +157,8 @@ export const fines = {
 // speedometer turns red above it.
 export const speedLimit = 50;
 
-// The speeding rule fine (fines.speeding): over the limit of the edge the truck is on by more than `tolerance` km/h,
-// while a police car sees it; the next fine no sooner than `cooldown` s later, so one stretch of speeding is one fine.
+// The speeding rule fine (fines.speeding), on Monti: over the limit of the edge the truck is on by more than `tolerance`
+// km/h while a police car sees it; at most one fine per `cooldown` s, however long the speeding lasts.
 export const speeding = { tolerance: 10, cooldown: 30 };
 
 // Road signs (map.signs, not solid), on the right-hand pavement facing the traffic. Speed limit signs where a street

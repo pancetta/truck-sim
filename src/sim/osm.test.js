@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as tables from '../tables.js';
 import { buildOsmMap, parkedCars } from './osm.js';
-import { createSim, inside } from './sim.js';
+import { createSim, freshProfile, inside } from './sim.js';
 import { seeded } from '../autopilot.js';
 
 // Inline OSM fixtures: a way is its highway class, points [[x, z]] in metres and extra tags. Node ids come from the
@@ -286,6 +286,88 @@ describe('OSM map: traffic (#63)', () => {
     expect(ai.speed).toBeCloseTo(classes.residential.limit / 3.6, 5);
   });
 
+  test('the junction rule hint: right before left at a crossing, the light at a light junction, none off the road', () => {
+    const t = withCars(0);
+    const crossing = buildOsmMap({ bounds, ways: [way('residential', [[-90, 0], [0, 0], [90, 0]]), way('residential', [[0, -90], [0, 0], [0, 90]])] }, t);
+    const lit = buildOsmMap({ bounds, ways: [way('secondary', [[-90, 0], [0, 0], [90, 0]], { name: 'Via A' }), way('secondary', [[0, -90], [0, 0], [0, 90]], { name: 'Via B' })] }, t);
+    // The rule the truck sees standing at (x, z), facing east.
+    const rule = (map, x, z) => {
+      const sim = createSim(t, map, seeded(1));
+      Object.assign(sim.state.truck, { x, z, heading: Math.PI / 2, speed: 0 });
+      sim.step(1 / 60, IDLE);
+      return sim.state.junctionRule;
+    };
+    expect(rule(crossing, -40, -classes.residential.lane)).toBe('rightBeforeLeft');
+    expect(rule(lit, -40, -classes.secondary.lane)).toBe('light');
+    expect(rule(crossing, -40, -40)).toBe(null); // no edge within a cell
+  });
+
+  test('the red-light fine carries over: over the line and into the light junction on red while police watch', () => {
+    const t = { ...withCars(0), police: { ...tables.police, count: 0, radius: 500 } };
+    const map = buildOsmMap({ bounds, ways: [way('secondary', [[-90, 0], [0, 0], [90, 0]], { name: 'Via A' }), way('secondary', [[0, -90], [0, 0], [0, 90]], { name: 'Via B' })] }, t);
+    const sim = createSim(t, map, seeded(1), { ...freshProfile(), money: 500 });
+    const light = sim.state.lights.find((l) => l.dx === 1);
+    // Standing 3 m before the eastbound stop line until its light has been red past the grace.
+    Object.assign(sim.state.truck, { x: light.x - 3 - tables.vehicle.length / 2, z: light.z, heading: Math.PI / 2, speed: 0 });
+    let red = 0;
+    for (let s = 0; s < 60 && red < tables.lights.redGrace + 0.5; s += 1 / 60) {
+      sim.step(1 / 60, IDLE);
+      red = light.phase === 'red' ? red + 1 / 60 : 0;
+    }
+    // A police car on the same street behind it, then full gas through the junction.
+    const run = map.graph.paths.find((p) => p.kind === 'run' && p.startDir.x > 0 && p.from !== p.to && p.prims[0].x < -50);
+    sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s: 0, police: true });
+    for (let s = 0; s < 10 && sim.state.truck.x < 20; s += 1 / 60) sim.step(1 / 60, { steer: 0, gas: 1, brake: 0 });
+    expect(sim.state.lastFine).toEqual({ reason: 'redLight', amount: tables.fines.redLight });
+  });
+
+  describe('speeding', () => {
+    const t = { ...withCars(0), police: { ...tables.police, count: 0, radius: 500 }, speeding: { ...tables.speeding, cooldown: 2 } };
+    // A long two-way residential street (30 km/h) and, behind a row of buildings, a parallel one; a police car standing
+    // at the west end of either, eastbound, when added; the truck westbound at a set speed, put back at the same place
+    // every step so it stays in range.
+    const long = { minX: -300, minZ: -100, maxX: 300, maxZ: 100 };
+    const map = buildOsmMap({ bounds: long, ways: [
+      way('residential', [[-280, 0], [280, 0]]),
+      way('residential', [[-280, 60], [280, 60]]),
+      building([[-250, 15], [250, 15], [250, 45], [-250, 45]]),
+    ] }, t);
+    const money = 500;
+
+    // The fines taken while the truck drives `kmh` for `seconds`, with the police car on the street at z = `street`.
+    function fines(kmh, seconds, street = 0) {
+      const sim = createSim(t, map, seeded(1), { ...freshProfile(), money });
+      const run = map.graph.paths.find((p) => p.kind === 'run' && p.startDir.x > 0 && Math.abs(p.prims[0].z - street) < 5);
+      sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s: 0, police: true });
+      const pose = { x: 0, z: classes.residential.lane, heading: -Math.PI / 2 };
+      let count = 0;
+      for (let s = 0; s < seconds; s += 1 / 60) {
+        Object.assign(sim.state.truck, pose, { speed: kmh / 3.6 });
+        const before = sim.state.lastFine;
+        sim.step(1 / 60, IDLE);
+        if (sim.state.lastFine !== before) count++;
+      }
+      expect(sim.state.speedLimit).toBe(classes.residential.limit);
+      return { count, reason: sim.state.lastFine?.reason, money: sim.state.profile.money };
+    }
+    const over = classes.residential.limit + tables.speeding.tolerance;
+
+    test('over the limit by more than the tolerance while a police car sees it: fined', () => {
+      expect(fines(over + 2, 1)).toEqual({ count: 1, reason: 'speeding', money: money - tables.fines.speeding });
+    });
+
+    test('within the tolerance, or unseen behind the buildings: not fined', () => {
+      expect(fines(over - 1, 1).count).toBe(0);
+      expect(fines(over + 20, 1, 60).count).toBe(0);
+    });
+
+    test('one fine per cooldown, however long the speeding lasts', () => {
+      expect(fines(over + 2, 1.9).count).toBe(1);
+      expect(fines(over + 2, 2.1).count).toBe(2);
+      expect(fines(over + 2, 4.1).count).toBe(3);
+    });
+  });
+
   describe('parked cars', () => {
     const t = { ...tables, osm: { ...tables.osm, parked: { ...tables.osm.parked, density: 1 } } };
     const { junction, kerb, spot } = t.osm.parked;
@@ -309,7 +391,7 @@ describe('OSM map: traffic (#63)', () => {
         expect(Math.abs(c.z) - car.width / 2).toBeGreaterThanOrEqual(clear - 1e-9); // its lane runs on the centre line
         expect(Math.abs(c.x - crossing.x) - car.length / 2).toBeGreaterThanOrEqual(crossing.radius + junction - 1e-9);
       }
-      expect(new Set(parked.map((c) => Math.sign(centre(c).z))).size).toBeLessThanOrEqual(2); // one kerb per edge
+      for (const side of [-1, 1]) expect(new Set(parked.filter((c) => Math.sign(centre(c).x) === side).map((c) => Math.sign(centre(c).z))).size).toBe(1); // one kerb per edge
       expect(parked.every((c) => c.heading === Math.PI / 2)).toBe(true); // facing the traffic's way, east
     });
 

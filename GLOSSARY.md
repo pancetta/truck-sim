@@ -150,8 +150,8 @@ _Avoid_: penalty, ticket
 **Rule fine**:
 A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are two:
 the red light (entering a **Light junction** on red, having crossed its **Stop line** on red too, after a short grace
-at the start of red) and speeding (over the **Speed limit** by more than a tolerance; once per offence, a cooldown
-apart).
+at the start of red) and, on **Monti**, speeding (over the **Speed limit** by more than a tolerance; at most one
+**Fine** per cooldown).
 
 **Witness**:
 A **Police car** within range of the truck with a clear line of sight at the moment of a rule break.
@@ -203,7 +203,7 @@ One **Edge** meeting a **Junction** on the **Road graph**; a **Junction** may ha
 A street's importance from OpenStreetMap (secondary, tertiary, residential, service); it sets the street's width, **Speed limit** and **Priority**.
 
 **Priority**:
-Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes.
+Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes. An **AI car** that has given way for long goes next all the same, so a steady stream can't hold it up for good.
 
 **Edge exit**:
 A street leaving the map, where **AI cars** come and go and the truck meets a barrier.

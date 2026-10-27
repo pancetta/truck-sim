@@ -1833,51 +1833,6 @@ describe('Sim: traffic lights', () => {
   });
 });
 
-describe('Sim: speeding (#63)', () => {
-  // A long street and, behind a row of buildings, a parallel one; a police car stands at the street's west end (or on
-  // the parallel one) when added, seeing far (radius 500 m), and the truck drives east at a set speed, put back at
-  // the same place every step so it stays in range.
-  const STREETS = `
-    ...........
-    ###########
-    ...........`;
-  const EAST = Math.PI / 2;
-  const money = 500;
-  const t = { ...noPolice, police: { ...noPolice.police, radius: 500 }, speeding: { ...tables.speeding, cooldown: 2 } };
-
-  // The fines taken while the truck drives `kmh` for `seconds`, with the police car on `row`.
-  function fines(kmh, seconds, row = 0) {
-    const sim = createSim(t, parseMap(STREETS, t), seeded(1), { ...freshProfile(), money });
-    addCar(sim, 99, [[0, row], [1, row], [2, row]], true);
-    const pose = { x: 6.5 * TILE, z: 0.5 * TILE + tables.traffic.laneOffset, heading: EAST };
-    let count = 0;
-    for (let s = 0; s < seconds; s += DT) {
-      Object.assign(sim.state.truck, pose, { speed: kmh / 3.6 });
-      const before = sim.state.lastFine;
-      sim.step(DT, IDLE);
-      if (sim.state.lastFine !== before) count++;
-    }
-    expect(sim.state.speedLimit).toBe(tables.speedLimit);
-    return { count, reason: sim.state.lastFine?.reason, money: sim.state.profile.money };
-  }
-  const over = tables.speedLimit + tables.speeding.tolerance;
-
-  test('over the limit by more than the tolerance while a police car sees it: fined', () => {
-    expect(fines(over + 2, 1)).toEqual({ count: 1, reason: 'speeding', money: money - tables.fines.speeding });
-  });
-
-  test('within the tolerance, or unseen behind the buildings: not fined', () => {
-    expect(fines(over - 1, 1).count).toBe(0);
-    expect(fines(over + 20, 1, 2).count).toBe(0);
-  });
-
-  test('one fine per cooldown, however long the speeding lasts', () => {
-    expect(fines(over + 2, 1.9).count).toBe(1);
-    expect(fines(over + 2, 2.1).count).toBe(2);
-    expect(fines(over + 2, 4.1).count).toBe(3);
-  });
-});
-
 describe('Sim: traffic', () => {
   const { followGap, stopGap } = tables.traffic;
   const CAR = tables.city.obstacles.car;
@@ -2909,8 +2864,9 @@ describe('Sim: traffic soak', () => {
     const cavour = edges.filter((e) => e.name === 'Via Cavour' && !e.oneWay).reduce((a, b) => (a.length > b.length ? a : b));
     let contacts = 0;
     let crashes = 0;
+    const add = (run) => ([contacts, crashes] = [contacts + run.contacts, crashes + run.crashes]);
     for (const seed of [1, 2, 3]) {
-      for (const run of [soak(seed, 40 * boxes.length, null, boxes, m)]) [contacts, crashes] = [contacts + run.contacts, crashes + run.crashes];
+      add(soak(seed, 40 * boxes.length, null, boxes, m));
       // Anywhere across a road, any heading.
       const random = seeded(seed + 100);
       const poses = Array.from({ length: 10 }, () => {
@@ -2918,7 +2874,7 @@ describe('Sim: traffic soak', () => {
         const p = m.graph.pointAt(e, random() * e.length);
         return { x: p.x + (random() - 0.5) * e.width * 0.6, z: p.z + (random() - 0.5) * e.width * 0.6, heading: random() * 2 * Math.PI, speed: 0 };
       });
-      for (const run of [soak(seed, 20 * poses.length, null, poses, m)]) [contacts, crashes] = [contacts + run.contacts, crashes + run.crashes];
+      add(soak(seed, 20 * poses.length, null, poses, m));
       const reversing = (sim) => {
         const p = m.graph.pointAt(cavour, cavour.length / 2);
         const q = m.graph.pointAt(cavour, cavour.length / 2 + 1);
@@ -2926,7 +2882,7 @@ describe('Sim: traffic soak', () => {
         Object.assign(sim.state.truck, { x: p.x - Math.cos(heading) * cavour.laneOffset, z: p.z + Math.sin(heading) * cavour.laneOffset, heading, speed: 0 });
         return (i) => (i % 600 < 200 ? GAS : BRAKE);
       };
-      for (const run of [soak(seed, 120, reversing, [], m)]) [contacts, crashes] = [contacts + run.contacts, crashes + run.crashes];
+      add(soak(seed, 120, reversing, [], m));
     }
     expect(contacts).toBe(0);
     expect(crashes).toBe(0);

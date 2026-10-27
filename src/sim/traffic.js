@@ -16,6 +16,7 @@
 // reused every step, and per-path data is looked up by path id, so the cost grows about linearly with the cars.
 
 import { poseAt } from './lanes.js';
+import { createCells } from './cells.js';
 
 const PLAN = 45; // m of route planned past the path a car is on, more than the longest stopping distance
 const SIGNS = [[1, 1], [1, -1], [-1, -1], [-1, 1]]; // footprint corners, front right first
@@ -187,43 +188,35 @@ export function createTraffic(tables, map, random) {
   const turnSpeed = (r) => Math.sqrt(t.turnAccel * r);
 
   // The runs cars drive (#63): along an edge two cars can pass on, a one-way or a two-way whose lanes lie a car and its
-  // side gaps apart (Monti's two-way service ways are too narrow). `ways` holds, per run id, the turns on to such runs;
-  // with none, the run is a dead end, where cars leave. Through a light junction, no turn from or to a run shorter than
-  // `room`: cars don't drive between a light junction and a junction box less than a car from it, as Monti's one light
-  // junction has two crossings (#63: a car waiting at the light from one held that crossing up all through the red,
-  // and cars that had come out of the junction waited for it). Between two nodes of a crossing group, no turn straight
-  // back to the node the car came from; and none on to a run these leave no way on from. `exits` are the runs in from an edge exit and `leaveAt`, per
-  // path id, the m along it where a car leaves: at an edge exit as its front meets the barrier, so cars come and go on
-  // the map side of it (tables.osm.barrier thick, in from the edge by as much).
+  // side gaps apart (Monti's two-way service edges are too narrow), and that comes no nearer than that to another run
+  // away from its nodes (two of Monti's service edges leave the map 0.3 m apart). `ways` holds, per run id, the turns on
+  // to such runs; with none, the run is a dead end, where cars leave. Through a light junction, no turn from or to a run
+  // shorter than `room`: cars don't drive between a light junction and a junction box less than a car from it, as
+  // Monti's one light junction has two crossings (#63: a car waiting at the light from one held that crossing up all
+  // through the red, and cars that had come out of the junction waited for it). Between two nodes of a crossing group,
+  // no turn straight back to the node the car came from; and none on to a run these leave no way on from.
+  // `exits` are the runs in from an edge exit and `leaveAt`, per path id, the m along it where a car leaves: at an edge
+  // exit as its front meets the barrier, so cars come and go on the map side of it (tables.osm.barrier thick, in from
+  // the edge by as much).
   const passable = (e) => e.oneWay || 2 * e.laneOffset >= size.width + 2 * t.sideGap;
   const driven = new Uint8Array(paths.length);
   for (const p of paths) driven[p.id] = p.kind === 'run' && passable(p.edge) ? 1 : 0;
-  // Nor along a run that comes nearer than a car and its side gaps to another one away from its nodes (#63: two of
-  // Monti's service ways leave the map 0.3 m apart).
-  const near = new Map(); // 4 m cell → [run, x, z] samples, every m along the driven runs
-  const cellKey = (x, z) => `${Math.floor(x / 4)},${Math.floor(z / 4)}`;
-  const pose = { x: 0, z: 0, heading: 0 };
+  const pass = size.width + 2 * t.sideGap;
+  const samples = []; // a pose every m along the driven runs, with its run
+  const sampled = createCells(4);
   for (const p of paths) {
-    if (!driven[p.id]) continue;
-    for (let s = 0; s <= p.length; s += 1) {
-      poseAt(p, s, pose);
-      const key = cellKey(pose.x, pose.z);
-      if (!near.has(key)) near.set(key, []);
-      near.get(key).push([p, pose.x, pose.z]);
+    for (let s = 0; driven[p.id] && s <= p.length; s += 1) {
+      const q = { p, x: 0, z: 0, heading: 0 };
+      poseAt(p, s, q);
+      samples.push(q);
+      sampled.add(q, q.x, q.z, q.x, q.z);
     }
   }
   const apart = (p, q) => p.edge === q.edge || p.from === q.from || p.from === q.to || p.to === q.from || p.to === q.to;
-  for (const list of near.values()) {
-    for (const [p, x, z] of list) {
-      const [cx, cz] = [Math.floor(x / 4), Math.floor(z / 4)];
-      for (let i = -1; i <= 1; i++) {
-        for (let k = -1; k <= 1; k++) {
-          for (const [q, qx, qz] of near.get(`${cx + i},${cz + k}`) ?? []) {
-            if (q.id > p.id && driven[p.id] && driven[q.id] && !apart(p, q) && Math.hypot(qx - x, qz - z) < size.width + 2 * t.sideGap) driven[q.id] = 0;
-          }
-        }
-      }
-    }
+  for (const a of samples) {
+    sampled.some(a.x - pass, a.z - pass, a.x + pass, a.z + pass, ({ p: q, x, z }) => {
+      if (q.id > a.p.id && driven[a.p.id] && driven[q.id] && !apart(a.p, q) && Math.hypot(x - a.x, z - a.z) < pass) driven[q.id] = 0;
+    });
   }
   const cramped = (turn) =>
     (junctionAt[turn.id] && (turn.in.length < room || turn.out.length < room)) || (groupAt[turn.in.id] && groupAt[turn.out.id] && turn.out.to === turn.in.from);
@@ -311,7 +304,7 @@ export function createTraffic(tables, map, random) {
 
   // One new car, standing, on a random hidden lane place in the spawn ring (for a police car, from outside its sight
   // radius as far out as the city goes, so it never witnesses as it appears) with no other car within the look-ahead;
-  // or, for a `exitSpawn` share of them, at an edge exit in the ring, coming in from beyond the map, seen or not. The
+  // or, for an `exitSpawn` share of them, at a hidden edge exit in the ring, coming in from beyond the map. The
   // place is drawn at random until one fits, up to SPAWN_TRIES times, so every place that does is as likely; with none
   // found, the next step tries again.
   const SPAWN_TRIES = 64; // the grid city's ring is ~1/13 of its places: under 1 % of calls in an empty city find none
@@ -328,7 +321,7 @@ export function createTraffic(tables, map, random) {
     for (let i = 0; i < SPAWN_TRIES && !at && list.length; i++) {
       const p = pick(list);
       const d2 = (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
-      if ((atExit ? d2 >= near ** 2 : hidden(p, truck, near)) && d2 <= far ** 2 && clear(p)) at = p;
+      if (hidden(p, truck, near) && d2 <= far ** 2 && clear(p)) at = p;
     }
     if (!at) return;
     const { path, s } = at;
