@@ -8,6 +8,7 @@ export const strings = {
   kmh: 'km/h',
   gear: 'Gang',
   rpm: 'U/min',
+  rpmScale: 'U/min × 100', // under the cab's RPM dial
   resetToRoad: 'Zurück auf die Straße',
   money: 'Kontostand',
   orders: 'Aufträge',

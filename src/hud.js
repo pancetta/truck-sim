@@ -41,7 +41,9 @@ export function createHud(root, tables, strings) {
   let shownKm;
   let shownRule = null;
 
-  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit }) {
+  // In the cab view the 3D instruments show speed, gear and RPM, so the overlay hides (style.css).
+  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit }, inCab) {
+    root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
     speed.classList.toggle('over', kmh > speedLimit);

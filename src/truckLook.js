@@ -8,7 +8,7 @@ const BOX = { side: 1.095, back: -3.75, front: 1.05 }; // cargo box side walls, 
 const WHEEL = { x: 1.01, y: 0.5, z: [2.55, -1.44], stretch: 1.48 }; // outer hub face; the kit wheels are stretched along z
 const ROOF = { y: 2.33, z: 1.6 }; // cab roof
 const BUMPER = { front: [3.92, 0.46], back: [-3.94, 0.56] }; // z, y
-const PIVOT = { dice: [0.2, 2.4, 2.35], figure: [0.15, 1.7, 2.25] }; // gimmicks sway about these; see camera.gimmickLook
+const PIVOT = { dice: [0.2, 2.4, 2.35], figure: [0.15, 1.5, 2.6] }; // gimmicks sway about these; see camera.gimmickLook
 
 const materials = new Map();
 const matte = (color) => materials.get(color) ?? materials.set(color, new THREE.MeshStandardMaterial({ color, flatShading: true })).get(color);

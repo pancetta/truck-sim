@@ -704,3 +704,17 @@ body:has(.rear-inset:not([hidden])) .goal {
     left: calc(max(24px, env(safe-area-inset-left)) + 130px);
   }
 }
+
+/* Cab view: the 3D instruments show speed, gear and RPM, so the overlay keeps only the speed limit and the signs, on
+   the windscreen just above the dashboard (the cab camera's field of view is vertical, so vh holds at any width). */
+.dash.cab {
+  bottom: 38vh;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  background: none;
+}
+
+.dash.cab > :not(.dash-limit, .dash-signs) {
+  display: none;
+}

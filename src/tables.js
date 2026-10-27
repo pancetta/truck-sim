@@ -362,9 +362,9 @@ export const camera = {
   chaseHeight: 6, // m above the ground
   chaseRise: 0.5, // m the chase camera rises per m it is pulled in before a building (see renderer.js)
   lookHeight: 2, // m above the truck's position the camera aims at
-  cabEye: [0.55, 2.05, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the cab roof (2.33 m)
+  cabEye: [0.55, 1.95, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the headliner (cab.js)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
-  gimmickLook: [0.2, 1.9, 2.35], // where it aims in the Werkstatt to show the cab gimmick
+  gimmickLook: [0.2, 1.75, 2.35], // where it aims in the Werkstatt to show the cab gimmick
   // Reversing camera on the roof's back edge, inside the footprint so it never ends up in the wall it backs up to.
   // It shows in an inset (renderer.js) while the gear is R and `rearHold` s after, so stops while reversing don't
   // make it flicker. Aimed down so the bottom of the picture is straight down: at the dock the bay edge shows.
@@ -376,6 +376,13 @@ export const camera = {
   // m: on top of the haze (lighting.haze), the view fades to the sky from the first to the second, where the
   // camera stops drawing, so the far city fades out instead of popping
   fog: [150, 350],
+};
+
+// The cab's 3D instruments (cab.js); the RPM dial ends at the rev limiter and is red from vehicle.upshiftRpm.
+export const cab = {
+  speedMax: 120, // km/h at the end of the speedometer's scale
+  sweep: 240, // degrees of needle travel from zero to the end of a scale
+  backlight: 1.4, // dial faces, needles and the gear display shine this many times their colours
 };
 
 // The Werkstatt's view: the camera circles the standing truck, aimed so the truck shows beside the panel.
@@ -509,6 +516,8 @@ export const palette = {
   truckCab: 0xd1495b,
   dashboard: 0x3b4252,
   steeringWheel: 0x1f232b,
+  headliner: 0x8d8a84, // cab roof lining
+  needle: 0xff6a2e, // instrument needles
   signal: 0x2b2d33, // traffic light pole and housing
   lampOff: 0x1f232b,
   lampRed: 0xff4a3d,

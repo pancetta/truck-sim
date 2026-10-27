@@ -6,6 +6,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DIRS } from './sim/map.js';
 import { createTruckParts } from './truckLook.js';
+import { createCab } from './cab.js';
 import { createResolution } from './resolution.js';
 import { planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
@@ -595,29 +596,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     parts.show(ids);
   }
 
-  // Cab interior, our own design: a dashboard and a steering wheel, shown only in the cab view. The dashboard
-  // sits under the windscreen, the wheel in front of the driver's eye (camera.cabEye).
-  const dashboard = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.5, 0.6), new THREE.MeshStandardMaterial({ color: palette.dashboard }));
-  dashboard.position.set(0, 1.45, 2.45);
-  const wheelMaterial = new THREE.MeshStandardMaterial({ color: palette.steeringWheel });
-  // The column tilts the wheel towards the driver; the wheel spins about the column's axis (local +z).
-  const column = new THREE.Group();
-  column.position.set(cam.cabEye[0], 1.68, 2.12);
-  column.rotation.x = 0.9;
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.5), wheelMaterial);
-  shaft.rotation.x = Math.PI / 2;
-  shaft.position.z = 0.25;
-  const wheel = new THREE.Group();
-  const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.22, 0.03), wheelMaterial);
-  spoke.position.y = -0.11;
-  wheel.add(
-    new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 8, 24), wheelMaterial),
-    new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.05, 0.03), wheelMaterial),
-    spoke,
-  );
-  column.add(shaft, wheel);
-  const interior = new THREE.Group();
-  interior.add(dashboard, column, parts.cab);
+  // Cab interior (cab.js) with the cab gimmick, shown only in the cab view.
+  const cab = createCab(tables, strings);
+  const { interior } = cab;
+  interior.add(parts.cab);
   truck.add(interior);
   scene.add(truck);
 
@@ -626,6 +608,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const lookAt = new THREE.Vector3();
   let lastFrame = performance.now();
   let cabView = true;
+  let inCab = true; // whether the last frame drew the view from the seat
   let orbit = 0; // rad, showroom camera angle round the truck
   let arm = 0; // m, showroom camera distance from the truck
   let chaseArm = cam.chaseDistance; // m, chase camera distance behind the truck
@@ -695,8 +678,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const { x, z, heading, roll } = state.truck;
     truck.position.set(x, 0, z);
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
-    // Same angle as the on-screen wheel; positive is clockwise from the driver's seat.
-    wheel.rotation.z = THREE.MathUtils.degToRad(input.steer * tables.controls.wheelLock);
+    // The wheel at the same angle as the on-screen one; positive is clockwise from the driver's seat.
+    cab.update(state.truck, input.steer * tables.controls.wheelLock);
     showLook(look);
     parts.sway(roll, dt);
 
@@ -725,7 +708,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       frame.hidden = !rearTime;
       if (rearTime) measureInset();
     }
-    const inCab = showroom ? showroom === 'cab' : cabView;
+    inCab = showroom ? showroom === 'cab' : cabView;
     // From the seat the outside of the truck isn't drawn, but it still casts its shadow. Visual items' parts are
     // built on first show, so they are set up here too.
     for (const outside of [exterior, parts.exterior]) {
@@ -917,5 +900,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return [carMesh(mergeGeometries(parts), material, shadow)];
   }
 
-  return { render, toggleCamera, ready, renderer };
+  return {
+    render,
+    toggleCamera,
+    ready,
+    renderer,
+    get inCab() {
+      return inCab;
+    },
+  };
 }
