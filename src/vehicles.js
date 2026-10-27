@@ -12,7 +12,7 @@ const SQUARE = 1 / 3; // superellipse exponent of the cross-section: lower is bo
 const MIRROR = 0.085; // m the mirrors reach out past the body
 const BUMPER = 0.055; // m the bumpers and plates stand out past the body's ends, at most
 const DETAIL = { near: { sections: 40, around: 32, rich: true }, far: { sections: 14, around: 12, rich: false } };
-const BAND = { length: 2.6, height: 0.2 }; // m, a police car's lettered side band
+const BAND = { length: 2.3, height: 0.18 }; // m, a police car's lettered side band; the rear one is 0.6 of it
 
 // A body type with its profile stretched along x to `length` m, `width` m across the body.
 function fit(c, length, width) {
@@ -112,8 +112,8 @@ function detail(geometry, colour, { plate = false, band = false, headlight = fal
   g.setAttribute('headlight', new THREE.BufferAttribute(new Float32Array(n).fill(headlight ? 1 : 0), 1));
   const uv = g.getAttribute('uv');
   for (let i = 0; i < n; i++) {
-    if (plate) uv.setXY(i, uv.getX(i) * 0.5, 0.5 + uv.getY(i) * 0.5);
-    else if (band) uv.setXY(i, uv.getX(i), uv.getY(i) * 0.5);
+    if (plate) uv.setXY(i, uv.getX(i) * 0.5, 0.53 + uv.getY(i) * 0.47);
+    else if (band) uv.setXY(i, uv.getX(i), uv.getY(i) * 0.47); // short of the plate half, so mipmaps don't mix them
     else uv.setXY(i, 0.75, 0.75);
   }
   return g;
@@ -149,15 +149,15 @@ function carDetails(c, rich, police) {
   if (police) {
     const roofX = c.pillar ?? c.length / 2;
     const roof = cross(c.body, roofX, 0)[1];
-    parts.push(detail(new THREE.BoxGeometry(0.28, 0.08, W * 0.5).translate(roofX, roof + 0.04, 0), police.lightBar));
+    parts.push(detail(new THREE.BoxGeometry(0.3, 0.11, W * 0.75).translate(roofX, roof + 0.05, 0), police.lightBar));
     // Mid-height, where the boxy cross-section is widest, so the flat band lies close along the side.
     const [yb, yt] = cross(c.body, c.length / 2, 0);
     for (const side of [-1, 1]) {
       const band = new THREE.BoxGeometry(BAND.length, BAND.height, 0.02).translate(c.length / 2, (yb + yt) / 2, side * (halfWidth(c, c.length / 2) + 0.01));
       parts.push(detail(band, '#ffffff', { band: true }));
     }
-    // And across the rear, half the size, so it shows in the chase view; turned like the rear plate to read upright.
-    const back = new THREE.BoxGeometry(0.02, BAND.height / 2, BAND.length / 2).rotateY(Math.PI).translate(rear(0.65) - 0.02, 0.65, 0);
+    // And across the rear, so it shows in the chase view; turned like the rear plate to read upright.
+    const back = new THREE.BoxGeometry(0.02, BAND.height * 0.6, BAND.length * 0.6).rotateY(Math.PI).translate(rear(0.65) - 0.02, 0.65, 0);
     parts.push(detail(back, '#ffffff', { band: true }));
   }
   return mergeGeometries(parts);
@@ -248,7 +248,7 @@ export function detailAtlas(police) {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.translate(256, 196);
-  g.scale(512 / BAND.length / (128 / BAND.height), 1); // the band is far longer than the atlas strip is wide
+  g.scale(512 / BAND.length / (120 / BAND.height), 1); // the band is far longer than its 512 × 120 strip is wide
   g.fillText(police.text, 0, 0);
   g.restore();
   g.scale(2, 2); // the plate half, drawn at 256 × 64

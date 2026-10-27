@@ -342,8 +342,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const carKinds = carTypes.map((type) => carKind(generated[type]));
   const coveredCar = { near: [], far: [], painted: false };
   carKinds.push(coveredCar);
-  // The police cars' kind, last: their body type with the livery parts, in their own paint.
-  carKinds.push(carKind(carGeometries({ police: tables.vehicles.types[police.body] }, city.obstacles.car, police).police));
+  // The police cars' kind: their body type with the livery parts, in their own paint.
+  const policeKind = carKinds.push(carKind(carGeometries({ police: tables.vehicles.types[police.body] }, city.obstacles.car, police).police)) - 1;
   const policePaint = new THREE.Color(police.paint);
   // The box every car fits, for culling: the footprint, as tall as the tallest body type (the van).
   const carSize = new THREE.Vector3(city.obstacles.car.width, Math.max(...Object.values(generated).map((g) => g.fitted.height)), city.obstacles.car.length);
@@ -815,7 +815,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     for (const mesh of carMeshes) mesh.count = 0;
     for (const car of parked) drawCar(car.kind, car.x, car.z, car.heading, car.paint, rear);
     for (const car of cars) {
-      if (car.police) drawCar(carKinds.length - 1, car.x, car.z, car.heading, policePaint, rear);
+      if (car.police) drawCar(policeKind, car.x, car.z, car.heading, policePaint, rear);
       else drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
     }
     for (const mesh of carMeshes) {

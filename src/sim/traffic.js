@@ -161,12 +161,12 @@ export function createTraffic(tables, map, random) {
     return !sameStreet && (x - truck.x) ** 2 + (z - truck.z) ** 2 >= distance ** 2;
   }
 
-  // One new car in the middle of a random hidden road tile in the spawn ring (for a police car, as far out as the
-  // city goes), standing, unless another car is within the look-ahead there. Mid-tile, so none of it sticks out
-  // into the truck's street.
+  // One new car in the middle of a random hidden road tile in the spawn ring (for a police car, from outside its
+  // sight radius as far out as the city goes, so it never witnesses as it appears), standing, unless another car is
+  // within the look-ahead there. Mid-tile, so none of it sticks out into the truck's street.
   const ring = []; // scratch: the road tiles in the spawn ring
   function spawn(truck, police) {
-    const near = t.spawnDistance[0];
+    const near = police ? Math.max(t.spawnDistance[0], tables.police.radius) : t.spawnDistance[0];
     const far = police ? Infinity : t.spawnDistance[1];
     ring.length = 0;
     for (const r of map.roads) {

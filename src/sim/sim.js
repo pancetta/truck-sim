@@ -248,20 +248,26 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (light?.phase === 'red') fine('redLight');
   }
 
-  // Whether a police car is within tables.police.radius of the truck with no building tile on the line between them.
-  // shortcut: the line runs centre to centre, sampled every 0.5 m, so the truck's front peeking out of a side street
-  // is unseen and a line clipping a building's corner by under 0.5 m is clear; upgrade to the footprint if players notice.
+  // Whether a police car is within tables.police.radius of the truck with no building tile on the line from it to the
+  // truck's centre or to the middle of its front bumper (a car on the cross street sees the cab come out at a junction).
+  // shortcut: the lines are sampled every 0.5 m, so one clipping a building's corner by under 0.5 m is clear, and the
+  // truck's rear corners don't count; upgrade to the footprint if players notice.
   function policeSees() {
-    const r2 = tables.police.radius ** 2;
     for (const c of state.traffic) {
-      const [dx, dz] = [truck.x - c.x, truck.z - c.z];
-      if (!c.police || dx * dx + dz * dz > r2) continue;
-      const n = Math.ceil(Math.hypot(dx, dz) / 0.5);
-      let clear = true;
-      for (let i = 1; i < n && clear; i++) clear = !map.isBuilding(Math.floor((c.x + (dx * i) / n) / map.tileSize), Math.floor((c.z + (dz * i) / n) / map.tileSize));
-      if (clear) return true;
+      if (!c.police || (truck.x - c.x) ** 2 + (truck.z - c.z) ** 2 > tables.police.radius ** 2) continue;
+      const front = { x: truck.x + (Math.sin(truck.heading) * v.length) / 2, z: truck.z + (Math.cos(truck.heading) * v.length) / 2 };
+      if (inSight(c, truck) || inSight(c, front)) return true;
     }
     return false;
+  }
+
+  // Whether no building tile lies on the line from a to b, sampled every 0.5 m.
+  function inSight(a, b) {
+    const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.5);
+    for (let i = 1; i < n; i++) {
+      if (map.isBuilding(Math.floor((a.x + ((b.x - a.x) * i) / n) / map.tileSize), Math.floor((a.z + ((b.z - a.z) * i) / n) / map.tileSize))) return false;
+    }
+    return true;
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds

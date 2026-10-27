@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { Box3 } from 'three/webgpu';
 import { carGeometries } from './vehicles.js';
-import { vehicles, city } from './tables.js';
+import { vehicles, city, police } from './tables.js';
 
 describe('Vehicles: generated cars', () => {
   const footprint = city.obstacles.car;
-  const cars = carGeometries(vehicles.types, footprint);
+  // The police car too, with its roof bar and bands.
+  const cars = { ...carGeometries(vehicles.types, footprint), ...carGeometries({ police: vehicles.types[police.body] }, footprint, police) };
 
   it('fills the footprint the Sim collides with, front towards +z, at every detail level', () => {
     for (const [type, car] of Object.entries(cars)) {

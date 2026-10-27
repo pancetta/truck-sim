@@ -1560,6 +1560,11 @@ describe('Sim: traffic lights', () => {
       expect(runRed(far, 150)).toMatchObject({ sees: true, fines: 1 });
     });
 
+    test('on the cross street, seeing the cab come out though the corner hides the rest: fined', () => {
+      // Southbound down the north arm, 38 m off; the corner building is on the line to the truck's centre.
+      expect(runRed([[3, 0], [3, 1], [3, 2], [2, 2], [1, 2]])).toEqual({ sees: true, fines: 1, money: money - tables.fines.redLight });
+    });
+
     test('behind a building: not fined', () => {
       // On the parallel street, 32 m off, with the buildings between.
       expect(runRed([[2, 4], [3, 4], [4, 4], [5, 4]])).toEqual({ sees: false, fines: 0, money });
