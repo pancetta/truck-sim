@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "assets": "node scripts/assets.js"
+    "assets": "node scripts/maps.js && node scripts/assets.js",
+    "maps": "node scripts/maps.js"
   },
   "dependencies": {
     "three": "^0.186.1"

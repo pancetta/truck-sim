@@ -1,10 +1,13 @@
 // Minimap: the whole city from above, north up (map row 0 at the top), with the spots, the truck and
 // the Sim's current route. Reads Sim state each frame but redraws only at tables.minimap.rate; never writes to it.
+// Sizes in map tiles are tables.city.tileSize m each on a map without tiles (an OSM map), whose roads are its edges.
 export function createMinimap(canvas, map, tables) {
   const { palette } = tables;
   const { tile, truckSize, outline, routeWidth, spotRadius, labelSize, rate } = tables.minimap;
   const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
-  canvas.style.setProperty('--size', `${map.rows * tile}px`);
+  const { bounds } = map;
+  const unit = map.tileSize ?? tables.city.tileSize; // m per map tile
+  canvas.style.setProperty('--size', `${((bounds.maxZ - bounds.minZ) / unit) * tile}px`);
   const ctx = canvas.getContext('2d');
   const base = document.createElement('canvas');
   const bctx = base.getContext('2d');
@@ -14,6 +17,7 @@ export function createMinimap(canvas, map, tables) {
   let ratio; // devicePixelRatio the canvases are sized for
   let drawn = -Infinity; // performance.now() of the last redraw
   const centre = (t) => [(t.col + 0.5) * scale, (t.row + 0.5) * scale];
+  const at = (x, z) => [((x - bounds.minX) / unit) * scale, ((z - bounds.minZ) / unit) * scale]; // canvas px of a point
 
   // Sizes the canvases for the screen's pixel ratio, which changes with browser zoom or a move to another
   // screen. Roads, open ground and spot discs never change, so they're drawn once onto `base`, and the spot
@@ -21,11 +25,20 @@ export function createMinimap(canvas, map, tables) {
   function resize() {
     ratio = devicePixelRatio;
     scale = tile * ratio;
-    [canvas.width, canvas.height] = [base.width, base.height] = [labels.width, labels.height] = [map.cols * scale, map.rows * scale];
+    [canvas.width, canvas.height] = [base.width, base.height] = [labels.width, labels.height] = at(bounds.maxX, bounds.maxZ);
     bctx.fillStyle = hex(palette.ground);
-    for (const { col, row } of map.open) bctx.fillRect(col * scale, row * scale, scale, scale);
-    bctx.fillStyle = hex(palette.pavement);
-    for (const { col, row } of map.roads) bctx.fillRect(col * scale, row * scale, scale, scale);
+    for (const { col, row } of map.open ?? []) bctx.fillRect(col * scale, row * scale, scale, scale);
+    bctx.fillStyle = bctx.strokeStyle = hex(palette.pavement);
+    for (const { col, row } of map.roads ?? []) bctx.fillRect(col * scale, row * scale, scale, scale);
+    if (!map.roads) {
+      bctx.lineJoin = bctx.lineCap = 'round';
+      for (const e of map.graph.edges) {
+        bctx.lineWidth = (e.width / unit) * scale;
+        bctx.beginPath();
+        for (const p of e.points) bctx.lineTo(...at(p.x, p.z));
+        bctx.stroke();
+      }
+    }
     bctx.fillStyle = hex(palette.spot);
     for (const s of map.spots) {
       bctx.beginPath();
@@ -57,7 +70,7 @@ export function createMinimap(canvas, map, tables) {
     drawn = now;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(base, 0, 0);
-    const [tx, ty] = [(truck.x / map.tileSize) * scale, (truck.z / map.tileSize) * scale];
+    const [tx, ty] = at(truck.x, truck.z);
 
     if (route.length) {
       ctx.strokeStyle = hex(palette[order.phase === 'pickup' ? 'pickup' : 'dropoff']);
@@ -65,7 +78,7 @@ export function createMinimap(canvas, map, tables) {
       ctx.lineJoin = ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(tx, ty);
-      for (const p of route) ctx.lineTo((p.x / map.tileSize) * scale, (p.z / map.tileSize) * scale);
+      for (const p of route) ctx.lineTo(...at(p.x, p.z));
       ctx.stroke();
     }
 

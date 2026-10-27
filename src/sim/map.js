@@ -65,15 +65,17 @@ export function parseMap(text, tables) {
         // The stop line is most of a tile back (tables.lights.stopLine), so it must not land in another junction.
         const roadSides = (c, r) => DIRS.filter(([dc, dr]) => isRoad(c + dc, r + dr)).length;
         if (approaches.some(([dc, dr]) => roadSides(col - dc, row - dr) >= 3)) throw new Error(`Map light junction ${where} needs a plain road tile before each approach`);
-        // One light per approach, German style; `dir` is the DIRS index of travel into the junction, `post` its
-        // signal post, a solid one on the junction's near right corner where the approach enters it (right of
-        // travel (dc, dr) is (-dr, dc)), and (x, z) the middle of its stop line, tables.lights.stopLine before it.
+        // One light per approach, German style; `dir` is the DIRS index of travel into the junction and (dx, dz) that
+        // direction, `axis` 0 north–south and 1 east–west, `post` its signal post, a solid one on the junction's near
+        // right corner where the approach enters it (right of travel (dc, dr) is (-dr, dc)), (x, z) the middle of its
+        // stop line, tables.lights.stopLine before it, and `half` the m either side of that middle that are its road.
         const { width, inset } = obstacles.signal;
         const reach = half - inset;
         const back = reach + tables.lights.stopLine;
         for (const [dc, dr] of approaches) {
           const post = { x: x - (dc + dr) * reach, z: z + (dc - dr) * reach };
-          lights.push({ junction: junctions, col, row, dir: DIRS.findIndex((d) => d[0] === dc && d[1] === dr), x: x - dc * back, z: z - dr * back, post });
+          const dir = DIRS.findIndex((d) => d[0] === dc && d[1] === dr);
+          lights.push({ junction: junctions, col, row, dir, dx: dc, dz: dr, axis: dir % 2, half, x: x - dc * back, z: z - dr * back, post });
           colliders.push({ kind: 'signal', ...box(post.x, post.z, width / 2, width / 2) });
         }
         junctions++;
@@ -112,7 +114,7 @@ export function parseMap(text, tables) {
   }
 
   // Road signs (tables.signs), each on the right-hand pavement of a road tile facing the traffic that drives along it
-  // (`dir`, its DIRS index), `along` m past where it drives into the tile; none on a dock's zone tile, where the truck
+  // (`dir`, its DIRS index; `angle` turns a plate to face it), `along` m past where it drives into the tile; none on a dock's zone tile, where the truck
   // backs across the pavement into a dock, nor where the right side is road. Not solid (#43): a wide turn sweeps the
   // pavement there, and the plate is too wide to set the post back to the wall. `kind` 'speed', a speed limit sign
   // where a street begins: on every way out of a light junction, and on every way into the city out of a junction
@@ -137,7 +139,7 @@ export function parseMap(text, tables) {
       const a = along - tileSize / 2; // from the tile's centre, ahead
       const [x, z] = [(c + 0.5) * tileSize + dc * a - dr * side, (r + 0.5) * tileSize + dr * a + dc * side];
       if (poles.some((p) => Math.hypot(p.x - x, p.z - z) < 1.5)) continue;
-      signs.push({ kind, x, z, dir });
+      signs.push({ kind, x, z, dir, angle: Math.atan2(-dc, -dr), ...(kind === 'speed' && { limit: tables.speedLimit }) });
       return;
     }
   }
@@ -155,7 +157,7 @@ export function parseMap(text, tables) {
   // The road graph (graph.js) of the road tiles: a node at the centre of every road tile with other than two road
   // neighbours (junctions and dead ends), plus one on each loop of road that has none, and an edge through the tile
   // centres from node to node, with a point at every bend. A lone road tile is an edge of one point. Grid roads are all
-  // residential, one tile wide, unnamed and two-way.
+  // residential, one tile wide, unnamed, two-way and at tables.speedLimit.
   const key = ({ col, row }) => row * cols + col;
   const centre = ({ col, row }) => ({ x: (col + 0.5) * tileSize, z: (row + 0.5) * tileSize });
   const sides = ({ col, row }) => DIRS.filter(([dc, dr]) => isRoad(col + dc, row + dr)).length;
@@ -164,7 +166,7 @@ export function parseMap(text, tables) {
   const walked = new Set(); // `${key},${DIRS index}` of every way out of a node walked
   const nodes = [];
   const edges = [];
-  const edge = (from, to, points) => edges.push({ from, to, class: 'residential', width: tileSize, name: '', oneWay: false, points });
+  const edge = (from, to, points) => edges.push({ from, to, class: 'residential', width: tileSize, name: '', oneWay: false, limit: tables.speedLimit, points });
   function addNode(tile) {
     nodeAt.set(key(tile), nodes.length);
     nodes.push(centre(tile));

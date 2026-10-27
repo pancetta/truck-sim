@@ -4,10 +4,11 @@
 
 import { createCells } from './cells.js';
 
-// `nodes`: [{ x, z }]. `edges`: [{ from, to (node indices), class, width (m), name, oneWay, points: [{ x, z }] }], the
-// points running from the `from` node to the `to` node. Fills in each node's `arms` (edge indices; a loop counts twice)
-// and each edge's `id`, `length`, `at` (m along it at each point) and `lanes` ([{ points }] the way each runs: a
-// one-way edge's one lane on its centre line, else one `laneOffset` m right of it each way, the forward one first).
+// `nodes`: [{ x, z }]. `edges`: [{ from, to (node indices), class, width (m), name, oneWay, limit (km/h), laneOffset?,
+// points: [{ x, z }] }], the points running from the `from` node to the `to` node. Fills in each node's `arms` (edge
+// indices; a loop counts twice) and each edge's `id`, `length`, `at` (m along it at each point), `laneOffset` (the
+// edge's own, else `laneOffset`) and `lanes` ([{ points }] the way each runs: a one-way edge's one lane on its centre
+// line, else one laneOffset m right of it each way, the forward one first).
 // Edge segments are filed in a spatial cell index of `cellSize` m.
 export function createGraph(nodes, edges, laneOffset, cellSize) {
   const index = createCells(cellSize);
@@ -19,7 +20,8 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     e.at = e.points.map((p, k) => (k ? Math.hypot(p.x - e.points[k - 1].x, p.z - e.points[k - 1].z) : 0));
     for (let k = 1; k < e.at.length; k++) e.at[k] += e.at[k - 1];
     e.length = e.at.at(-1);
-    e.lanes = e.oneWay ? [{ points: e.points }] : [{ points: offset(e.points, laneOffset) }, { points: offset(e.points.toReversed(), laneOffset) }];
+    e.laneOffset ??= laneOffset;
+    e.lanes = e.oneWay ? [{ points: e.points }] : [{ points: offset(e.points, e.laneOffset) }, { points: offset(e.points.toReversed(), e.laneOffset) }];
     for (let k = 0; k < segments(e); k++) {
       const [a, b] = [e.points[k], e.points[Math.min(k + 1, e.points.length - 1)]];
       index.add({ edge: e, k }, Math.min(a.x, b.x), Math.min(a.z, b.z), Math.max(a.x, b.x), Math.max(a.z, b.z));

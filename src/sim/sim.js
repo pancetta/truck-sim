@@ -37,7 +37,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
-  // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit where the truck is.
+  // 'light', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of.
   // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
   const state = {
     truck,
@@ -70,15 +70,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
-  const traffic = map && createTraffic(tables, map, random);
+  const traffic = map?.roads && createTraffic(tables, map, random); // AI cars still drive tiles: the grid city only (#61, #63)
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
   // map.colliders in a spatial cell index by their bounds, so fits() and inSight() test only those near.
   const solids = createCells(tables.city.cell);
   for (const b of map?.colliders ?? []) solids.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
   // Where Reset to road may put the truck: every tables.city.resetSpacing m along each edge, the headings the road
-  // leaves that point by, and whether the point lies in a junction (within half the road's width of a node with three
-  // or more arms), where AI cars would wait for the truck.
+  // leaves that point by (on a one-way, only its own), its lane's offset from the centre line, and whether the point
+  // lies in a junction (within half the road's width of a node with three or more arms), where AI cars would wait for it.
   const roadPoints = [];
   for (const e of map?.graph.edges ?? []) {
     const { resetSpacing: spacing } = tables.city;
@@ -90,8 +90,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const onPoint = s - e.at[k] < 1e-6;
       const headings = [];
       if (k < e.points.length - 1) headings.push(toward(e.points[k], e.points[k + 1]));
-      if (!onPoint || k > 0) headings.push(toward(e.points[onPoint ? k : k + 1], e.points[onPoint ? k - 1 : k]));
-      roadPoints.push({ ...map.graph.pointAt(e, s), headings, junction: junction(e.from, s) || junction(e.to, e.length - s) });
+      else if (e.oneWay) headings.push(toward(e.points[k - 1], e.points[k])); // a one-way's end, the way it came in
+      if (!e.oneWay && (!onPoint || k > 0)) headings.push(toward(e.points[onPoint ? k : k + 1], e.points[onPoint ? k - 1 : k]));
+      const lane = e.oneWay ? 0 : e.laneOffset;
+      roadPoints.push({ ...map.graph.pointAt(e, s), headings, lane, junction: junction(e.from, s) || junction(e.to, e.length - s) });
     }
   }
 
@@ -183,7 +185,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     updateTraffic(dt);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
-    if (map) state.junctionRule = junctionAhead();
+    if (map?.rule) state.junctionRule = junctionAhead();
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -193,7 +195,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       state.order.elapsed += dt;
       loadOrUnload(dt);
     }
-    const here = map && (state.order || state.offers.length) ? map.graph.nearest(truck.x, truck.z) : null;
+    const here = map ? map.graph.nearest(truck.x, truck.z) : null;
+    if (here && here.d <= here.edge.width / 2) state.speedLimit = here.edge.limit;
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
 
     updateRoute(here);
@@ -208,9 +211,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     order.damage = Math.min(1, order.damage + harm * (levelOf('suspension')?.factor ?? 1));
   }
 
-  // Junction n runs `junctionOffset` s ahead of junction n - 1; the east–west axis runs half a cycle
-  // behind the north–south one.
-  const cycleTime = (l) => (clock + l.junction * lt.junctionOffset + ((l.dir % 2) * cycle) / 2) % cycle;
+  // Junction n runs `junctionOffset` s ahead of junction n - 1; a light's `axis` 1 (on the grid east–west) runs half a
+  // cycle behind axis 0.
+  const cycleTime = (l) => (clock + l.junction * lt.junctionOffset + (l.axis * cycle) / 2) % cycle;
   function updateLights() {
     for (const l of state.lights) {
       const t = cycleTime(l);
@@ -264,9 +267,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function checkRedLight(from, to) {
     if (truck.speed <= 0) return;
     for (const l of state.lights) {
-      const [dc, dr] = DIRS[l.dir];
-      if (Math.abs((to.x - l.x) * dr - (to.z - l.z) * dc) >= map.tileSize / 2) continue; // not on its road
-      const along = (p) => (p.x - l.x) * dc + (p.z - l.z) * dr; // ahead of the line
+      if (Math.abs((to.x - l.x) * l.dz - (to.z - l.z) * l.dx) >= l.half) continue; // not on its road
+      const along = (p) => (p.x - l.x) * l.dx + (p.z - l.z) * l.dz; // ahead of the line
       const crosses = (at) => along(from) < at && along(to) >= at;
       if (crosses(0)) redLine = l.phase === 'red' ? l : null;
       if (!crosses(lineBack)) continue;
@@ -504,7 +506,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // unloading and slack.
   function requestOffers() {
     state.offers = [];
-    if (state.order) return state.offers;
+    if (state.order || map.spots.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
     const maxCargo = levelOf('cargoBed')?.maxCargo ?? o.maxCargo;
@@ -539,7 +541,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const poses = roadPoints.map((p) => ({ pose: lanePose(p), junction: p.junction }));
     const away = ({ pose: p }) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
     poses.sort((a, b) => a.junction - b.junction || away(a) - away(b));
-    const free = ({ pose: p }) => fits(p) && !traffic.touching(corners(p)).length;
+    const free = ({ pose: p }) => fits(p) && !traffic?.touching(corners(p)).length;
     Object.assign(truck, (poses.find(free) ?? poses[0]).pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
     reversing = false;
     brakeHold = 0;
@@ -547,17 +549,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateRoute();
   }
 
-  // At a road point, in the right-hand lane, where the AI cars drive (`laneOffset` right of the centre line), heading
-  // the way the road leaves the point that needs the smallest turn.
-  function lanePose({ x, z, headings }) {
+  // At a road point, in the right-hand lane, where the AI cars drive (`lane` m right of the centre line), heading the
+  // way the road leaves the point that needs the smallest turn.
+  function lanePose({ x, z, headings, lane }) {
     const pose = { x, z, heading: truck.heading };
     let smallest = Infinity;
     for (const heading of headings) {
       const turn = Math.abs(Math.atan2(Math.sin(heading - truck.heading), Math.cos(heading - truck.heading)));
       if (turn < smallest) [pose.heading, smallest] = [heading, turn];
     }
-    pose.x -= Math.cos(pose.heading) * tables.traffic.laneOffset; // right is (-cos heading, sin heading)
-    pose.z += Math.sin(pose.heading) * tables.traffic.laneOffset;
+    pose.x -= Math.cos(pose.heading) * lane; // right is (-cos heading, sin heading)
+    pose.z += Math.sin(pose.heading) * lane;
     return pose;
   }
 
@@ -617,14 +619,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     resetToRoad();
     updateTraffic(0);
     state.policeSees = policeSees();
-    state.junctionRule = junctionAhead();
+    if (map.rule) state.junctionRule = junctionAhead();
+    state.speedLimit = map.graph.nearest(truck.x, truck.z).edge.limit;
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns };
 }
 
 // Whether (x, z) lies inside the polygon `points` (even–odd rule).
-function inside(x, z, points) {
+export function inside(x, z, points) {
   let odd = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
     const [a, b] = [points[i], points[j]];

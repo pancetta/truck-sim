@@ -236,6 +236,32 @@ export const city = {
     size: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
   },
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
+  bollardHeight: 0.9, // m, on an OSM map, where they close pedestrian ways
+  barrierHeight: 1.1, // m, across an OSM map's edge exits
+};
+
+// The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js; loaded instead of the grid city with ?map=monti
+// until it replaces it (#67). `file` is under public/, made by `npm run maps`.
+export const osm = {
+  file: 'maps/monti.json',
+  // The drivable network, per OSM highway class: road width (m), lane offset (m) right of the centre line on a two-way
+  // edge (a one-way's lane runs on it), speed limit (km/h), and priority at a junction without lights (higher first;
+  // right before left between equal ones).
+  classes: {
+    secondary: { width: 12, lane: 3, limit: 50, priority: 3 },
+    tertiary: { width: 10, lane: 2.5, limit: 40, priority: 2 },
+    residential: { width: 7, lane: 1.75, limit: 30, priority: 1 },
+    unclassified: { width: 7, lane: 1.75, limit: 30, priority: 1 },
+    service: { width: 4, lane: 1, limit: 30, priority: 0 },
+  },
+  // A junction gets lights where two different streets (by name) of these classes cross: both go on through it.
+  lightClasses: ['secondary', 'tertiary'],
+  pavement: 1.5, // m beside each side of a road, which buildings are cut back to leave clear
+  pedestrian: 6, // m, width of a pedestrian way (not a square), for its bollards
+  bollardSpacing: 1.5, // m between the bollards closing a pedestrian way or square, under the truck's width
+  barrier: 0.6, // m thick, the truck-only barrier across each edge exit, in from the map's edge by as much
+  floors: [3, 5], // storeys of a building with no height or levels in OSM, seeded per building
+  minArea: 2, // m²; smaller pieces left of a cut-back building are dropped
 };
 
 // Procedural buildings on the building tiles (buildings.js), in the style of the Monti prototype (ADR 0001). Each run

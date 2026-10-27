@@ -13,6 +13,9 @@ import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets } from './streets.js';
 import { planSkyline, skylineMeshes, paintSkylineWindows } from './skyline.js';
+import { roadSurface, plainBuildings } from './plainCity.js';
+import { createCells } from './sim/cells.js';
+import { inside } from './sim/sim.js';
 import assetInfo from './assetInfo.json';
 import { strings } from './strings.js';
 
@@ -55,6 +58,22 @@ function unitBox(geometry) {
   return geometry
     .translate(-(min.x + max.x) / 2, -min.y, -(min.z + max.z) / 2)
     .scale(1 / (max.x - min.x), 1 / (max.y - min.y), 1 / (max.z - min.z));
+}
+
+// How far along the unit direction (dx, dz) from (x, z) a ray first meets the outline `points` ({ x, z }, any
+// polygon); Infinity if it misses.
+function rayToOutline(x, z, dx, dz, points) {
+  let near = Infinity;
+  points.forEach((a, i) => {
+    const b = points[(i + 1) % points.length];
+    const [ex, ez] = [b.x - a.x, b.z - a.z];
+    const den = dx * ez - dz * ex;
+    if (!den) return;
+    const t = ((a.x - x) * ez - (a.z - z) * ex) / den; // m along the ray
+    const u = ((a.x - x) * dz - (a.z - z) * dx) / den; // share of the way along the side
+    if (t >= 0 && u >= 0 && u <= 1) near = Math.min(near, t);
+  });
+  return near;
 }
 
 // How far along the unit direction (dx, dz) from (x, z) a ray enters box `b` (0 if it starts inside);
@@ -201,13 +220,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
 
   // Centred on the map, so it reaches under the skyline ring on every side.
-  const groundPlane = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((map.cols * map.tileSize) / 2, 0, (map.rows * map.tileSize) / 2);
+  const { bounds } = map;
+  const groundPlane = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
   const ground = new THREE.Mesh(worldUVs(groundPlane, tables.ground.open.repeat), groundMaterial(tables.ground.open));
   ground.receiveShadow = true;
   ground.renderOrder = 1; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
   scene.add(ground);
 
-  // City from the parsed map, built from kit models.
+  // City from the parsed map, built from kit models; an OSM map (?map=monti, no tiles) is drawn plain (plainCity.js)
+  // until #65 gives it the look.
+  const grid = !!map.roads;
   const ts = map.tileSize;
   const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place
   const pick = (list, x, z) => list[Math.floor(hash(x, z) * 9973) % list.length];
@@ -218,8 +240,12 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Road tiles: asphalt as one mesh, a square per tile at the kit's road level, under the kit pieces' pavements and
   // markings; the pieces' own road surfaces are left out (see loadModel). Pushed back a few depth steps, so the
   // markings at the same height always win; an offset by depth slope sank it under the ground at grazing angles.
+  // On an OSM map, the road surface along the graph's edges.
+  const roadGeometry = grid
+    ? mergeGeometries(map.roads.map(({ col, row }) => new THREE.PlaneGeometry(ts, ts).rotateX(-Math.PI / 2).translate((col + 0.5) * ts, roadHeight / 2, (row + 0.5) * ts)))
+    : roadSurface(map.graph, roadHeight / 2);
   const asphalt = new THREE.Mesh(
-    worldUVs(mergeGeometries(map.roads.map(({ col, row }) => new THREE.PlaneGeometry(ts, ts).rotateX(-Math.PI / 2).translate((col + 0.5) * ts, roadHeight / 2, (row + 0.5) * ts))), tables.ground.road.repeat),
+    worldUVs(roadGeometry, tables.ground.road.repeat),
     Object.assign(groundMaterial(tables.ground.road), { polygonOffset: true, polygonOffsetUnits: 4 }),
   );
   asphalt.receiveShadow = true;
@@ -228,7 +254,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // replace the one for the view, and buildings would go missing.
   asphalt.renderOrder = -1;
   scene.add(asphalt);
-  for (const { col, row } of map.roads) {
+  for (const { col, row } of map.roads ?? []) {
     const open = DIRS.map(([dc, dr]) => map.isRoad(col + dc, row + dr));
     // Turning a piece a quarter turn moves each open side from direction i to i - 1.
     for (const [file, sides] of ROAD_PIECES) {
@@ -239,29 +265,57 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
   }
 
-  // The building tiles, which the cameras keep out of.
+  // The buildings, which the cameras keep out of; blockAt(x, z) is the one a point is in: on the grid by its tile, on an
+  // OSM map by its outline, through a cell index.
   const blocks = map.colliders.filter((b) => b.kind === 'building' || b.kind === 'spot');
-  const blockAt = new Map(blocks.map((b) => [`${Math.floor(b.minX / ts)},${Math.floor(b.minZ / ts)}`, b]));
-  // Procedural buildings (buildings.js), a few meshes per chunk of the map, each culled whole against the view. Their
-  // facade pictures are painted at load; their wall and roof textures load after the first frame.
-  const cells = atlasCells(map.spots.map((s) => s.id));
-  const buildingMaterials = {
-    walls: tables.buildings.walls.map((wall) => groundMaterial(wall, { vertexColors: true, flatShading: true }, true)),
-    roof: groundMaterial(tables.buildings.roof, { flatShading: true }, true),
-    parts: new THREE.MeshStandardMaterial({ ...paintFacadePictures(cells, palette.spot), vertexColors: true, flatShading: true }),
+  const tileBlocks = new Map(grid ? blocks.map((b) => [`${Math.floor(b.minX / ts)},${Math.floor(b.minZ / ts)}`, b]) : []);
+  const blockCells = createCells(city.cell);
+  if (!grid) for (const b of blocks) blockCells.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
+  const blockAt = (x, z) => {
+    if (grid) return tileBlocks.get(`${Math.floor(x / ts)},${Math.floor(z / ts)}`);
+    let found;
+    blockCells.some(x, z, x, z, (b) => inside(x, z, b.points) && (found = b));
+    return found;
   };
   const buildingParts = { meshes: [], near: [] };
-  // Built once the model and texture requests are out, as building them takes a few hundred ms. What stands on them
-  // (lanterns, pots and flower boxes; streets.js) is placed then too.
-  loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
-    const plan = planBuildings(map, tables);
-    Object.assign(buildingParts, buildingMeshes(plan, tables, palette.spot, cells, buildingMaterials));
-    scene.add(...buildingParts.meshes);
-    streets.dress(plan);
-  }));
-  // The skyline ring outside the map (skyline.js): two meshes, its roofs in the buildings' roof material.
-  const skylineWalls = new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 });
-  loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, { walls: skylineWalls, roof: buildingMaterials.roof }))));
+  if (grid) {
+    // Procedural buildings (buildings.js), a few meshes per chunk of the map, each culled whole against the view. Their
+    // facade pictures are painted at load; their wall and roof textures load after the first frame.
+    const cells = atlasCells(map.spots.map((s) => s.id));
+    const buildingMaterials = {
+      walls: tables.buildings.walls.map((wall) => groundMaterial(wall, { vertexColors: true, flatShading: true }, true)),
+      roof: groundMaterial(tables.buildings.roof, { flatShading: true }, true),
+      parts: new THREE.MeshStandardMaterial({ ...paintFacadePictures(cells, palette.spot), vertexColors: true, flatShading: true }),
+    };
+    // Built once the model and texture requests are out, as building them takes a few hundred ms. What stands on them
+    // (lanterns, pots and flower boxes; streets.js) is placed then too.
+    loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
+      const plan = planBuildings(map, tables);
+      Object.assign(buildingParts, buildingMeshes(plan, tables, palette.spot, cells, buildingMaterials));
+      scene.add(...buildingParts.meshes);
+      streets.dress(plan);
+    }));
+    // The skyline ring outside the map (skyline.js): two meshes, its roofs in the buildings' roof material.
+    const skylineWalls = new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 });
+    loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => scene.add(...skylineMeshes(planSkyline(map, tables), tables, { walls: skylineWalls, roof: buildingMaterials.roof }))));
+  } else {
+    const plain = new THREE.Mesh(plainBuildings(map.buildings, tables.buildings.tints), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 }));
+    plain.castShadow = plain.receiveShadow = true;
+    scene.add(plain);
+    // Bollards and the barriers at the edge exits, plain boxes on their colliders (each a box turned any way).
+    for (const [kind, height, color] of [['bollard', city.bollardHeight, palette.signal], ['barrier', city.barrierHeight, palette.red]]) {
+      const boxes = map.colliders.filter((c) => c.kind === kind);
+      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
+      mesh.castShadow = mesh.receiveShadow = true;
+      const m = new THREE.Matrix4();
+      boxes.forEach(({ points: [a, b, c] }, i) => {
+        const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-(b.z - a.z), b.x - a.x)); // local x along a→b
+        const size = new THREE.Vector3(Math.hypot(b.x - a.x, b.z - a.z), height, Math.hypot(c.x - b.x, c.z - b.z));
+        mesh.setMatrixAt(i, m.compose(new THREE.Vector3((a.x + c.x) / 2, height / 2, (a.z + c.z) / 2), turn, size));
+      });
+      scene.add(mesh);
+    }
+  }
 
   // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
   // covered car. Drawn with the AI cars (drawCars).
@@ -279,9 +333,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const colours = file.startsWith('roads/road') ? { ...palette, road: null, dark: null } : palette;
     return loadModel(file, colours).then((geometry) => [unitBox(geometry), list]);
   });
-  // The road signs, our own geometry, join the city's batch so they are culled and fogged with it.
-  const signsOf = (kind) => map.signs.filter((s) => s.kind === kind).map(({ x, z, dir }) => ({ x, z, angle: Math.atan2(-DIRS[dir][0], -DIRS[dir][1]), size: [1, 1, 1] }));
-  cityModels.push(Promise.resolve([speedSign(), signsOf('speed')]), Promise.resolve([warningSign(), signsOf('rightBeforeLeft')]));
+  // The road signs, our own geometry, join the city's batch so they are culled and fogged with it; a speed sign per limit.
+  const signsOf = (kind, limit) => map.signs.filter((s) => s.kind === kind && s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
+  for (const limit of new Set(map.signs.map((s) => s.limit).filter(Boolean))) cityModels.push(Promise.resolve([speedSign(limit), signsOf('speed', limit)]));
+  cityModels.push(Promise.resolve([warningSign(), signsOf('rightBeforeLeft')]));
   // A model that fails is logged (through `loads`) and left out; the rest of the city still goes up.
   loads.push(...cityModels, Promise.all(cityModels.map((m) => m.catch(() => null))).then((models) => addCity(models.filter(Boolean))));
   addBoxes(palette.zone, map.spots.map((s) => s.zone), 0.04);
@@ -354,7 +409,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // (red, amber, green from the top) facing the drivers, and a stop line across the right half of the road
   // tables.lights.stopLine before it.
   // The lamps are one-sided planes, so a light seen from the side or behind shows no colour.
-  // The posts stand where parseMap put their colliders. Right of travel direction (dc, dr) is (-dr, dc).
+  // The posts stand where the map put their colliders. Right of travel direction (dc, dr) is (-dr, dc).
   const LAMP_PHASES = ['red', 'amber', 'green'];
   const lampColours = [palette.lampRed, palette.lampAmber, palette.lampGreen];
   const signal = mergeGeometries([
@@ -369,13 +424,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const stopLines = [];
   const m = new THREE.Matrix4();
   map.lights.forEach((l, i) => {
-    const [dc, dr] = DIRS[l.dir];
+    const [dc, dr] = [l.dx, l.dz];
     m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(l.post.x, 0, l.post.z);
     signals.setMatrixAt(i, m);
     for (let k = 0; k < 3; k++) {
       lamps.setMatrixAt(i * 3 + k, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 4.3 - k * 0.45, 0.19)));
     }
-    const lane = ts / 2 - 1.4; // the pavement is the outer 1.4 m
+    const lane = l.half - (grid ? 1.4 : 0.3); // a grid tile's pavement is its outer 1.4 m; an OSM road's is beside it
     const [ax, az] = [l.x - dr * 0.3, l.z + dc * 0.3];
     const [bx, bz] = [l.x - dc * 0.5 - dr * lane, l.z - dr * 0.5 + dc * lane];
     stopLines.push({ minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: Math.min(az, bz), maxZ: Math.max(az, bz) });
@@ -384,8 +439,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   addBoxes(palette.stopLine, stopLines, 0.045);
   let shownLights = null;
 
-  // Pavements, lanterns (also on the poles), and the trees and props on open ground.
-  const streets = createStreets(scene, map, tables, { pavers: groundMaterial(tables.streets.pavement, {}, true), loadTexture, loader, models: MODELS });
+  // Pavements, lanterns (also on the poles), and the trees and props on open ground; none yet on an OSM map.
+  const streets = grid ? createStreets(scene, map, tables, { pavers: groundMaterial(tables.streets.pavement, {}, true), loadTexture, loader, models: MODELS }) : { load: async () => {}, update() {} };
   laterLoads.push(streets.load);
 
   // The whole kit city as one batched mesh with one shader: three tests each placement against the view, so only
@@ -439,9 +494,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return new THREE.CylinderGeometry(r, r, 0.015, n).rotateX(-Math.PI / 2).translate(0, tables.signs.height, front - 0.0075);
   }
 
-  // A speed limit sign: a round plate, grey at the back, its face a red ring round a white disc with the limit in
-  // dark seven-segment bars.
-  function speedSign() {
+  // A speed limit sign for `limit` km/h: a round plate, grey at the back, its face a red ring round a white disc with the
+  // limit in dark seven-segment bars.
+  function speedSign(limit) {
     const { height, radius, ring } = tables.signs;
     return roadSign((add, face) => {
       add(plate(20, radius, face), palette.signal);
@@ -451,7 +506,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const [w, h, t] = [0.16, 0.32, 0.045];
       const SEGMENTS = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
       const bars = { a: [0, h / 2, 1], b: [w / 2, h / 4, 0], c: [w / 2, -h / 4, 0], d: [0, -h / 2, 1], e: [-w / 2, -h / 4, 0], f: [-w / 2, h / 4, 0], g: [0, 0, 1] };
-      const digits = String(tables.speedLimit);
+      const digits = String(limit);
       [...digits].forEach((digit, i) => {
         const cx = (i - (digits.length - 1) / 2) * (w + t + 0.08);
         for (const s of SEGMENTS[digit]) {
@@ -477,8 +532,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     });
   }
 
-  // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own.
+  // One instanced draw call per colour; boxes stand on the ground, `height` tall unless they carry their own. None for no
+  // boxes (an OSM map has no spots yet): WebGPU rejects an instanced mesh without instances.
   function addBoxes(color, boxes, height) {
+    if (!boxes.length) return;
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
     mesh.receiveShadow = true;
     const m = new THREE.Matrix4();
@@ -730,7 +787,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const a = heading + Math.PI + 0.7 + orbit; // starts behind the truck, off to one side
       const [dx, dz] = [Math.sin(a), Math.cos(a)];
       // In front of the first building in the way, so no wall fills the picture; easing back out behind it.
-      const room = Math.min(radius, canopyRoom(x, z, dx, dz), ...blocks.map((b) => rayToBox(x, z, dx, dz, b) - wallGap));
+      const room = Math.min(radius, canopyRoom(x, z, dx, dz), ...blocks.map((b) => rayToOutline(x, z, dx, dz, b.points) - wallGap));
       arm = Math.min(room, arm + armSpeed * dt);
       camera.position.set(x + dx * arm, height, z + dz * arm);
       camera.lookAt(x, lookHeight, z);
@@ -800,11 +857,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const canopyRoom = (x, z, dx, dz) => Math.max(0, Math.min(...canopies.map((b) => rayToBox(x, z, dx, dz, b) || Infinity)) - tables.showroom.wallGap);
 
   // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most chaseDistance. The ray is
-  // walked in 1 m steps through the building tiles, so it can miss a corner it only grazes.
+  // walked in 1 m steps through the buildings, so it can miss a corner it only grazes.
   function chaseRoom(x, z, dx, dz) {
     for (let d = 0; d <= cam.chaseDistance + 1; d++) {
-      const b = blockAt.get(`${Math.floor((x + dx * d) / ts)},${Math.floor((z + dz * d) / ts)}`);
-      if (b) return Math.min(cam.chaseDistance, rayToBox(x, z, dx, dz, b) - tables.showroom.wallGap);
+      const b = blockAt(x + dx * d, z + dz * d);
+      if (b) return Math.min(cam.chaseDistance, rayToOutline(x, z, dx, dz, b.points) - tables.showroom.wallGap);
     }
     return cam.chaseDistance;
   }

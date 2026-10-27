@@ -36,6 +36,14 @@ sits next to its models. Only the models the game loads are kept, not the whole 
 Poly Haven textures are the diffuse (`_Diffuse`), OpenGL normal (`_nor_gl`) and packed
 ambient occlusion / roughness / metalness (`_arm`) maps.
 
+## Map data
+
+The Monti map's streets, buildings, street furniture and skyline come from OpenStreetMap: © OpenStreetMap contributors,
+https://www.openstreetmap.org/copyright. The raw Overpass extracts are in `data/osm/`; `npm run maps` (`scripts/maps.js`)
+trims and projects them into `public/maps/monti.json`, `public/maps/monti-furniture.json` and
+`public/maps/monti-ring.json`. That processed map data stays under the Open Database License (ODbL 1.0,
+https://opendatacommons.org/licenses/odbl/1-0/), like the extracts it comes from.
+
 `public/basis/` is three.js's copy of the Basis Universal transcoder (Apache 2.0, https://github.com/BinomialLLC/basis_universal), served for its KTX2 loader.
 
 Everything else (code, the generated cars and their number plate, cab interior, dashboard, the truck's visual items,
