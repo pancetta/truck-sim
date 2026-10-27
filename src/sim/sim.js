@@ -71,7 +71,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
   let limitEdge = null; // edge whose limit state.speedLimit shows (see updateLimit)
-  const traffic = map && map.traffic !== false ? createTraffic(tables, map, random) : null; // a map may have none (Monti until #63)
+  let speedingFined = -Infinity; // clock at the last speeding fine
+  const traffic = map ? createTraffic(tables, map, random) : null;
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
   // map.colliders in a spatial cell index by their bounds, so fits() and inSight() test only those near.
@@ -186,7 +187,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.profile.distance += Math.hypot(truck.x - x, truck.z - z);
     updateTraffic(dt);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
-    if (map?.rule) state.junctionRule = junctionAhead();
+    if (map) state.junctionRule = junctionAhead();
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
@@ -198,6 +199,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
     const here = map ? map.graph.nearest(truck.x, truck.z) : null;
     if (here) updateLimit(here);
+    checkSpeeding();
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
 
     updateRoute(here);
@@ -317,8 +319,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const [x, z] = [truck.x + (fx * v.length) / 2, truck.z + (fz * v.length) / 2];
     const { nodes } = map.graph;
     // In a junction's box, that junction's whatever the heading: near its middle the nearest edge is the cross street.
-    const { edge } = map.graph.nearest(x, z);
-    for (const n of [edge.from, edge.to]) if (ruleOf(n) && Math.hypot(nodes[n].x - x, nodes[n].z - z) < nodes[n].radius) return ruleOf(n);
+    const { edge } = map.graph.nearest(x, z, true);
+    for (const n of edge ? [edge.from, edge.to] : []) if (ruleOf(n) && Math.hypot(nodes[n].x - x, nodes[n].z - z) < nodes[n].radius) return ruleOf(n);
     const on = map.graph.along(x, z, fx, fz);
     if (!on) return null;
     return on.ahead - nodes[on.next].radius <= tables.signs.hint ? ruleOf(on.next) : null;
@@ -331,6 +333,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (here.d > here.edge.width / 2) return;
     limitEdge = here.edge;
     state.speedLimit = limitEdge.limit;
+  }
+
+  // Driving faster than the limit by more than tables.speeding.tolerance costs a fine if the police see it, then none
+  // for tables.speeding.cooldown s.
+  function checkSpeeding() {
+    const { tolerance, cooldown } = tables.speeding;
+    if (Math.abs(truck.speed) * 3.6 <= state.speedLimit + tolerance || !state.policeSees || clock - speedingFined < cooldown) return;
+    fine('speeding');
+    speedingFined = clock;
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
@@ -629,7 +640,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     resetToRoad();
     updateTraffic(0);
     state.policeSees = policeSees();
-    if (map.rule) state.junctionRule = junctionAhead();
+    state.junctionRule = junctionAhead();
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 

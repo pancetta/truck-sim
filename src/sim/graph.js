@@ -61,15 +61,16 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   }
 
   // The pose on the graph nearest (x, z), as closer() describes it. The cells within one cell of it settle it when
-  // they hold an edge that near; otherwise every edge is tried.
+  // they hold an edge that near; otherwise every edge is tried, unless the caller only wants one that `near` (then the
+  // pose has d over a cell and maybe no edge).
   // shortcut: off the road (on the plaza) that is every edge on every call, about 7 µs a step on the grid city's 132
-  // segments; search ring by ring if a bigger map or open area makes it show in ?perf.
-  function nearest(x, z) {
+  // segments and 60 on Monti's; search ring by ring if a bigger map or open area makes it show in ?perf.
+  function nearest(x, z, near = false) {
     const best = far();
     index.some(x - cellSize, z - cellSize, x + cellSize, z + cellSize, (seg) => {
       closer(seg.edge, seg.k, x, z, best);
     });
-    if (best.d > cellSize) for (const e of edges) for (let k = 0; k < segments(e); k++) closer(e, k, x, z, best);
+    if (best.d > cellSize && !near) for (const e of edges) for (let k = 0; k < segments(e); k++) closer(e, k, x, z, best);
     return best;
   }
 
@@ -83,7 +84,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   // along it (`forward`, from its `from` node to its `to`), the node `next` it faces and the m to it (`ahead`), and
   // the node `last` behind it and the m from it (`behind`); null off the road or across it.
   function along(x, z, fx, fz) {
-    const p = nearest(x, z);
+    const p = nearest(x, z, true);
     const e = p.edge;
     if (!e || p.d > e.width / 2 || e.points.length < 2) return null;
     const a = e.points[p.k];

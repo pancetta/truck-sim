@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as tables from '../tables.js';
-import { buildOsmMap } from './osm.js';
+import { buildOsmMap, parkedCars } from './osm.js';
 import { createSim, inside } from './sim.js';
+import { seeded } from '../autopilot.js';
 
 // Inline OSM fixtures: a way is its highway class, points [[x, z]] in metres and extra tags. Node ids come from the
 // points, so ways sharing a point share a node, as in OSM.
@@ -227,6 +228,104 @@ describe('OSM map: street furniture', () => {
     const props = map.colliders.filter((c) => ['tree', 'bollard', 'fountain', 'bin'].includes(c.kind));
     expect(props.map((c) => [c.kind, (c.minX + c.maxX) / 2, (c.minZ + c.maxZ) / 2])).toEqual([['tree', 10, 6], ['bollard', -10, -6], ['fountain', 20, 7], ['bin', -20, 30]]);
     expect(driveFrom(map, 10, 14, Math.PI).collision).toBe(true); // north from behind the tree, into it
+  });
+});
+
+describe('OSM map: traffic (#63)', () => {
+  // Tables with `traffic` AI cars and no police, the traffic tables changed by `changes`.
+  const withCars = (traffic, changes = {}) => ({
+    ...tables,
+    police: { ...tables.police, count: 0 },
+    rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic })) },
+    traffic: { ...tables.traffic, ...changes },
+  });
+  const IDLE = { steer: 0, gas: 0, brake: 0 };
+  const car = tables.city.obstacles.car;
+
+  test('AI cars come in at an edge exit, past its barrier, and leave at the other before reaching its barrier', () => {
+    const t = withCars(1, { exitSpawn: 1, spawnDistance: [0, 500], despawnDistance: 600 });
+    const map = buildOsmMap({ bounds, ways: [way('residential', [[-150, 0], [150, 0]])] }, t);
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 0, z: 60, heading: 0, speed: 0 }); // off the road
+    sim.step(1 / 60, IDLE);
+    const [first] = sim.state.traffic;
+    const start = first.x;
+    const inner = bounds.maxX - 1.5 * tables.osm.barrier; // the barriers' map-side faces
+    expect(Math.abs(start)).toBeCloseTo(inner - car.length / 2, 1);
+    let last = start;
+    for (let s = 0; s < 60 && sim.state.traffic.includes(first); s += 1 / 60) {
+      last = first.x;
+      sim.step(1 / 60, IDLE);
+    }
+    expect(sim.state.traffic.includes(first)).toBe(false);
+    expect(Math.sign(last)).toBe(-Math.sign(start)); // gone at the far end
+    expect(Math.abs(last) + car.length / 2).toBeLessThanOrEqual(inner);
+    expect(Math.abs(last) + car.length / 2).toBeGreaterThan(inner - 0.5);
+  });
+
+  test("AI cars cruise at the limit of the edge they are on and are down to the next edge's by the time they reach it", () => {
+    const t = withCars(0, { despawnDistance: 1000 });
+    const wide = { minX: -300, minZ: -100, maxX: 100, maxZ: 100 };
+    const map = buildOsmMap({ bounds: wide, ways: [way('secondary', [[-250, 0], [0, 0]]), way('residential', [[0, 0], [90, 0]])] }, t);
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 0, z: 60, heading: 0, speed: 0 });
+    const run = map.graph.paths.find((p) => p.kind === 'run' && p.edge.class === 'secondary' && p.startDir.x > 0);
+    const turn = run.next.find((p) => p.out.edge.class === 'residential');
+    sim.state.traffic.push({ id: 1, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run, turn, turn.out], s: 0, police: false });
+    const [ai] = sim.state.traffic;
+    let fast = 0;
+    let atTurn = null;
+    for (let s = 0; s < 40 && ai.lane !== turn.out; s += 1 / 60) {
+      sim.step(1 / 60, IDLE);
+      if (ai.lane === run && run.length - ai.s > 40) fast = Math.max(fast, ai.speed);
+      if (atTurn === null && ai.lane === run && run.length - ai.s <= car.length / 2) atTurn = ai.speed;
+    }
+    expect(fast).toBeCloseTo(classes.secondary.limit / 3.6, 5);
+    expect(atTurn).toBeLessThan(classes.residential.limit / 3.6 + 0.1); // a step late at most
+    for (let s = 0; s < 5; s += 1 / 60) sim.step(1 / 60, IDLE);
+    expect(ai.speed).toBeCloseTo(classes.residential.limit / 3.6, 5);
+  });
+
+  describe('parked cars', () => {
+    const t = { ...tables, osm: { ...tables.osm, parked: { ...tables.osm.parked, density: 1 } } };
+    const { junction, kerb, spot } = t.osm.parked;
+    // A one-way residential street east across a two-way one at x = 0, a two-way residential and a one-way service
+    // street further south.
+    const map = buildOsmMap({ bounds, ways: [
+      way('residential', [[-90, 0], [0, 0], [90, 0]], { oneway: 'yes' }),
+      way('residential', [[0, -90], [0, 0], [0, 40]]),
+      way('residential', [[-90, 60], [90, 60]]),
+      way('service', [[-90, 80], [90, 80]], { oneway: 'yes' }),
+    ] }, t);
+    const parked = map.colliders.filter((c) => c.kind === 'car');
+    const centre = (c) => ({ x: (c.minX + c.maxX) / 2, z: (c.minZ + c.maxZ) / 2 });
+
+    test('line one kerb of the one-way residential street only, clear of its lane and of the junction', () => {
+      expect(parked.length).toBeGreaterThan(15);
+      const crossing = map.graph.nodes.find((n) => n.arms.length === 4);
+      const clear = car.width / 2 + tables.traffic.sideGap;
+      for (const c of parked.map(centre)) {
+        expect(c.z).toBeCloseTo(-(classes.residential.width / 2 - kerb - car.width / 2) * Math.sign(-c.z || 1), 5);
+        expect(Math.abs(c.z) - car.width / 2).toBeGreaterThanOrEqual(clear - 1e-9); // its lane runs on the centre line
+        expect(Math.abs(c.x - crossing.x) - car.length / 2).toBeGreaterThanOrEqual(crossing.radius + junction - 1e-9);
+      }
+      expect(new Set(parked.map((c) => Math.sign(centre(c).z))).size).toBeLessThanOrEqual(2); // one kerb per edge
+      expect(parked.every((c) => c.heading === Math.PI / 2)).toBe(true); // facing the traffic's way, east
+    });
+
+    test('keep clear of a spot zone', () => {
+      const zone = { minX: 30, maxX: 44, minZ: -3.5, maxZ: 3.5 };
+      const near = (c) => c.minX < zone.maxX + spot && c.maxX > zone.minX - spot;
+      expect(parked.some(near)).toBe(true);
+      expect(parkedCars(map.graph, [{ zone }], t).filter((c) => near(c) && c.maxZ > -10 && c.minZ < 10)).toEqual([]);
+    });
+
+    test('are solid: the truck driving along the kerb stops at one', () => {
+      const first = parked.map(centre).sort((a, b) => a.x - b.x)[0];
+      const state = driveFrom(map, first.x - 20, first.z, Math.PI / 2);
+      expect(state.collision).toBe(true);
+      expect(state.truck.x + tables.vehicle.length / 2).toBeCloseTo(first.x - car.length / 2, 0);
+    });
   });
 });
 

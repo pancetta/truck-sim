@@ -12,10 +12,12 @@
 //   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit.
 //   Props: the furniture's trees, bollards, fountains and waste baskets, solid, as the grid's plaza props (kinds
 //     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
+//   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
 // The map has no spots yet (#64) and no tiles: Sim and renderer parts that still need tiles skip it.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
+import { poseAt } from './lanes.js';
 import { inside } from './sim.js';
 
 // The furniture's props by OSM tag: [tag, value, collider kind].
@@ -204,9 +206,58 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     }
   }
 
+  const spots = [];
+  colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.
   const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
-  return { bounds, spots: [], colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares }, traffic: false }; // no AI cars until #63
+  return { bounds, spots, colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares } };
+}
+
+// Parked cars (`car` colliders, with the `heading` they face) along one kerb of each edge of a tables.osm.parked class
+// whose width leaves room beside its lane for a car and `kerb` m, with `sideGap` from the AI cars (tables.traffic):
+// on Monti only one-way residential streets. One kerb per edge, seeded, as are the gaps: a `density` share of the
+// places every car length plus `gap` m along each straight stretch, clear of the junction boxes by `junction` m, of
+// each spot's zone by `spot` m, and of every lane path (any edge's, turns included) by half a car and `sideGap`.
+export function parkedCars(graph, spots, tables) {
+  const o = tables.osm.parked;
+  const car = tables.city.obstacles.car;
+  const { sideGap } = tables.traffic;
+  const clear = car.width / 2 + sideGap; // m from a lane's centre line to a parked car
+  const lanes = []; // a point every m along every lane path
+  for (const p of graph.paths) {
+    for (let s = 0; s <= p.length; s += 1) {
+      const pose = { x: 0, z: 0, heading: 0 };
+      poseAt(p, Math.min(s, p.length), pose);
+      lanes.push(pose);
+    }
+  }
+  const laneCells = createCells(tables.city.cell);
+  for (const q of lanes) laneCells.add(q, q.x, q.z, q.x, q.z);
+  const out = [];
+  graph.edges.forEach((e, n) => {
+    const lane = e.oneWay ? 0 : e.laneOffset;
+    if (!o.classes.includes(e.class) || e.width / 2 - lane - clear < car.width + o.kerb) return;
+    const side = seeded(n + 0.5) < 0.5 ? 1 : -1; // right of the edge's direction, or left
+    const across = side * (e.width / 2 - o.kerb - car.width / 2);
+    const [from, to] = [graph.nodes[e.from].radius + o.junction, e.length - graph.nodes[e.to].radius - o.junction];
+    for (let k = 1; k < e.points.length; k++) {
+      const [a, b] = [e.points[k - 1], e.points[k]];
+      const l = e.at[k] - e.at[k - 1];
+      const u = [(b.x - a.x) / l, (b.z - a.z) / l];
+      for (let s = car.length / 2 + 1; s <= l - car.length / 2 - 1; s += car.length + o.gap) {
+        if (e.at[k - 1] + s - car.length / 2 < from || e.at[k - 1] + s + car.length / 2 > to) continue;
+        if (seeded(n * 1000 + k * 37 + s) >= o.density) continue;
+        const c = { x: a.x + u[0] * s - u[1] * across, z: a.z + u[1] * s + u[0] * across }; // right of u is (-u.z, u.x)
+        const box = rect(c, u, car.length / 2, car.width / 2);
+        const { minX, minZ, maxX, maxZ } = outline(box);
+        const onLane = (q) => Math.abs((q.x - c.x) * u[0] + (q.z - c.z) * u[1]) < car.length / 2 + clear && Math.abs(-(q.x - c.x) * u[1] + (q.z - c.z) * u[0]) < car.width / 2 + clear;
+        if (laneCells.some(minX - clear, minZ - clear, maxX + clear, maxZ + clear, onLane)) continue;
+        if (spots.some(({ zone: z }) => z.minX - o.spot < maxX && z.maxX + o.spot > minX && z.minZ - o.spot < maxZ && z.maxZ + o.spot > minZ)) continue;
+        out.push({ kind: 'car', ...outline(box), heading: Math.atan2(u[0], u[1]) });
+      }
+    }
+  });
+  return out;
 }
 
 // The part of segment a→b inside the bounds as [t0, t1] (0..1 along it), or null where it misses them (Liang–Barsky).

@@ -29,6 +29,7 @@ export function createTraffic(tables, map, random) {
   const t = tables.traffic;
   const { nodes, paths } = map.graph;
   const size = tables.city.obstacles.car; // AI cars are the size of the parked ones
+  const room = size.length + t.followGap; // m of lane a car takes up in a queue
   const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
   const truckSize = { length: tables.vehicle.length, width: tables.vehicle.width };
   const truckRadius = Math.hypot(truckSize.length, truckSize.width) / 2;
@@ -48,9 +49,12 @@ export function createTraffic(tables, map, random) {
     }));
   const lit = new Set(map.lights.map((l) => l.node));
   const junctionNode = (n) => nodes[n].arms.length >= 3;
-  const touching = (e) => e.length <= nodes[e.from].radius + nodes[e.to].radius + 1e-6;
+  // Whether edge e's end nodes' boxes touch, or lie too close to queue two cars between them (#63, on Monti: with room
+  // for one at most, a car waited in one box for the other, and small rings of such boxes locked up). The grid city's
+  // nearest apart are 14 m, so they stay single.
+  const touching = (e) => e.length < nodes[e.from].radius + nodes[e.to].radius + 2 * size.length + t.followGap + t.stopGap;
 
-  // Unsignalled crossings: junction nodes without lights. Ones whose boxes touch are one crossing (one group, the
+  // Unsignalled crossings: junction nodes without lights. Ones whose boxes touch (see touching) are one crossing (one group, the
   // right-of-way state shared by its nodes), so no car waits inside one of them for the next. A group's approaches
   // are the lane runs that drive into it from outside, each with its travel direction `dir`, its road class's
   // `rank` (tables.traffic.priority), the approach on its `right` (travelling round to the left of it by 45°–135°, the
@@ -84,12 +88,12 @@ export function createTraffic(tables, map, random) {
         if (!run) continue;
         const inner = groupOfNode[run.from] === g && touching(run.edge);
         if (inner) groupAt[run.id] = g;
-        else approachAt[run.id] = g.approaches.push({ dir: run.endDir, rank: t.priority[run.edge.class] ?? 0, right: -1, opposite: -1, front: { on: false, car: null, short: 0, since: 0, kind: 0 } }) - 1;
-        for (const turn of run.next) {
+        else approachAt[run.id] = g.approaches.push({ dir: run.endDir, rank: t.priority[run.edge.class] ?? 0, right: -1, opposite: -1, front: { on: false, car: null, short: 0, since: 0, kind: 0, at: 0 } }) - 1;
+        run.next.forEach((turn) => {
           groupAt[turn.id] = g;
           approachAt[turn.id] = approachAt[run.id];
           moveAt[turn.id] = g.nodes.length === 1 ? MOVES[turn.move] : OTHER;
-        }
+        });
       }
     }
     const A = g.approaches;
@@ -103,6 +107,37 @@ export function createTraffic(tables, map, random) {
     });
     g.kinds = new Int32Array(A.length);
     around(g);
+  }
+
+  // Crossing groups of several nodes let cars in by their paths through the group (see admit): `list` holds its turns
+  // and the runs between its nodes, `localAt` each one's index there, and `clash`, per index, the ones a car on it would
+  // come too near: centre lines closer than a car and its side gaps where they run alongside (within 20°), or than a
+  // car's length at an angle; a path and the one it leads into don't. `occupied` and `reserved` mark, per step, the
+  // ones cars in it still drive and the ones cars let in (or waiting to be) go on.
+  const localAt = new Int32Array(paths.length).fill(-1);
+  for (const g of groups) {
+    if (g.nodes.length === 1) continue;
+    g.list = paths.filter((p) => groupAt[p.id] === g);
+    g.list.forEach((p, k) => (localAt[p.id] = k));
+    const samples = g.list.map((p) => {
+      const n = Math.ceil(p.length / 0.5);
+      return Array.from({ length: n + 1 }, (_, k) => {
+        const pose = { x: 0, z: 0, heading: 0 };
+        poseAt(p, n ? (k * p.length) / n : 0, pose);
+        return pose;
+      });
+    });
+    const along = (p, q) => (p.kind === 'turn' ? p.out === q : q.kind === 'turn' && q.in === p);
+    const near = (a, b) => {
+      const d2 = (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
+      const alongside = Math.abs(Math.sin(a.heading - b.heading)) < Math.sin(Math.PI / 9);
+      return d2 < (alongside ? size.width + 2 * t.sideGap : size.length) ** 2;
+    };
+    g.clash = g.list.map((p, i) =>
+      g.list.flatMap((q, k) => (k !== i && !along(p, q) && !along(q, p) && samples[i].some((a) => samples[k].some((b) => near(a, b))) ? [k] : [])));
+    g.occupied = new Uint8Array(g.list.length);
+    g.reserved = new Uint8Array(g.list.length);
+    g.scratch = new Uint8Array(g.list.length);
   }
 
   // Light junctions: who is there this step (see atJunctions), as bits by arm slot (lanes.js) in `inside` (in it),
@@ -151,23 +186,98 @@ export function createTraffic(tables, map, random) {
 
   const turnSpeed = (r) => Math.sqrt(t.turnAccel * r);
 
+  // The runs cars drive (#63): along an edge two cars can pass on, a one-way or a two-way whose lanes lie a car and its
+  // side gaps apart (Monti's two-way service ways are too narrow). `ways` holds, per run id, the turns on to such runs;
+  // with none, the run is a dead end, where cars leave. Through a light junction, no turn from or to a run shorter than
+  // `room`: cars don't drive between a light junction and a junction box less than a car from it, as Monti's one light
+  // junction has two crossings (#63: a car waiting at the light from one held that crossing up all through the red,
+  // and cars that had come out of the junction waited for it). Between two nodes of a crossing group, no turn straight
+  // back to the node the car came from; and none on to a run these leave no way on from. `exits` are the runs in from an edge exit and `leaveAt`, per
+  // path id, the m along it where a car leaves: at an edge exit as its front meets the barrier, so cars come and go on
+  // the map side of it (tables.osm.barrier thick, in from the edge by as much).
+  const passable = (e) => e.oneWay || 2 * e.laneOffset >= size.width + 2 * t.sideGap;
+  const driven = new Uint8Array(paths.length);
+  for (const p of paths) driven[p.id] = p.kind === 'run' && passable(p.edge) ? 1 : 0;
+  // Nor along a run that comes nearer than a car and its side gaps to another one away from its nodes (#63: two of
+  // Monti's service ways leave the map 0.3 m apart).
+  const near = new Map(); // 4 m cell → [run, x, z] samples, every m along the driven runs
+  const cellKey = (x, z) => `${Math.floor(x / 4)},${Math.floor(z / 4)}`;
+  const pose = { x: 0, z: 0, heading: 0 };
+  for (const p of paths) {
+    if (!driven[p.id]) continue;
+    for (let s = 0; s <= p.length; s += 1) {
+      poseAt(p, s, pose);
+      const key = cellKey(pose.x, pose.z);
+      if (!near.has(key)) near.set(key, []);
+      near.get(key).push([p, pose.x, pose.z]);
+    }
+  }
+  const apart = (p, q) => p.edge === q.edge || p.from === q.from || p.from === q.to || p.to === q.from || p.to === q.to;
+  for (const list of near.values()) {
+    for (const [p, x, z] of list) {
+      const [cx, cz] = [Math.floor(x / 4), Math.floor(z / 4)];
+      for (let i = -1; i <= 1; i++) {
+        for (let k = -1; k <= 1; k++) {
+          for (const [q, qx, qz] of near.get(`${cx + i},${cz + k}`) ?? []) {
+            if (q.id > p.id && driven[p.id] && driven[q.id] && !apart(p, q) && Math.hypot(qx - x, qz - z) < size.width + 2 * t.sideGap) driven[q.id] = 0;
+          }
+        }
+      }
+    }
+  }
+  const cramped = (turn) =>
+    (junctionAt[turn.id] && (turn.in.length < room || turn.out.length < room)) || (groupAt[turn.in.id] && groupAt[turn.out.id] && turn.out.to === turn.in.from);
+  for (const p of paths) if (driven[p.id] && p.next.length && p.next.every(cramped)) driven[p.id] = 0;
+  let ways;
+  for (let n = -1; n !== driven.reduce((sum, d) => sum + d, 0); ) {
+    n = driven.reduce((sum, d) => sum + d, 0);
+    ways = paths.map((p) => (p.kind === 'run' ? p.next.filter((turn) => driven[turn.out.id] && !cramped(turn)) : null));
+    for (const p of paths) if (driven[p.id] && p.next.length && !ways[p.id].length) driven[p.id] = 0;
+  }
+  const barrierClear = 1.5 * (tables.osm?.barrier ?? 0);
+  const leaveAt = new Float64Array(paths.length);
+  for (const p of paths) leaveAt[p.id] = p.kind === 'run' && nodes[p.to].exit ? p.length - barrierClear - size.length / 2 : p.length;
+  const exits = paths.filter((p) => driven[p.id] && nodes[p.from].exit && p.length > 2 * (barrierClear + size.length));
+
+  // m/s each path is driven at, at most: its edge's limit; a turn takes the limit of the edge it turns onto.
+  const cruise = new Float64Array(paths.length);
+  for (const p of paths) cruise[p.id] = (p.kind === 'run' ? p.edge : p.out.edge).limit / 3.6;
+  const top = Math.max(...cruise);
+
   // Sets the car's pose from its place on its lane, and the prim it is on.
   function place(car) {
     car.prim = poseAt(car.lane, car.s, car);
   }
 
-  // Plans the route on to PLAN m past the path the car is on; it stays shorter at a dead end, where the car leaves
-  // at the lane's end.
+  // Plans the route on to PLAN m past the path the car is on, and on out of a crossing group of several nodes, which
+  // lets cars in by their way through it (see admit); it stays shorter at a dead end or edge exit, where the car leaves.
   function extend(route) {
     let ahead = 0;
     for (let i = 1; i < route.length; i++) ahead += route[i].length;
-    while (ahead < PLAN) {
+    while (ahead < PLAN || groupAt[route.at(-1).id]?.list) {
       const last = route.at(-1);
-      const next = last.kind === 'run' ? pick(last.next) : last.out;
+      const next = last.kind === 'run' ? (groupAt[last.id] ? onward(route, last) : pick(ways[last.id])) : last.out;
       if (!next) return;
       route.push(next);
       ahead += next.length;
     }
+  }
+  // A turn on from `last`, a run between two nodes of a crossing group, picked at random from the ones that don't lead
+  // back to a node of the group the route passed already (#63: cars went round Monti's small rings of junctions, twice
+  // at times, holding the others up); from all, should none.
+  function onward(route, last) {
+    const list = ways[last.id];
+    let n = 0;
+    for (let i = 0; i < list.length; i++) if (!revisits(route, list[i])) n++;
+    if (!n) return pick(list);
+    let k = Math.floor(random() * n);
+    for (let i = 0; i < list.length; i++) if (!revisits(route, list[i]) && k-- === 0) return list[i];
+  }
+  function revisits(route, turn) {
+    const g = groupAt[turn.id];
+    if (groupAt[turn.out.id] !== g) return false;
+    for (let i = route.length - 1; i >= 0 && groupAt[route[i].id] === g; i--) if (route[i].kind === 'turn' && route[i].node === turn.out.to) return true;
+    return false;
   }
 
   // shortcut: "out of view" is far enough away and not within `spawnView` of the truck's heading, ahead or behind, nor
@@ -185,21 +295,25 @@ export function createTraffic(tables, map, random) {
     return away >= distance ** 2 && along * along < away * viewCos * viewCos && across * across < away * viewCos * viewCos;
   }
 
-  // Where a new car may appear: every 10 m along each lane run, clear of its ends by half a car.
+  // Where a new car may appear: every 10 m along each driven lane run but the ones in a crossing group (between its
+  // nodes), clear of its ends by half a car; and at each edge exit, just past its barrier.
   const slots = [];
+  const slotAt = (path, s) => {
+    const slot = { path, s, x: 0, z: 0, heading: 0 };
+    poseAt(path, s, slot);
+    return slot;
+  };
   for (const p of paths) {
-    if (p.kind !== 'run') continue;
-    for (let s = size.length / 2; s <= p.length - size.length / 2; s += 10) {
-      const slot = { path: p, s, x: 0, z: 0, heading: 0 };
-      poseAt(p, s, slot);
-      slots.push(slot);
-    }
+    if (!driven[p.id] || groupAt[p.id]) continue;
+    for (let s = size.length / 2; s <= p.length - size.length / 2; s += 10) slots.push(slotAt(p, s));
   }
+  const exitSlots = exits.map((p) => slotAt(p, barrierClear + size.length / 2));
 
   // One new car, standing, on a random hidden lane place in the spawn ring (for a police car, from outside its sight
-  // radius as far out as the city goes, so it never witnesses as it appears) with no other car within the look-ahead.
-  // The place is drawn at random until one fits, up to SPAWN_TRIES times, so every place that does is as likely; with
-  // none found, the next step tries again.
+  // radius as far out as the city goes, so it never witnesses as it appears) with no other car within the look-ahead;
+  // or, for a `exitSpawn` share of them, at an edge exit in the ring, coming in from beyond the map, seen or not. The
+  // place is drawn at random until one fits, up to SPAWN_TRIES times, so every place that does is as likely; with none
+  // found, the next step tries again.
   const SPAWN_TRIES = 64; // the grid city's ring is ~1/13 of its places: under 1 % of calls in an empty city find none
   const clear = (p) => {
     for (let i = 0; i < cars.length; i++) if ((cars[i].x - p.x) ** 2 + (cars[i].z - p.z) ** 2 < t.lookAhead ** 2) return false;
@@ -208,10 +322,13 @@ export function createTraffic(tables, map, random) {
   function spawn(truck, police) {
     const near = police ? Math.max(t.spawnDistance[0], tables.police.radius) : t.spawnDistance[0];
     const far = police ? Infinity : t.spawnDistance[1];
+    const atExit = exitSlots.length > 0 && random() < t.exitSpawn; // no draw on a map without exits: the grid's stay as they were
+    const list = atExit ? exitSlots : slots;
     let at = null;
-    for (let i = 0; i < SPAWN_TRIES && !at && slots.length; i++) {
-      const p = pick(slots);
-      if (hidden(p, truck, near) && (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2 <= far ** 2 && clear(p)) at = p;
+    for (let i = 0; i < SPAWN_TRIES && !at && list.length; i++) {
+      const p = pick(list);
+      const d2 = (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
+      if ((atExit ? d2 >= near ** 2 : hidden(p, truck, near)) && d2 <= far ** 2 && clear(p)) at = p;
     }
     if (!at) return;
     const { path, s } = at;
@@ -319,12 +436,14 @@ export function createTraffic(tables, map, random) {
   let truckAt = null; // the crossing group the truck is the first vehicle of an approach to, since step `truckSince`
   let truckSince = 0;
   let truckStill = 0; // s the truck has stood still
+  const patience = t.patience / tables.loop.step; // in steps, as `since` counts
   function at(g) {
     if (g.stamp === now) return g;
     g.stamp = now;
     g.inside = 0;
     g.blocked = false;
     g.kinds.fill(0);
+    g.occupied?.fill(0);
     for (let a = 0; a < g.approaches.length; a++) g.approaches[a].front.on = false;
     atCrossings.push(g);
     return g;
@@ -337,25 +456,45 @@ export function createTraffic(tables, map, random) {
       g.kinds[a] |= kind;
     }
   }
-  function arrive(g, a, car, short, kind) {
+  // Car `car` (the truck for null) first of approach a, `short` m from it, on route path `i` into it.
+  function arrive(g, a, car, short, kind, i) {
     const f = at(g).approaches[a].front;
     if (f.on && f.short <= short) return;
     f.on = true;
     f.car = car;
     f.short = short;
     f.kind = kind;
+    f.at = i;
   }
-  // A car in crossing group g holds it for the approach it drove in by.
-  const holdFor = (g, car) => hold(g, car.via && groupAt[car.via.id] === g ? approachAt[car.via.id] : -1, car.via ? moveAt[car.via.id] : OTHER);
+  // A car in crossing group g holds it for the approach it drove in by; in one of several nodes, the paths there it
+  // still drives from route path `i` on (the one its rear is on for -1).
+  function holdFor(g, car, i) {
+    hold(g, car.via && groupAt[car.via.id] === g ? approachAt[car.via.id] : -1, car.via ? moveAt[car.via.id] : OTHER);
+    if (!g.occupied) return;
+    if (i < 0) g.occupied[localAt[car.prev.id]] = 1;
+    else mark(g, car, i, g.occupied);
+  }
+  // Marks in `set` the paths of group g (of several nodes) on the car's route from path `i` on, as long as it stays in g.
+  function mark(g, car, i, set) {
+    for (let k = i; k < car.route.length && groupAt[car.route[k].id] === g; k++) set[localAt[car.route[k].id]] = 1;
+  }
+  // Whether one of those paths comes too near one marked in `set` (see clash).
+  function clashes(g, car, i, set) {
+    for (let k = i; k < car.route.length && groupAt[car.route[k].id] === g; k++) {
+      const near = g.clash[localAt[car.route[k].id]];
+      for (let n = 0; n < near.length; n++) if (set[near[n]]) return true;
+    }
+    return false;
+  }
 
   function rightOfWay(truck) {
     atCrossings.length = 0;
     for (let ci = 0; ci < cars.length; ci++) {
       const car = cars[ci];
       const lg = groupAt[car.lane.id];
-      if (lg) holdFor(lg, car);
+      if (lg) holdFor(lg, car, 0);
       const pg = car.prev && car.s < size.length / 2 ? groupAt[car.prev.id] : null; // its rear still in one
-      if (pg && pg !== lg) holdFor(pg, car);
+      if (pg && pg !== lg) holdFor(pg, car, -1);
       let dist = car.lane.length - car.s; // centre to the start of the next path
       for (let i = 1; i < car.route.length; i++) {
         const p = car.route[i];
@@ -365,9 +504,11 @@ export function createTraffic(tables, map, random) {
         dist += p.length;
         if (!entering || short > t.giveWay) continue;
         // A car waiting for room past the crossing, or behind the truck, doesn't hold it up for the others.
-        if (!stoppable(car, short)) hold(g, approachAt[p.id], moveAt[p.id]);
-        else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOf(car, truckBox) - size.length / 2 >= short) {
-          arrive(g, approachAt[p.id], car, short, moveAt[p.id]);
+        if (!stoppable(car, short)) {
+          hold(g, approachAt[p.id], moveAt[p.id]);
+          if (g.occupied) mark(g, car, i, g.occupied);
+        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOf(car, truckBox) - size.length / 2 >= short) {
+          arrive(g, approachAt[p.id], car, short, moveAt[p.id], i);
         }
       }
     }
@@ -389,7 +530,7 @@ export function createTraffic(tables, map, random) {
       const run = slot >= 0 ? nodes[node].slots[slot].in : null; // none against a one-way
       if (behind || !g || !run || approachAt[run.id] < 0 || short <= 0 || short > (moving ? t.giveWay : t.truckLine)) continue;
       if (truckNodes[0].behind && groupOfNode[truckNodes[0].node] === g) continue; // on from a node of the same crossing
-      arrive(g, approachAt[run.id], null, short, OTHER);
+      arrive(g, approachAt[run.id], null, short, OTHER, -1);
     }
 
     // When each first vehicle arrived: a car or the truck that was already the first of an approach to this
@@ -419,8 +560,25 @@ export function createTraffic(tables, map, random) {
       const g = atCrossings[i];
       g.go = 0;
       if (g.blocked) continue;
+      if (g.list) {
+        admit(g);
+        continue;
+      }
       const A = g.approaches;
       let inside = g.inside;
+      // A car that has given way `patience` s goes next (#63: a stream from its right held one there 44 s and more):
+      // no one else drives in, and once the crossing is clear it does. Not while the truck is there: it has truckHold.
+      let waited = -1;
+      for (let a = 0; a < A.length; a++) {
+        const w = A[a].front;
+        if (w.on && !w.car) waited = -2;
+        if (waited === -2) break;
+        if (w.on && !(inside & bit(a)) && now - w.since > patience && (waited < 0 || w.since < A[waited].front.since)) waited = a;
+      }
+      if (waited >= 0) {
+        if (!inside) g.go = bit(waited);
+        continue;
+      }
       if (!inside) {
         let anyFree = false;
         for (let a = 0; a < A.length; a++) anyFree ||= A[a].front.on && free(g, a);
@@ -440,6 +598,51 @@ export function createTraffic(tables, map, random) {
     }
   }
 
+  // Who may drive into a crossing group of several nodes (#63: on Monti such groups are up to 70 m across, and one
+  // approach at a time held cars there over 40 s): the first vehicle of each approach in turn, each car if none of its
+  // paths through the group clashes with one a car in it still drives (see clash), nor with one of a vehicle before it
+  // in turn. The turn: a car that has given way `patience` s, then one that gives way to none of the others whose way
+  // clashes with its own; the first to arrive of each. After the truck, nobody.
+  function admit(g) {
+    const A = g.approaches;
+    g.reserved.fill(0);
+    let left = 0;
+    for (let a = 0; a < A.length; a++) if (A[a].front.on) left |= bit(a);
+    let truck = false;
+    while (left) {
+      let next = -1;
+      let rank = 0;
+      for (let a = 0; a < A.length; a++) {
+        if (!(left & bit(a))) continue;
+        const w = A[a].front;
+        const r = w.car && now - w.since > patience ? 0 : unhindered(g, a, left) ? 1 : 2;
+        const v = next < 0 ? null : A[next].front;
+        if (!v || r < rank || (r === rank && (w.since < v.since || (w.since === v.since && (w.car?.id ?? 0) < (v.car?.id ?? 0))))) [next, rank] = [a, r];
+      }
+      left &= ~bit(next);
+      const w = A[next].front;
+      if (!w.car) truck = true;
+      if (truck) continue;
+      if (!clashes(g, w.car, w.at, g.occupied) && !clashes(g, w.car, w.at, g.reserved)) g.go |= bit(next);
+      mark(g, w.car, w.at, g.reserved);
+    }
+  }
+  // Whether the first vehicle of approach a of group g gives way to none of the others in `left` (bits) whose way
+  // through the group clashes with its own (the truck's always does).
+  function unhindered(g, a, left) {
+    const A = g.approaches;
+    const w = A[a].front;
+    for (let b = 0; b < A.length; b++) {
+      if (b === a || !(left & bit(b)) || !yields(A, a, b)) continue;
+      const v = A[b].front;
+      if (!w.car || !v.car) return false;
+      g.scratch.fill(0);
+      mark(g, v.car, v.at, g.scratch);
+      if (clashes(g, w.car, w.at, g.scratch)) return false;
+    }
+    return true;
+  }
+
   // Whether approach a of group g gives way to approach b: one of a higher road class, or of the same on its right.
   const yields = (A, a, b) => A[b].rank > A[a].rank || (A[b].rank === A[a].rank && A[a].right === b);
   // Whether approach a's move `ka` goes with approach b's moves `kb` (bits): coming straight at each other, both
@@ -452,7 +655,9 @@ export function createTraffic(tables, map, random) {
     return true;
   }
   // Whether approach a of group g may drive in beside the approaches `inside` (bits): its move goes with theirs, and
-  // one not in it yet gives way to no approach waiting there whose move doesn't go with it.
+  // one not in it yet gives way to no approach waiting there whose move doesn't go with it. Through a crossing of
+  // several nodes, a car follows the ones of its own approach in it only on the same first turn (#63: on another, it
+  // met them again at a node further on).
   function joins(g, a, inside) {
     const A = g.approaches;
     const w = A[a].front;
@@ -584,7 +789,6 @@ export function createTraffic(tables, map, random) {
   // Don't block the box: whether the lane just past the box (crossing or light junction) that route path `i`
   // drives into has no room for the car, because a car or the truck slower than `boxSpeed` is less than a car
   // length and `followGap` beyond it. False while the planned route ends inside the box.
-  const room = size.length + t.followGap;
   // m from the exit to the centre of a car that can be queued there: the far corner of the strip `room` long,
   // plus half the car's diagonal, plus 1 m to spare against rounding
   const queueReach = Math.hypot(room, size.width / 2 + t.sideGap) + Math.hypot(size.length, size.width) / 2 + 1;
@@ -635,6 +839,7 @@ export function createTraffic(tables, map, random) {
   function targetSpeed(ci, truck, lights) {
     const car = cars[ci];
     curves(ci);
+    limits(ci);
     let speed = targets[ci];
     let dist = car.lane.length - car.s; // centre to the start of the next path
     for (let i = 1; i < car.route.length; i++) {
@@ -658,15 +863,17 @@ export function createTraffic(tables, map, random) {
     // before the car is half way round.
     behind(ci, car, 0);
     if (car.prim.r) behindCurve(ci, car);
+    behindOnRoute(ci, car);
   }
 
   // Sets targets[ci] to the fastest cars[ci] may go round the curves on its route: on the one it is on, and able
-  // to slow to the speed of each one ahead by its start. Apart from targetSpeed, as are behindCurve() and behind(),
-  // so V8 still inlines the small helpers they call (#61: one function holding them all allocated twice as much).
-  const curveReach = t.speed ** 2 / (2 * t.brake); // m from which a curve can't slow a car below cruise
+  // to slow to the speed of each one ahead by its start; and no faster than the limit of the path it is on. Apart from
+  // targetSpeed, as are limits(), behindCurve() and behind(), so V8 still inlines the small helpers they call (#61: one
+  // function holding them all allocated twice as much; #63 again, with the limits in here).
+  const curveReach = top ** 2 / (2 * t.brake); // m from which a curve or limit can't slow a car below cruise
   function curves(ci) {
     const car = cars[ci];
-    let speed = car.prim.r ? turnSpeed(car.prim.r) : t.speed;
+    let speed = Math.min(cruise[car.lane.id], car.prim.r ? turnSpeed(car.prim.r) : top);
     let dist = -car.s; // centre to the start of the path
     for (let i = 0; i < car.route.length && dist < curveReach; i++) {
       const p = car.route[i];
@@ -677,6 +884,17 @@ export function createTraffic(tables, map, random) {
       dist += p.length;
     }
     targets[ci] = speed;
+  }
+
+  // Caps targets[ci] so cars[ci] slows to the limit of each path ahead by the time its front bumper gets there (#63).
+  function limits(ci) {
+    const car = cars[ci];
+    let dist = car.lane.length - car.s; // centre to the start of route path i
+    for (let i = 1; i < car.route.length && dist < curveReach; i++) {
+      const p = car.route[i];
+      targets[ci] = Math.min(targets[ci], limit(dist - size.length / 2, cruise[p.id]));
+      dist += p.length;
+    }
   }
 
   function behindCurve(ci, car) {
@@ -695,6 +913,23 @@ export function createTraffic(tables, map, random) {
       targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, footprints[found[k]]) - size.length / 2 - t.followGap));
     }
     targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, truckBox) - size.length / 2 - t.followGap));
+  }
+
+  // Caps targets[ci] to keep `followGap` behind a car that turned off the car's route less than a car's length ago,
+  // where its footprint is in the car's way, whichever way it now faces (#63: one stopped just round a tight right turn
+  // on Monti, its rear still across the junction, was hit by the next car turning left; follows() let it go).
+  function behindOnRoute(ci, car) {
+    for (let k = nearby(car.x, car.z, reach) - 1; k >= 0; k--) {
+      const other = cars[found[k]];
+      if (found[k] === ci || other.s >= size.length || !other.prev) continue;
+      let off = other.prev === car.lane;
+      let dist = car.lane.length - car.s; // centre to the start of route path i
+      for (let i = 1; i < car.route.length && dist < reach && !off; i++) {
+        off = other.prev === car.route[i];
+        dist += car.route[i].length;
+      }
+      if (off) targets[ci] = Math.min(targets[ci], limit(aheadOf(car, footprints[found[k]]) - size.length / 2 - t.followGap));
+    }
   }
 
   // Drops cars that left the road or (police aside) the truck's surroundings, spawns one while fewer than `count`
@@ -726,9 +961,9 @@ export function createTraffic(tables, map, random) {
       const car = cars[i];
       car.speed = held.has(car.id) ? 0 : Math.min(targets[i], car.speed + t.accel * dt);
       car.s += car.speed * dt;
-      while (car.s >= car.lane.length) {
+      while (car.s >= (car.route.length === 1 ? leaveAt[car.lane.id] : car.lane.length)) {
         if (car.route.length === 1) {
-          car.gone = true; // dead end
+          car.gone = true; // dead end or edge exit
           break;
         }
         car.s -= car.lane.length;

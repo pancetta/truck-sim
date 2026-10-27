@@ -149,11 +149,17 @@ export const lights = {
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
   redLight: 100, // only while a police car sees the truck (see police)
+  speeding: 50, // only while a police car sees the truck, at most once per `speeding.cooldown`
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
 };
 
-// km/h in town, everywhere: AI cars cruise at it and the speedometer turns red above it. No fine for speeding.
+// km/h in town on the grid city (on Monti each edge has its road class's, tables.osm): AI cars cruise at it and the
+// speedometer turns red above it.
 export const speedLimit = 50;
+
+// The speeding rule fine (fines.speeding): over the limit of the edge the truck is on by more than `tolerance` km/h,
+// while a police car sees it; the next fine no sooner than `cooldown` s later, so one stretch of speeding is one fine.
+export const speeding = { tolerance: 10, cooldown: 30 };
 
 // Road signs (map.signs, not solid), on the right-hand pavement facing the traffic. Speed limit signs where a street
 // begins, that is on its first tile out of a light junction or out of the road round the city's edge; right before
@@ -173,8 +179,7 @@ export const signs = {
 // AI cars (sizes from city.obstacles.car). The lane runs `laneOffset` right of the road's centre line, so a
 // car keeps clear of the parked ones (3.6 m out) and of oncoming traffic.
 export const traffic = {
-  laneOffset: 2.2, // m
-  speed: speedLimit / 3.6, // m/s cruising, at the limit
+  laneOffset: 2.2, // m; cars cruise at the limit of the edge they are on and slow down before a slower one
   turnAccel: 4.5, // m/s² sideways round corners: ~4.6 m/s turning right (4.8 m radius), ~6.4 m/s left (9.2 m)
   accel: 2, // m/s²
   brake: 4, // m/s², planned braking for stop lines, corners and the car or truck ahead
@@ -192,6 +197,9 @@ export const traffic = {
   // truck doesn't hold up the city
   truckHold: 10,
   truckLine: 6, // m
+  // s a car waits at an unsignalled crossing, giving way, before the others let it go first: no one else drives in,
+  // and it goes once the crossing is clear
+  patience: 20,
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
   contactGap: 0.5, // m the truck must back off from a car it touched before touching it again is a new contact
   spawnDistance: [45, 150], // m from the truck, nearest and farthest, for new cars
@@ -200,6 +208,7 @@ export const traffic = {
   // such a line from 23 m out on)
   spawnView: 0.3,
   despawnDistance: 180, // m from the truck past which a car out of view leaves
+  exitSpawn: 0.25, // share of new cars that come in by an edge exit within the spawn ring (where the map has any)
   // Priority at junctions without lights by road class, higher first; right before left between equal ones
   priority: { secondary: 3, tertiary: 2, residential: 1, unclassified: 1, service: 0 },
 };
@@ -270,6 +279,10 @@ export const osm = {
   barrier: 0.6, // m thick, the truck-only barrier across each edge exit, in from the map's edge by as much
   floors: [3, 5], // storeys of a building with no height or levels in OSM, seeded per building
   minArea: 2, // m²; smaller pieces left of a cut-back building are dropped
+  // Parked cars (osm.js parkedCars) along one kerb of these classes where the width leaves room beside the lane: a
+  // `density` share of the places, `gap` m apart, `kerb` m off the road's edge, and `junction` m clear of junction
+  // boxes and `spot` m of spot zones
+  parked: { classes: ['residential', 'unclassified', 'service'], density: 0.6, gap: 1.2, kerb: 0.2, junction: 8, spot: 6 },
 };
 
 // Procedural buildings on the building tiles (buildings.js), in the style of the Monti prototype (ADR 0001). Each run

@@ -344,7 +344,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const paints = tables.vehicles.paints.map((hex) => new THREE.Color(hex));
   const parked = map.colliders.filter((c) => c.kind === 'car').map((b) => {
     const { x, z } = centre(b);
-    const heading = parkedHeading(b.points) + (hash(x, z) > 0.5 ? Math.PI : 0);
+    const heading = b.heading ?? parkedHeading(b.points) + (hash(x, z) > 0.5 ? Math.PI : 0); // Monti's face their way
     const covered = hash(z, x) * 7 % 1 < tables.vehicles.covered;
     return { x, z, heading, kind: covered ? carTypes.length : Math.floor(hash(x, z) * 9973) % carTypes.length, paint: pick(paints, z, x) };
   });

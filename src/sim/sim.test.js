@@ -6,6 +6,21 @@ import city from '../city.txt?raw';
 import { createAutopilot } from '../autopilot.js';
 import { poseAt } from './lanes.js';
 import { createGraph } from './graph.js';
+import { buildOsmMap } from './osm.js';
+import { readFileSync } from 'node:fs';
+
+// The real Monti extract (spec #59), built with `t`, for the soaks.
+const monti = (t) => buildOsmMap(JSON.parse(readFileSync(`public/${tables.osm.file}`, 'utf8')), t);
+// The nearest point to (x, z) at least 14 m off every road of `map`, searched in rings round it: where a parked truck
+// meets no car.
+function offRoad(map, x, z) {
+  for (let r = 0; ; r += 5) {
+    for (let a = 0; a < 2 * Math.PI; a += 0.3) {
+      const p = { x: x + r * Math.cos(a), z: z + r * Math.sin(a) };
+      if (map.graph.nearest(p.x, p.z).d > 14) return p;
+    }
+  }
+}
 
 // Each Sim's map, so addCar() can find its lane paths.
 const maps = new WeakMap();
@@ -1818,6 +1833,51 @@ describe('Sim: traffic lights', () => {
   });
 });
 
+describe('Sim: speeding (#63)', () => {
+  // A long street and, behind a row of buildings, a parallel one; a police car stands at the street's west end (or on
+  // the parallel one) when added, seeing far (radius 500 m), and the truck drives east at a set speed, put back at
+  // the same place every step so it stays in range.
+  const STREETS = `
+    ...........
+    ###########
+    ...........`;
+  const EAST = Math.PI / 2;
+  const money = 500;
+  const t = { ...noPolice, police: { ...noPolice.police, radius: 500 }, speeding: { ...tables.speeding, cooldown: 2 } };
+
+  // The fines taken while the truck drives `kmh` for `seconds`, with the police car on `row`.
+  function fines(kmh, seconds, row = 0) {
+    const sim = createSim(t, parseMap(STREETS, t), seeded(1), { ...freshProfile(), money });
+    addCar(sim, 99, [[0, row], [1, row], [2, row]], true);
+    const pose = { x: 6.5 * TILE, z: 0.5 * TILE + tables.traffic.laneOffset, heading: EAST };
+    let count = 0;
+    for (let s = 0; s < seconds; s += DT) {
+      Object.assign(sim.state.truck, pose, { speed: kmh / 3.6 });
+      const before = sim.state.lastFine;
+      sim.step(DT, IDLE);
+      if (sim.state.lastFine !== before) count++;
+    }
+    expect(sim.state.speedLimit).toBe(tables.speedLimit);
+    return { count, reason: sim.state.lastFine?.reason, money: sim.state.profile.money };
+  }
+  const over = tables.speedLimit + tables.speeding.tolerance;
+
+  test('over the limit by more than the tolerance while a police car sees it: fined', () => {
+    expect(fines(over + 2, 1)).toEqual({ count: 1, reason: 'speeding', money: money - tables.fines.speeding });
+  });
+
+  test('within the tolerance, or unseen behind the buildings: not fined', () => {
+    expect(fines(over - 1, 1).count).toBe(0);
+    expect(fines(over + 20, 1, 2).count).toBe(0);
+  });
+
+  test('one fine per cooldown, however long the speeding lasts', () => {
+    expect(fines(over + 2, 1.9).count).toBe(1);
+    expect(fines(over + 2, 2.1).count).toBe(2);
+    expect(fines(over + 2, 4.1).count).toBe(3);
+  });
+});
+
 describe('Sim: traffic', () => {
   const { followGap, stopGap } = tables.traffic;
   const CAR = tables.city.obstacles.car;
@@ -2538,7 +2598,7 @@ describe('Sim: traffic on the road graph', () => {
   function star(arms, classes = [], oneWay = []) {
     const out = (a, m) => ({ x: Math.cos((a * Math.PI) / 180) * m, z: Math.sin((a * Math.PI) / 180) * m });
     const nodes = [{ x: 0, z: 0 }, ...arms.map((a) => out(a, 60))];
-    const edges = arms.map((a, i) => ({ from: 0, to: i + 1, class: classes[i] ?? 'residential', width: TILE, name: '', oneWay: !!oneWay[i], points: [nodes[0], nodes[i + 1]] }));
+    const edges = arms.map((a, i) => ({ from: 0, to: i + 1, class: classes[i] ?? 'residential', width: TILE, name: '', oneWay: !!oneWay[i], limit: tables.speedLimit, points: [nodes[0], nodes[i + 1]] }));
     const graph = createGraph(nodes, edges, tables.traffic.laneOffset, tables.city.cell);
     const map = { bounds: { minX: -80, minZ: -80, maxX: 80, maxZ: 80 }, colliders: [], spots: [], lights: [], signs: [], graph };
     const sim = createSim(quiet, map, seeded(1));
@@ -2622,7 +2682,7 @@ describe('Sim: traffic on the road graph', () => {
     const nodes = [{ x: 0, z: 0 }, ...[90, 0, -90, 180].map(out)];
     const edges = [
       { from: 0, to: 1 }, { from: 0, to: 2, oneWay: true }, { from: 0, to: 3 }, { from: 4, to: 0, oneWay: true },
-    ].map((e) => ({ class: 'residential', width: TILE, name: '', oneWay: false, ...e, points: [nodes[e.from], nodes[e.to]] }));
+    ].map((e) => ({ class: 'residential', width: TILE, name: '', oneWay: false, limit: tables.speedLimit, ...e, points: [nodes[e.from], nodes[e.to]] }));
     const graph = createGraph(nodes, edges, tables.traffic.laneOffset, tables.city.cell);
     const map = { bounds: { minX: -80, minZ: -80, maxX: 80, maxZ: 80 }, colliders: [], spots: [], lights: [], signs: [], graph };
     const sim = createSim({ ...busy, orders: { ...tables.orders } }, map, seeded(3), { ...freshProfile(), money: 500 });
@@ -2763,8 +2823,8 @@ describe('Sim: traffic soak', () => {
   // Steps `seconds` with the truck driven by `drive(sim)` (returns step i → input), or parked at each of `poses`
   // in turn for an equal share of the time. Returns the car-made contacts with the truck and between cars and, per
   // pose, the cars that came close.
-  function soak(seed, seconds, drive, poses = []) {
-    const sim = createSim(busy, map, seeded(seed));
+  function soak(seed, seconds, drive, poses = [], onMap = map) {
+    const sim = createSim(busy, onMap, seeded(seed));
     const input = drive?.(sim);
     const steps = seconds * 60;
     const near = poses.map(() => new Set());
@@ -2834,6 +2894,43 @@ describe('Sim: traffic soak', () => {
     // Cars came close at every spot.
     for (const [i, name] of names.entries()) expect([name, near[i]]).not.toEqual([name, 0]);
   }, 120_000);
+
+  test('on Monti too (#63): none drive into the truck or each other', () => {
+    const m = monti(busy);
+    const { nodes, edges } = m.graph;
+    // The truck parked in junction boxes: Via Cavour's five-arm one, the Largo Visconti Venosta ring, the crossings on
+    // Via Urbana and the light junction, each at a slant.
+    const box = (x, z, heading) => {
+      const n = nodes.reduce((best, nd) => (Math.hypot(nd.x - x, nd.z - z) < Math.hypot(best.x - x, best.z - z) ? nd : best));
+      return { x: n.x, z: n.z, heading, speed: 0 };
+    };
+    const boxes = [box(-103, 127, 0.4), box(85, 64, 2), box(219, -212, -1), box(311, -235, 0.8)];
+    // Reversing back and forth in the right-hand lane of Via Cavour's longest two-way stretch.
+    const cavour = edges.filter((e) => e.name === 'Via Cavour' && !e.oneWay).reduce((a, b) => (a.length > b.length ? a : b));
+    let contacts = 0;
+    let crashes = 0;
+    for (const seed of [1, 2, 3]) {
+      for (const run of [soak(seed, 40 * boxes.length, null, boxes, m)]) [contacts, crashes] = [contacts + run.contacts, crashes + run.crashes];
+      // Anywhere across a road, any heading.
+      const random = seeded(seed + 100);
+      const poses = Array.from({ length: 10 }, () => {
+        const e = edges[Math.floor(random() * edges.length)];
+        const p = m.graph.pointAt(e, random() * e.length);
+        return { x: p.x + (random() - 0.5) * e.width * 0.6, z: p.z + (random() - 0.5) * e.width * 0.6, heading: random() * 2 * Math.PI, speed: 0 };
+      });
+      for (const run of [soak(seed, 20 * poses.length, null, poses, m)]) [contacts, crashes] = [contacts + run.contacts, crashes + run.crashes];
+      const reversing = (sim) => {
+        const p = m.graph.pointAt(cavour, cavour.length / 2);
+        const q = m.graph.pointAt(cavour, cavour.length / 2 + 1);
+        const heading = Math.atan2(q.x - p.x, q.z - p.z);
+        Object.assign(sim.state.truck, { x: p.x - Math.cos(heading) * cavour.laneOffset, z: p.z + Math.sin(heading) * cavour.laneOffset, heading, speed: 0 });
+        return (i) => (i % 600 < 200 ? GAS : BRAKE);
+      };
+      for (const run of [soak(seed, 120, reversing, [], m)]) [contacts, crashes] = [contacts + run.contacts, crashes + run.crashes];
+    }
+    expect(contacts).toBe(0);
+    expect(crashes).toBe(0);
+  }, 120_000);
 });
 
 describe('Sim: traffic gridlock soak', () => {
@@ -2875,16 +2972,19 @@ describe('Sim: traffic gridlock soak', () => {
     return ok;
   }
 
-  // The longest any car was stuck, in s, with the truck parked off the road or driven by the autopilot.
-  function longestStuck(cars, seed, auto) {
+  // The longest any car was stuck, in s, with the truck parked off the road or driven by the autopilot; on Monti
+  // (#63) parked off the road near `near` ({ x, z }).
+  function longestStuck(cars, seed, auto, near) {
     const counted = { ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: cars })) } };
-    const map = parseMap(city, counted);
+    const map = near ? monti(counted) : parseMap(city, counted);
     const sim = createSim(counted, map, seeded(seed));
     let input = () => IDLE;
     if (auto) {
       const pilot = createAutopilot(sim, map, counted);
       pilot.place();
       input = () => pilot.update(DT);
+    } else if (near) {
+      Object.assign(sim.state.truck, offRoad(map, near.x, near.z), { heading: 0, speed: 0 });
     } else {
       Object.assign(sim.state.truck, { x: 25.5 * TILE, z: 11.5 * TILE, heading: 0, speed: 0 }); // in a block
     }
@@ -2911,5 +3011,11 @@ describe('Sim: traffic gridlock soak', () => {
         expect(longest.filter((s) => s > limit)).toEqual([]);
       }, 120_000);
     }
+    // Monti (#63) has no autopilot loop before its spots (#64): the truck parks in the middle, near the Largo Visconti
+    // Venosta ring and Via Cavour's five-arm junction, and near the light junction and the crossings round it.
+    test(`Monti, ${cars} cars, the truck parked: no car stuck for over ${limit} s`, () => {
+      const longest = [{ x: 0, z: 0 }, { x: 260, z: -200 }].flatMap((near) => [1, 2, 3].map((seed) => Math.round(longestStuck(cars, seed, false, near))));
+      expect(longest.filter((s) => s > limit)).toEqual([]);
+    }, 120_000);
   }
 });

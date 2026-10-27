@@ -6,6 +6,8 @@ import { createTraffic } from './traffic.js';
 import { parseMap } from './map.js';
 import city from '../city.txt?raw';
 import { createAutopilot, seeded } from '../autopilot.js';
+import { buildOsmMap } from './osm.js';
+import { readFileSync } from 'node:fs';
 
 // Bench (#31): the traffic step at 100 cars, on the ?perf&auto drive. The spawn ring is widened to 400 m, as
 // in docs/perf/2026-10-baseline.md, so the city holds that many.
@@ -34,9 +36,9 @@ function drive(steps) {
   return { frames, lights: sim.state.lights.map((l) => ({ ...l })) };
 }
 
-test('the traffic step at 100 cars is fast and allocates next to nothing', () => {
-  const { frames, lights } = drive(1800);
-  const traffic = createTraffic(tables, map, seeded(1));
+// The traffic step at 100 cars on `onMap`, replaying `frames` (truck and light phases per step) against `lights`.
+function bench(onMap, frames, lights) {
+  const traffic = createTraffic(tables, onMap, seeded(1));
   const truck = { ...frames[0].truck };
   const held = new Set();
   const play = (i) => {
@@ -59,4 +61,21 @@ test('the traffic step at 100 cars is fast and allocates next to nothing', () =>
   console.info(`traffic step, ${traffic.cars.length} cars: ${(ms * 1000).toFixed(1)} µs (fastest batch), ${Math.round(bytes)} B allocated`);
   expect(ms).toBeLessThan(1);
   if (before !== undefined) expect(bytes).toBeLessThan(32 * 1024); // 5.4 MB per step before #31
+}
+
+test('the traffic step at 100 cars is fast and allocates next to nothing', () => {
+  const { frames, lights } = drive(1800);
+  bench(map, frames, lights);
+});
+
+// #63: on the real Monti extract, the truck standing in the middle, where the ring takes in nearly all the district.
+test('on Monti too', () => {
+  const monti = buildOsmMap(JSON.parse(readFileSync(`public/${tables.osm.file}`, 'utf8')), tables);
+  const sim = createSim({ ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } }, monti, seeded(1));
+  const frames = [];
+  for (let i = 0; i < 1800; i++) {
+    sim.step(step, { steer: 0, gas: 0, brake: 0 });
+    frames.push({ truck: { ...sim.state.truck }, phases: sim.state.lights.map((l) => l.phase) });
+  }
+  bench(monti, frames, sim.state.lights.map((l) => ({ ...l })));
 });

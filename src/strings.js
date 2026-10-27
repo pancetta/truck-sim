@@ -82,6 +82,7 @@ export const strings = {
   fine: 'Bußgeld',
   redLight: 'Rote Ampel', // a fine reason (state.lastFine.reason)
   collision: 'Unfall', // a fine reason
+  speeding: 'Zu schnell', // a fine reason
   policeSees: 'Polizei sieht dich', // HUD, while a police car sees the truck
   policeLettering: 'POLIZEI', // on the police cars' sides
   speedLimit: 'Höchstgeschwindigkeit', // HUD, the sign with state.speedLimit
