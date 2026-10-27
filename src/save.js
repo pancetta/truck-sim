@@ -16,8 +16,7 @@ export function createSave(storage, tables) {
   }
 
   function validate(data) {
-    // Migrations, oldest first, then the checks for the current version; any other version starts fresh.
-    if (isObject(data) && data.version === 1) data = { ...data, version: 2, distance: 0 }; // v2 added the odometer
+    // The checks for the current version; any other starts fresh (v1 and v2 were the grid city's, #67).
     if (!isObject(data) || data.version !== freshProfile().version) return null;
     const { money, rankPoints, distance, upgrades, owned, equipped } = data;
     if (!isAmount(money) || !isAmount(rankPoints) || !isAmount(distance)) return null;

@@ -3,8 +3,7 @@ import * as tables from './tables.js';
 import { strings } from './strings.js';
 import { createSim } from './sim/sim.js';
 import { createSave } from './save.js';
-import { parseMap } from './sim/map.js';
-import cityMap from './city.txt?raw';
+import { buildOsmMap } from './sim/osm.js';
 import { createControls } from './controls.js';
 import { createRenderer } from './renderer.js';
 import { createHud } from './hud.js';
@@ -29,11 +28,12 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 document.addEventListener('touchstart', (e) => e.target.closest?.('button') || e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
-// ?map=monti loads the Monti map (spec #59) instead of the grid city, for development until it replaces it (#67).
+// The Monti map (spec #59), built from its OpenStreetMap files; ?perf shows how long the build took.
 const fetchJson = async (file) => (await fetch(`${import.meta.env.BASE_URL}${file}`)).json();
-const monti = params.get('map') === 'monti';
-const [osmData, furniture] = monti ? await Promise.all([fetchJson(tables.osm.file), fetchJson(tables.osm.furniture)]) : [];
-const map = monti ? (await import('./sim/osm.js')).buildOsmMap(osmData, tables, furniture) : parseMap(cityMap, tables);
+const [osmData, furniture] = await Promise.all([fetchJson(tables.osm.file), fetchJson(tables.osm.furniture)]);
+const buildStart = performance.now();
+const map = buildOsmMap(osmData, tables, furniture);
+const mapBuild = performance.now() - buildStart;
 let storage = null;
 try {
   storage = window.localStorage;
@@ -111,7 +111,7 @@ function frame(now) {
 view.ready.then(() => {
   // A first frame behind the loading screen, so compiling the shaders (up to 1 s on the WebGL 2 backend) doesn't stall play.
   view.render(sim.state, { steer: 0 }, werkstatt.look, werkstatt.showroom);
-  perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto);
+  perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto, mapBuild);
   loading.remove();
   last = performance.now();
   requestAnimationFrame(frame);

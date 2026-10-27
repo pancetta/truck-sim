@@ -3,14 +3,8 @@ import { readFileSync } from 'node:fs';
 import * as tables from '../tables.js';
 import { buildOsmMap, parkedCars } from './osm.js';
 import { createSim, freshProfile, inside } from './sim.js';
-import { seeded } from '../autopilot.js';
+import { seeded, way, building, bounds } from './fixtures.js';
 
-// Inline OSM fixtures: a way is its highway class, points [[x, z]] in metres and extra tags. Node ids come from the
-// points, so ways sharing a point share a node, as in OSM.
-let ids = 0;
-const way = (highway, points, tags = {}) => ({ id: ++ids, tags: { highway, ...tags }, nodes: points.map(([x, z]) => `${x},${z}`), points });
-const building = (points, tags = {}) => ({ id: ++ids, tags: { building: 'yes', ...tags }, points: [...points, points[0]] });
-const bounds = { minX: -100, minZ: -100, maxX: 100, maxZ: 100 };
 const build = (...ways) => buildOsmMap({ bounds, ways }, tables);
 const { classes, pavement } = tables.osm;
 const GAS = { steer: 0, gas: 1, brake: 0 };

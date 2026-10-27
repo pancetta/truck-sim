@@ -1,5 +1,5 @@
 // The OSM map builder (spec #59, "Map module"): turns OpenStreetMap-shaped data into the map the Sim and the renderer
-// use, as parseMap() does for the grid city. `data` is public/maps/monti.json (from `npm run maps`) or a test's inline
+// use. `data` is public/maps/monti.json (from `npm run maps`) or a test's inline
 // fixture: { bounds: { minX, minZ, maxX, maxZ }, ways: [{ id, tags, nodes (highways only), points: [[x, z]] }] } in
 // metres, x east and z south. The city is flat. `furniture` is public/maps/monti-furniture.json or a fixture's:
 // { nodes: [{ x, z, tags }] }.
@@ -10,12 +10,11 @@
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
 //   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit.
-//   Props: the furniture's trees, bollards, fountains and waste baskets, solid, as the grid's plaza props (kinds
+//   Props: the furniture's trees, bollards, fountains and waste baskets, solid (kinds
 //     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
 //   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
 //   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay; `start`
 //     is the start spot's kerb lane pose, where a new game begins.
-// The map has no tiles: Sim and renderer parts that still need tiles skip it.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
@@ -97,7 +96,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
 
   // Lights where two streets cross: both go on through (two arms each), and each has an arm of a light class. A street
   // is told apart by its name, since OSM splits one into several ways (often a class apiece, so the class is the
-  // street's, not every arm's). One light per approach, as parseMap places them on the grid: the post on the near
+  // street's, not every arm's). One light per approach, German style: the post on the near
   // right corner, tables.city.obstacles.signal.inset into the junction, the stop line tables.lights.stopLine before
   // it; `axis` 0 for the first street's approaches and 1 for the rest, `half` its road's half width.
   const lights = [];
@@ -176,7 +175,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       }
     });
   }
-  const { size } = tables.city.plaza;
+  const size = tables.city.props;
   for (const p of bollards) colliders.push({ kind: 'bollard', ...outline(rect(p, [1, 0], size.bollard / 2, size.bollard / 2)) });
 
   // The street furniture where OSM puts it, unless that reaches into the road.

@@ -1,6 +1,6 @@
 // The road graph (spec #59, "Map module"): edges along the streets' centre lines between nodes (junctions and dead
-// ends), each with its lanes, and nodes with their arms. It doesn't know where its data comes from: parseMap builds it
-// from the grid city. A graph pose is { edge, s }: s m along the edge from its `from` node.
+// ends), each with its lanes, and nodes with their arms. It doesn't know where its data comes from: buildOsmMap (osm.js)
+// builds it. A graph pose is { edge, s }: s m along the edge from its `from` node.
 
 import { createCells } from './cells.js';
 import { lanePaths } from './lanes.js';
@@ -39,7 +39,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     const dx = b.x - a.x;
     const dz = b.z - a.z;
     const len = Math.hypot(dx, dz);
-    // m along the segment; divided once, so a point on a grid road lands on whole metres exactly
+    // m along the segment; divided once, so a point on a straight road lands on whole metres exactly
     const u = len ? Math.max(0, Math.min(len, ((x - a.x) * dx + (z - a.z) * dz) / len)) : 0;
     const t = len ? u / len : 0;
     const d = Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
@@ -63,8 +63,8 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   // The pose on the graph nearest (x, z), as closer() describes it. The cells within one cell of it settle it when
   // they hold an edge that near; otherwise every edge is tried, unless the caller only wants one that `near` (then the
   // pose has d over a cell and maybe no edge).
-  // shortcut: off the road (on the plaza) that is every edge on every call, about 7 µs a step on the grid city's 132
-  // segments and 60 on Monti's; search ring by ring if a bigger map or open area makes it show in ?perf.
+  // shortcut: off the road (on a square) that is every edge on every call, about 60 µs a step on Monti's segments;
+  // search ring by ring if a bigger map or open area makes it show in ?perf.
   function nearest(x, z, near = false) {
     const best = far();
     index.some(x - cellSize, z - cellSize, x + cellSize, z + cellSize, (seg) => {
@@ -161,7 +161,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   return { nodes, edges, paths: lanePaths(nodes, edges), nearest, project, onRoad, along, pointAt, towards, route };
 }
 
-// Segments of edge e; an edge of one point (a lone road tile) has one of no length.
+// Segments of edge e; an edge of one point has one of no length.
 const segments = (e) => Math.max(1, e.points.length - 1);
 
 // The points without repeats in a row (where a route starts or ends on a node).

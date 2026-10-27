@@ -3,13 +3,10 @@ import { getHeapStatistics } from 'node:v8';
 import * as base from '../tables.js';
 import { createSim } from './sim.js';
 import { createTraffic } from './traffic.js';
-import { parseMap } from './map.js';
-import city from '../city.txt?raw';
 import { createAutopilot, seeded } from '../autopilot.js';
-import { buildOsmMap } from './osm.js';
-import { readFileSync } from 'node:fs';
+import { monti } from './fixtures.js';
 
-// Bench (#31): the traffic step at 100 cars, on the ?perf&auto drive. The spawn ring is widened to 400 m, as
+// Bench (#31): the traffic step at 100 cars, on the ?perf&auto drive round Monti. The spawn ring is widened to 400 m, as
 // in docs/perf/2026-10-baseline.md, so the city holds that many.
 // shortcut: the thresholds catch a return to the O(n²), allocating step (1.6 ms and 5.4 MB per step on an idle
 // M2 before #31, 0.08 ms and 14 KB after), not small regressions. The time is the fastest of five batches, so a
@@ -18,7 +15,7 @@ import { readFileSync } from 'node:fs';
 // guard once CI's Node has it.
 const allocated = () => getHeapStatistics().total_allocated_bytes;
 const tables = { ...base, traffic: { ...base.traffic, spawnDistance: [45, 400], despawnDistance: 450 } };
-const map = parseMap(city, tables);
+const map = monti(tables);
 const { step } = tables.loop;
 
 // The truck and lights of the autopilot's loop, step by step, replayed below against 100 cars of their own.
@@ -36,9 +33,9 @@ function drive(steps) {
   return { frames, lights: sim.state.lights.map((l) => ({ ...l })) };
 }
 
-// The traffic step at 100 cars on `onMap`, replaying `frames` (truck and light phases per step) against `lights`.
-function bench(onMap, frames, lights) {
-  const traffic = createTraffic(tables, onMap, seeded(1));
+// The traffic step at 100 cars, replaying `frames` (truck and light phases per step) against `lights`.
+function bench(frames, lights) {
+  const traffic = createTraffic(tables, map, seeded(1));
   const truck = { ...frames[0].truck };
   const held = new Set();
   const play = (i) => {
@@ -65,18 +62,5 @@ function bench(onMap, frames, lights) {
 
 test('the traffic step at 100 cars is fast and allocates next to nothing', () => {
   const { frames, lights } = drive(1800);
-  bench(map, frames, lights);
-});
-
-// #63: on the real Monti extract, the truck standing in the middle, where the ring takes in nearly all the district.
-test('on Monti too', () => {
-  const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
-  const monti = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
-  const sim = createSim({ ...tables, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } }, monti, seeded(1));
-  const frames = [];
-  for (let i = 0; i < 1800; i++) {
-    sim.step(step, { steer: 0, gas: 0, brake: 0 });
-    frames.push({ truck: { ...sim.state.truck }, phases: sim.state.lights.map((l) => l.phase) });
-  }
-  bench(monti, frames, sim.state.lights.map((l) => ({ ...l })));
+  bench(frames, lights);
 });

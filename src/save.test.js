@@ -23,10 +23,11 @@ function fakeStorage(items = {}) {
 }
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
-const valid = { version: 2, money: 1234, rankPoints: 40, distance: 5678.9, upgrades: { motor: 2 }, owned: ['red', 'dice'], equipped: { paint: 'red', gimmick: 'dice' } };
-// The same progress as saved by version 1, before the distance counter.
+const valid = { version: 3, money: 1234, rankPoints: 40, distance: 5678.9, upgrades: { motor: 2 }, owned: ['red', 'dice'], equipped: { paint: 'red', gimmick: 'dice' } };
+// The same progress as saved by the grid city's versions: 1, before the distance counter, and 2 (#67: no migration).
 const { distance, ...v1Fields } = valid;
 const v1 = { ...v1Fields, version: 1 };
+const v2 = { ...valid, version: 2 };
 
 describe('save module', () => {
   test('load → change → save → load round-trips', () => {
@@ -56,21 +57,14 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 1 save loads as version 2 with all its progress kept and no distance yet', () => {
-    expect(stored(v1)).toEqual({ ...valid, distance: 0 });
-    // the same pruning as for a current save
-    expect(stored({ ...v1, upgrades: { motor: 2, turbo: 9 }, equipped: { paint: 'blue', gimmick: 'dice' } }))
-      .toEqual({ ...valid, distance: 0, equipped: { gimmick: 'dice' } });
-  });
-
-  test('an invalid version 1 save loads a fresh profile', () => {
-    for (const bad of [{ ...v1, money: -5 }, { ...v1, rankPoints: '40' }, { ...v1, upgrades: { motor: 4 } }, { ...v1, owned: 'red' }]) {
-      expect(stored(bad), JSON.stringify(bad)).toEqual(fresh);
-    }
+  test('a version 1 or 2 save (the grid city) loads as a fresh profile of the current version', () => {
+    expect(fresh.version).toBe(3);
+    expect(stored(v1)).toEqual(fresh);
+    expect(stored(v2)).toEqual(fresh);
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 3, '2', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 4, '3', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 

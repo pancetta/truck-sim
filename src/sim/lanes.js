@@ -15,7 +15,7 @@ export function lanePaths(nodes, edges) {
   for (const n of nodes) n.slots = n.arms.map((id) => ({ edge: edges[id], angle: 0, in: null, out: null }));
   // The slot of edge e at its `from` (or `to`) end; a loop's from end is its first slot there.
   const slotOf = (n, e, atFrom) => (atFrom ? nodes[n].arms.indexOf(e.id) : nodes[n].arms.lastIndexOf(e.id));
-  const drivable = edges.filter((e) => e.points.length > 1); // a lone road tile has nowhere to drive
+  const drivable = edges.filter((e) => e.points.length > 1); // an edge of one point has nowhere to drive
   for (const e of drivable) {
     const [a, b, y, z] = [e.points[0], e.points[1], e.points.at(-2), e.points.at(-1)];
     nodes[e.from].slots[slotOf(e.from, e, true)].angle = Math.atan2(b.z - a.z, b.x - a.x);
@@ -51,7 +51,7 @@ export function lanePaths(nodes, edges) {
 }
 
 // How far a node's box reaches out along its arms (`slots`): to where the kerbs of each two neighbouring arms meet,
-// and at least half the widest arm's width; none at a dead end. A grid crossing's is half a tile.
+// and at least half the widest arm's width; none at a dead end.
 function boxRadius(slots) {
   if (slots.length < 2) return 0;
   const sorted = slots.map(({ edge, angle }) => ({ half: edge.width / 2, angle })).sort((a, b) => a.angle - b.angle);
@@ -113,7 +113,7 @@ function trim(points, a, b) {
 
 // How far before and after each inner point of a lane's polyline its bend is rounded: as if the edge's centre line were
 // rounded half the road's width before and after its bend, so the lane on the inside of a bend turns tighter than the
-// one outside, as round a grid tile's corner; no more than the polyline has room for.
+// one outside, as round a street corner; no more than the polyline has room for.
 function roundings(points, width, offset) {
   return points.map((p, k) => {
     if (k === 0 || k === points.length - 1) return 0;

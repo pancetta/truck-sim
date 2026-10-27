@@ -1,116 +1,26 @@
-// Procedural buildings on the map's building tiles (#39), in the style of the Monti prototype (ADR 0001), numbers in
-// tables.buildings. planBuildings and facadeParts decide what stands where; buildingMeshes turns that into meshes.
+// Procedural buildings on the map's building outlines (#39, #65), in the style of the Monti prototype (ADR 0001),
+// numbers in tables.buildings. planBuildings and facadeParts decide what stands where; buildingMeshes turns that into
+// meshes.
 import * as THREE from 'three/webgpu';
-import { DIRS } from './sim/map.js';
 import { seeded } from './autopilot.js';
 import { ATLAS } from './facadePictures.js';
 import { createCells } from './sim/cells.js';
 import { inside } from './sim/sim.js';
 
-// Half the width of a dock's opening in its building's face: the bay the docking check allows, and 0.5 m each side.
+// The four directions facades are sorted by, as [dx, dz]: north (-z), east, south, west.
+export const DIRS = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+];
+
+// Half the width of a dock's edge: the bay the docking check allows, and 0.5 m each side.
 export const dockHalf = (tables) => tables.vehicle.width / 2 + tables.orders.dockCentre + 0.5;
 
-// The city's buildings. On an OSM map (no tiles), one per (cut-back) outline in the map; see planOutlines. On the grid,
-// every building tile (building or spot) that faces a tile that isn't one is built on: each run
-// of such tiles along a face of a block is a row of buildings one tile deep, cut at random widths, a spot's tile always
-// a building of its own. North and south faces go first, so their rows take the block's corners. Tiles further in
-// stay empty, as courtyards. Each building has its footprint, `floors`, `height`, `wall` (index into
-// tables.buildings.walls), `tint`, `brightness`, `offset` (m, of the wall texture), `seed` (for its facades), `spot`
-// and `sides`.
-export function planBuildings(map, tables) {
-  if (!map.roads) return planOutlines(map, tables);
-  const t = tables.buildings;
-  const ts = map.tileSize;
-  const random = seeded(t.seed);
-  const between = ([lo, hi]) => lo + random() * (hi - lo);
-  const key = (col, row) => `${col},${row}`;
-  const tiles = map.colliders.filter((c) => c.kind === 'building' || c.kind === 'spot').map((c) => ({ col: Math.floor(c.minX / ts), row: Math.floor(c.minZ / ts) }));
-  const tileSet = new Set(tiles.map(({ col, row }) => key(col, row)));
-  const spotAt = new Map(map.spots.map((s) => [key(s.zoneTile.col - DIRS[s.dir][0], s.zoneTile.row - DIRS[s.dir][1]), s]));
-  const solid = (x, z) => tileSet.has(key(Math.floor(x / ts), Math.floor(z / ts)));
-
-  const buildings = [];
-  const claimed = new Set();
-  for (const dir of [0, 2, 1, 3]) {
-    const [dc, dr] = DIRS[dir];
-    const alongX = dc === 0; // a north or south face runs along x
-    const [lines, steps] = alongX ? [map.rows, map.cols] : [map.cols, map.rows];
-    for (let line = 0; line < lines; line++) {
-      let run = [];
-      for (let step = 0; step <= steps; step++) {
-        const [col, row] = alongX ? [step, line] : [line, step];
-        if (step < steps && tileSet.has(key(col, row)) && !tileSet.has(key(col + dc, row + dr)) && !claimed.has(key(col, row))) {
-          claimed.add(key(col, row));
-          run.push({ col, row });
-        } else if (run.length) {
-          buildRow(run, alongX);
-          run = [];
-        }
-      }
-    }
-  }
-  return buildings;
-
-  // A row of tiles along x or z, cut into buildings: m along the row from..to, with the spot whose tile it is.
-  function buildRow(run, alongX) {
-    const at = (tile) => (alongX ? tile.col : tile.row) * ts;
-    const across = (alongX ? run[0].row : run[0].col) * ts;
-    const cuts = [];
-    const cutFree = (from, to) => {
-      const [lo, hi] = t.width;
-      while (to - from > hi) {
-        let w = between(t.width);
-        if (to - from - w < lo) w = (to - from) / 2; // no sliver at the end
-        cuts.push([from, from + w]);
-        from += w;
-      }
-      if (to - from > 1e-6) cuts.push([from, to]);
-    };
-    let from = at(run[0]);
-    for (const tile of run) {
-      const spot = spotAt.get(key(tile.col, tile.row));
-      if (!spot) continue;
-      cutFree(from, at(tile));
-      cuts.push([at(tile), at(tile) + ts, spot]);
-      from = at(tile) + ts;
-    }
-    cutFree(from, at(run.at(-1)) + ts);
-    for (const [lo, hi, spot] of cuts) {
-      const box = alongX ? { minX: lo, maxX: hi, minZ: across, maxZ: across + ts } : { minX: across, maxX: across + ts, minZ: lo, maxZ: hi };
-      buildings.push(building(box, spot));
-    }
-  }
-
-  function building(box, spot) {
-    const floors = t.floors[0] + Math.floor(random() * (t.floors[1] - t.floors[0] + 1));
-    const b = { ...box, ...look(tables, random, floors, t.groundFloor + (floors - 1) * t.floor + t.parapet, spot) };
-    const { minX, maxX, minZ, maxZ } = box;
-    // Each side from its start corner, along (ux, uz) to its end, with the outside to its left: seen from outside, it
-    // runs left to right. In DIRS order, so a side's index is the direction it faces. A side is a street side if the
-    // ground just outside its middle isn't a building tile; between buildings and towards a courtyard it is.
-    // shortcut: judged at the middle only, which is exact for the rectangular blocks of today's map; an L-shaped block
-    // could get a back wall that is half street.
-    b.sides = [
-      { x: maxX, z: minZ, ux: -1, uz: 0, length: maxX - minX },
-      { x: maxX, z: maxZ, ux: 0, uz: -1, length: maxZ - minZ },
-      { x: minX, z: maxZ, ux: 1, uz: 0, length: maxX - minX },
-      { x: minX, z: minZ, ux: 0, uz: 1, length: maxZ - minZ },
-    ].map((side, dir) => {
-      const [nx, nz] = DIRS[dir];
-      const street = !solid(side.x + (side.ux * side.length) / 2 + nx * 0.5, side.z + (side.uz * side.length) / 2 + nz * 0.5);
-      const spotSide = spot?.dir === dir;
-      const half = dockHalf(tables);
-      // A dock's opening: m along the side, and up.
-      const hole = spotSide && spot.dock ? { from: side.length / 2 - half, to: side.length / 2 + half, height: t.dock.height } : null;
-      return { ...side, dir, index: dir, street, spot: spotSide ? spot : null, hole };
-    });
-    return b;
-  }
-}
-
 // A building's look: its `floors` and `height`, `wall` (index into tables.buildings.walls), `tint`, `brightness`,
-// `offset` (m, of the wall texture), `seed` (for its facades) and `spot`, drawn from `random`.
-function look(tables, random, floors, height, spot) {
+// `offset` (m, of the wall texture) and `seed` (for its facades), drawn from `random`.
+function look(tables, random, floors, height) {
   const t = tables.buildings;
   let r = random();
   const drawn = t.walls.findIndex((w) => (r -= w.share) < 0);
@@ -118,24 +28,21 @@ function look(tables, random, floors, height, spot) {
   return {
     floors,
     height,
-    // A spot's building is plastered (the first, tinted wall material) in a light shade of the spot colour, so it
-    // shows from down the street.
-    wall: spot ? 0 : wall,
-    tint: spot ? new THREE.Color(tables.palette.spot).lerp(new THREE.Color(0xffffff), t.spotTint).getHex() : t.walls[wall].tinted ? t.tints[Math.floor(random() * t.tints.length)] : 0xffffff,
+    wall,
+    tint: t.walls[wall].tinted ? t.tints[Math.floor(random() * t.tints.length)] : 0xffffff,
     brightness: t.brightness[0] + random() * (t.brightness[1] - t.brightness[0]),
     offset: [random() * 20, random() * 20],
     seed: Math.floor(random() * 2 ** 32),
-    spot: spot ?? null,
   };
 }
 
-// The buildings of an OSM map, one per outline (map.buildings, cut back from the roads), as planBuildings plans the
-// grid's, with the height from the map and as many floors as fit under it. Each has its `points`, turned so its sides
-// run with the outside to their left, and a side per wall from each corner to the next; `dir` is the DIRS direction
-// nearest to the way it faces. A side is a street side unless another building stands against it: a party wall,
-// left blank. Monti's spots are on the street (the spot table), so no building is a spot's and none has a dock opening:
-// a dock's edge stands on its own (see the renderer's dock bays).
-function planOutlines(map, tables) {
+// The city's buildings, one per outline (map.buildings, cut back from the roads), with the height from the map and as
+// many floors as fit under it. Each has its footprint's box and `points`, turned so its sides run with the outside to
+// their left, `floors`, `height`, the look (see look()) and a side per wall from each corner to the next; `dir` is the
+// DIRS direction nearest to the way it faces. A side is a street side unless another building stands against it: a
+// party wall, left blank. Spots are on the street (the spot table), so no building is a spot's and none has a dock
+// opening: a dock's edge stands on its own (see the renderer's dock bays).
+export function planBuildings(map, tables) {
   const t = tables.buildings;
   const random = seeded(t.seed);
   const index = createCells(tables.city.cell);
@@ -145,7 +52,7 @@ function planOutlines(map, tables) {
     const ring = THREE.ShapeUtils.isClockWise(corners.map((p) => new THREE.Vector2(p.x, p.z))) ? corners : corners.toReversed();
     const floors = Math.max(1, Math.floor((height - t.groundFloor - t.parapet) / t.floor) + 1);
     const [xs, zs] = [ring.map((p) => p.x), ring.map((p) => p.z)];
-    const b = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), points: ring, ...look(tables, random, floors, height, null) };
+    const b = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), points: ring, ...look(tables, random, floors, height) };
     index.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
     return b;
   });
@@ -159,7 +66,7 @@ function planOutlines(map, tables) {
       const [nx, nz] = [-uz, ux];
       const dir = DIRS.reduce((best, [dx, dz], d) => (dx * nx + dz * nz > DIRS[best][0] * nx + DIRS[best][1] * nz ? d : best), 0);
       const street = !against(b, (p.x + q.x) / 2 + nx * 0.5, (p.z + q.z) / 2 + nz * 0.5);
-      return { x: p.x, z: p.z, ux, uz, length, dir, index, street, spot: null, hole: null };
+      return { x: p.x, z: p.z, ux, uz, length, dir, index, street };
     });
   }
   return buildings;
@@ -168,18 +75,16 @@ function planOutlines(map, tables) {
 // The parts on one street side of a building, in the prototype's style. Per window bay: on the ground floor a shop
 // window (some with a sign), a pulled-down shop shutter, a wooden door or plain wall; above, a window per floor with a
 // stone surround, a sill, and louvred shutters, open beside it or closed over it. A cornice runs along the top, a plinth
-// along the foot. A spot's side shows the spot colour: awnings over its shop windows and door, a band above them with
-// its letter, and blade signs with its letter at either end; a dock's side has its opening instead of the middle bays'
-// ground floor.
+// along the foot.
 // Each part is { cell (facadePictures.js), x, y, z (its centre), ux, uz (along its face), size [along, up, out],
 // colour, front (only the face that points out), skip (faces left out: t top, b bottom), slope (m down per m out),
 // near (only drawn close up) }.
-export function facadeParts(building, side, tables, spotColour) {
+export function facadeParts(building, side, tables) {
   const t = tables.buildings;
   const random = seeded(building.seed + side.index);
   const pick = (list) => list[Math.floor(random() * list.length)];
   const parts = [];
-  const { length: L, ux, uz, spot, hole } = side;
+  const { length: L, ux, uz } = side;
   const [nx, nz] = [-uz, ux];
   // A part centred `along` m from the side's start, `y` up and `out` m out from the wall.
   const put = (cell, along, y, out, size, colour, more) => parts.push({ cell, x: side.x + ux * along + nx * out, y, z: side.z + uz * along + nz * out, ux, uz, size, colour, ...more });
@@ -200,27 +105,16 @@ export function facadeParts(building, side, tables, spotColour) {
   // Half a metre past each end, so two cornices meet in full at a corner.
   put('plain', L / 2, building.height - 0.3, 0.2, [L + 1, 0.6, 0.6], t.stone);
   // Its front behind the ground floor's leaves (0.08 m out): coplanar faces flickered in the prototype.
-  if (hole) {
-    for (const [a, b] of [[0, hole.from], [hole.to, L]]) put('plain', (a + b) / 2, 0.35, 0.03, [b - a, 0.7, 0.06], t.plinth, { skip: 'b' });
-  } else put('plain', L / 2, 0.35, 0.03, [L + 0.1, 0.7, 0.06], t.plinth, { skip: 'b' });
+  put('plain', L / 2, 0.35, 0.03, [L + 0.1, 0.7, 0.06], t.plinth, { skip: 'b' });
 
   const bays = Math.floor((L - 1) / t.bay);
-  const middle = Math.floor(bays / 2);
   for (let k = 0; k < bays; k++) {
     const along = ((k + 0.5) * L) / bays;
-    if (spot) {
-      const [cell, w, h, colour] = k === middle && !hole ? ['door', 1.6, 2.9, door] : ['shop', 2.2, 2.8, 0xffffff];
-      if (!hole || along + w / 2 + 0.4 < hole.from || along - w / 2 - 0.4 > hole.to) {
-        opening(cell, along, h / 2, w, h, 0.07, colour);
-        put('plain', along, 3.05, 0.6, [w + 0.4, 0.06, 1.2], spotColour, { slope: 0.35 }); // awning
-      }
-    } else {
-      const r = random();
-      if (r < 0.6) {
-        const [cell, w, h, colour] = r < 0.25 ? ['shop', 2.2, 2.8, 0xffffff] : r < 0.45 ? ['roller', 2.2, 2.8, pick(t.rollers)] : ['door', 1.6, 2.9, door];
-        opening(cell, along, h / 2, w, h, 0.07, colour);
-        if (cell === 'shop' && random() < 0.6) put('plain', along, h + 0.5, 0.1, [w + 0.4, 0.5, 0.06], pick(t.signs));
-      }
+    const r = random();
+    if (r < 0.6) {
+      const [cell, w, h, colour] = r < 0.25 ? ['shop', 2.2, 2.8, 0xffffff] : r < 0.45 ? ['roller', 2.2, 2.8, pick(t.rollers)] : ['door', 1.6, 2.9, door];
+      opening(cell, along, h / 2, w, h, 0.07, colour);
+      if (cell === 'shop' && random() < 0.6) put('plain', along, h + 0.5, 0.1, [w + 0.4, 0.5, 0.06], pick(t.signs));
     }
     for (let f = 1; f < building.floors; f++) {
       const y = t.groundFloor + (f - 1) * t.floor + 1.6;
@@ -237,32 +131,6 @@ export function facadeParts(building, side, tables, spotColour) {
     }
   }
 
-  if (spot) {
-    // The ground floor clad in the spot colour above the plinth, a band across the top of it (over a dock's opening
-    // and its frame) with the letter in the middle, and a blade sign at each end, seen from along the street.
-    const signY = hole ? hole.height + 0.6 : t.groundFloor - 0.45;
-    for (const [a0, a1] of hole ? [[0, hole.from - 0.2], [hole.to + 0.2, L]] : [[0, L]]) {
-      put('plain', (a0 + a1) / 2, (0.7 + t.groundFloor) / 2, 0.01, [a1 - a0, t.groundFloor - 0.7, 0.02], spotColour, { front: true });
-    }
-    put('plain', L / 2, signY, 0.05, [L - 0.4, 0.8, 0.1], spotColour);
-    put(`letter${spot.id}`, L / 2, signY, 0.1, [0.75, 0.75, 0.01], 0xffffff, { front: true });
-    for (const along of [1, L - 1]) {
-      const y = t.groundFloor + 1.4;
-      put('plain', along, y, 0.75, [0.08, 1.2, 1.2], spotColour);
-      // The letters face along the street both ways: ux, uz turned so that their front is +u and -u.
-      put(`letter${spot.id}`, along + 0.045, y, 0.75, [1, 1, 0.01], 0xffffff, { front: true, ux: uz, uz: -ux });
-      put(`letter${spot.id}`, along - 0.045, y, 0.75, [1, 1, 0.01], 0xffffff, { front: true, ux: -uz, uz: ux });
-      put('plain', along, y + 0.63, 0.7, [0.04, 0.04, 1.4], t.plinth, { near: true }); // bracket
-    }
-  }
-  if (hole) {
-    // A frame in the spot colour round the dock's opening, and a roller door at its back above the dock edge.
-    const mid = (hole.from + hole.to) / 2;
-    const width = hole.to - hole.from;
-    for (const s of [-1, 1]) put('plain', mid + s * (width / 2 + 0.1), hole.height / 2, 0.05, [0.2, hole.height, 0.1], spotColour);
-    put('plain', mid, hole.height + 0.1, 0.05, [width + 0.4, 0.2, 0.1], spotColour);
-    put('roller', mid, (t.dock.edge + hole.height) / 2, 0.01 - t.dock.depth, [width, hole.height - t.dock.edge, 0.02], t.dock.door, { front: true });
-  }
   return parts;
 }
 
@@ -270,9 +138,9 @@ export function facadeParts(building, side, tables, spotColour) {
 // culled piece by piece: per chunk its walls (a mesh per wall material), its roofs, and its facade parts, those always
 // drawn in one mesh and the `near` ones in a mesh per direction the facades face, for the renderer to draw only close
 // up and from in front. `cells` are the facade pictures' places (facadePictures.js), `materials` { walls: [...], roof,
-// parts }, flat-shaded: the meshes have no normals. Returns all `meshes`, and `near` as [{ mesh, dir }]. An OSM map's
-// buildings (with `points`) get their roofs on their outlines.
-export function buildingMeshes(buildings, tables, spotColour, cells, materials) {
+// parts }, flat-shaded: the meshes have no normals. Returns all `meshes`, and `near` as [{ mesh, dir }]. The roofs
+// are flat, on the outlines.
+export function buildingMeshes(buildings, tables, cells, materials) {
   const t = tables.buildings;
   const uvOf = Object.fromEntries(Object.entries(cells).map(([name, [x, y, w, h]]) => {
     // A pixel in from the cell's edges, so mipmaps don't blend in the neighbours; the canvas is flipped in v.
@@ -280,8 +148,6 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
     return [name, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]];
   }));
   const plainUV = [(uvOf.plain[0][0] + uvOf.plain[1][0]) / 2, (uvOf.plain[0][1] + uvOf.plain[2][1]) / 2];
-  // An OSM map's buildings face every way; their near parts go in the mesh of the DIRS direction nearest their facade's.
-  const outlines = !!buildings[0]?.points;
   const colour = new THREE.Color();
   const grimy = new THREE.Color();
   const lit = new THREE.Color();
@@ -304,11 +170,11 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
     const walls = t.walls.map(() => newData());
     const roofs = newData();
     const base = newData();
-    // Near parts by the direction they face, and on an OSM map also by `nearChunk` m square, as most of a chunk's lie
-    // further away than detailDistance.
+    // Near parts by the DIRS direction nearest the way their facade faces, and by `nearChunk` m square, as most of a
+    // chunk's lie further away than detailDistance.
     const near = new Map();
     const nearOf = (b, dir) => {
-      const key = outlines ? `${Math.floor((b.minX + b.maxX) / 2 / t.nearChunk)},${Math.floor((b.minZ + b.maxZ) / 2 / t.nearChunk)},${dir}` : dir;
+      const key = `${Math.floor((b.minX + b.maxX) / 2 / t.nearChunk)},${Math.floor((b.minZ + b.maxZ) / 2 / t.nearChunk)},${dir}`;
       return (near.get(key) ?? near.set(key, { data: newData(), dir }).get(key)).data;
     };
     for (const b of list) {
@@ -318,8 +184,8 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
       const { repeat } = t.walls[b.wall];
       const data = walls[b.wall];
       let perimeter = b.offset[0];
-      // Round the building, so the wall texture runs on from side to side; a grid building's are in DIRS order.
-      for (const side of outlines ? b.sides : [0, 3, 2, 1].map((dir) => b.sides[dir])) {
+      // Round the building, so the wall texture runs on from side to side.
+      for (const side of b.sides) {
         const [nx, nz] = [-side.uz, side.ux];
         const at = (a, y, o = 0) => [side.x + side.ux * a + nx * o, y, side.z + side.uz * a + nz * o];
         // A piece of wall `a0`..`a1` m along and `y0`..`y1` up, split where the grime fades out.
@@ -331,37 +197,22 @@ export function buildingMeshes(buildings, tables, spotColour, cells, materials) 
             quad(data, [at(a0, ya), at(a1, ya), at(a1, yb), at(a0, yb)], [uv(a0, ya), uv(a1, ya), uv(a1, yb), uv(a0, yb)], [shade(ya), shade(ya), shade(yb), shade(yb)]);
           }
         };
-        const { hole } = side;
-        if (hole) {
-          piece(0, hole.from, 0, b.height);
-          piece(hole.to, side.length, 0, b.height);
-          piece(hole.from, hole.to, hole.height, b.height);
-          // Its jambs and lintel, `depth` m deep.
-          const d = t.dock.depth;
-          const [h0, h1] = [hole.from, hole.to];
-          const flat = (u, v) => [u / repeat, v / repeat];
-          const shades = (y0, y1) => [y0, y0, y1, y1].map(shade);
-          quad(data, [at(h0, 0, 0), at(h0, 0, -d), at(h0, hole.height, -d), at(h0, hole.height, 0)], [flat(0, 0), flat(d, 0), flat(d, hole.height), flat(0, hole.height)], shades(0, hole.height));
-          quad(data, [at(h1, 0, -d), at(h1, 0, 0), at(h1, hole.height, 0), at(h1, hole.height, -d)], [flat(0, 0), flat(d, 0), flat(d, hole.height), flat(0, hole.height)], shades(0, hole.height));
-          quad(data, [at(h0, hole.height, -d), at(h1, hole.height, -d), at(h1, hole.height, 0), at(h0, hole.height, 0)], [flat(0, 0), flat(h1 - h0, 0), flat(h1 - h0, d), flat(0, d)], shades(hole.height, hole.height));
-        } else piece(0, side.length, 0, b.height);
+        piece(0, side.length, 0, b.height);
         perimeter += side.length;
         if (!side.street) continue;
-        for (const p of facadeParts(b, side, tables, spotColour)) addPart(p.near ? nearOf(b, side.dir) : base, p);
+        for (const p of facadeParts(b, side, tables)) addPart(p.near ? nearOf(b, side.dir) : base, p);
       }
-      const { minX, maxX, minZ, maxZ, height } = b;
+      // The roof: the outline's triangles, each turned to face up.
+      const { height } = b;
       const r = t.roof.repeat;
       colour.setRGB(1, 1, 1);
-      if (outlines) {
-        // The outline's triangles, each turned to face up.
-        const first = roofs.position.length / 3;
-        for (const p of b.points) vertex(roofs, [p.x, height, p.z], [p.x / r, -p.z / r], colour);
-        for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(b.points.map((p) => new THREE.Vector2(p.x, p.z)), [])) {
-          const [p, q, o] = [b.points[i], b.points[j], b.points[k]];
-          const up = (q.x - p.x) * (o.z - p.z) - (q.z - p.z) * (o.x - p.x) < 0;
-          roofs.index.push(first + i, ...(up ? [first + j, first + k] : [first + k, first + j]));
-        }
-      } else quad(roofs, [[minX, height, maxZ], [maxX, height, maxZ], [maxX, height, minZ], [minX, height, minZ]], [[minX / r, -maxZ / r], [maxX / r, -maxZ / r], [maxX / r, -minZ / r], [minX / r, -minZ / r]], [colour, colour, colour, colour]);
+      const first = roofs.position.length / 3;
+      for (const p of b.points) vertex(roofs, [p.x, height, p.z], [p.x / r, -p.z / r], colour);
+      for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(b.points.map((p) => new THREE.Vector2(p.x, p.z)), [])) {
+        const [p, q, o] = [b.points[i], b.points[j], b.points[k]];
+        const up = (q.x - p.x) * (o.z - p.z) - (q.z - p.z) * (o.x - p.x) < 0;
+        roofs.index.push(first + i, ...(up ? [first + j, first + k] : [first + k, first + j]));
+      }
     }
     walls.forEach((d, i) => d.position.length && meshes.push(mesh(d, materials.walls[i])));
     meshes.push(mesh(roofs, materials.roof));

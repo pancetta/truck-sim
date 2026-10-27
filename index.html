@@ -8,6 +8,9 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='9' height='8' rx='1' fill='%23e8c547'/%3E%3Cpath d='M10 5.5h2.6l2.4 3V11h-5z' fill='%23d1495b'/%3E%3Ccircle cx='4' cy='12' r='1.8' fill='%232b2d33'/%3E%3Ccircle cx='12' cy='12' r='1.8' fill='%232b2d33'/%3E%3C/svg%3E" />
     <!-- Home-screen app: full screen, landscape. No service worker. -->
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- The map's files (tables.osm), fetched while the JS still loads: main.js builds the map before anything else. -->
+    <link rel="preload" href="/maps/monti.json" as="fetch" crossorigin />
+    <link rel="preload" href="/maps/monti-furniture.json" as="fetch" crossorigin />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

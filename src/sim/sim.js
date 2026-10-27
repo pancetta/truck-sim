@@ -6,13 +6,14 @@ import { createTraffic } from './traffic.js';
 
 const G = 9.81; // m/s²
 
-// The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and
-// teach save.js to migrate the old one. distance: m driven in total; upgrades: id → level; equipped: slot → visual id.
+// The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
+// migrate the old one; v3 came with the Monti map (#67), and the grid city's v1 and v2 start fresh.
+// distance: m driven in total; upgrades: id → level; equipped: slot → visual id.
 export function freshProfile() {
-  return { version: 2, money: 0, rankPoints: 0, distance: 0, upgrades: {}, owned: [], equipped: {} };
+  return { version: 3, money: 0, rankPoints: 0, distance: 0, upgrades: {}, owned: [], equipped: {} };
 }
 
-// `map` comes from parseMap(); without one the truck drives on an open plane with nothing to hit
+// `map` comes from buildOsmMap() (osm.js); without one the truck drives on an open plane with nothing to hit
 // (and resetToRoad() and requestOffers() have nowhere to go). `random` returns floats in [0, 1);
 // pass a seeded one for repeatable offers. `profile` must already be valid (see save.js); it is copied.
 export function createSim(tables, map, random = Math.random, profile = freshProfile()) {
@@ -68,7 +69,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
   let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
-  const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
+  const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
   let limitEdge = null; // edge whose limit and name state.speedLimit and state.street show (see updateLimit)
@@ -81,11 +82,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   for (const b of map?.colliders ?? []) solids.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
   // Where Reset to road may put the truck: every tables.city.resetSpacing m along each edge, the headings the road
   // leaves that point by (on a one-way, only its own), its lane's offset from the centre line, and whether the point
-  // lies in a junction (within half the road's width of a node with three or more arms), where AI cars would wait for it.
+  // lies in a junction (a truck there would reach into the box of a node with three or more arms), where AI cars would
+  // wait for it.
   const roadPoints = [];
   for (const e of map?.graph.edges ?? []) {
     const { resetSpacing: spacing } = tables.city;
-    const junction = (n, along) => along < e.width / 2 && map.graph.nodes[n].arms.length >= 3;
+    const junction = (n, along) => along < map.graph.nodes[n].radius + base.length / 2 && map.graph.nodes[n].arms.length >= 3;
     const toward = (a, b) => Math.atan2(b.x - a.x, b.z - a.z);
     for (let i = 0; i <= Math.ceil(e.length / spacing - 1e-9); i++) {
       const s = Math.min(i * spacing, e.length);
@@ -200,7 +202,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
     const here = map ? map.graph.nearest(truck.x, truck.z) : null;
     if (here) updateLimit(here);
-    if (map && !map.roads) checkSpeeding(); // not on the grid city, which keeps its 50 everywhere until it goes (#59, #67)
+    if (map) checkSpeeding();
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
 
     updateRoute(here);
@@ -215,8 +217,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     order.damage = Math.min(1, order.damage + harm * (levelOf('suspension')?.factor ?? 1));
   }
 
-  // Junction n runs `junctionOffset` s ahead of junction n - 1; a light's `axis` 1 (on the grid east–west) runs half a
-  // cycle behind axis 0.
+  // Junction n runs `junctionOffset` s ahead of junction n - 1; a light's `axis` 1 (the second street's) runs half
+  // a cycle behind axis 0.
   const cycleTime = (l) => (clock + l.junction * lt.junctionOffset + (l.axis * cycle) / 2) % cycle;
   function updateLights() {
     for (const l of state.lights) {

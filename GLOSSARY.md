@@ -150,7 +150,7 @@ _Avoid_: penalty, ticket
 **Rule fine**:
 A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are two:
 the red light (entering a **Light junction** on red, having crossed its **Stop line** on red too, after a short grace
-at the start of red) and, on **Monti**, speeding (over the **Speed limit** by more than a tolerance; at most one
+at the start of red) and speeding (over the **Speed limit** by more than a tolerance; at most one
 **Fine** per cooldown).
 
 **Witness**:
@@ -177,13 +177,10 @@ _Avoid_: respawn, teleport
 **Autopilot**:
 The developer-only driver used to measure performance; never part of play.
 
-### The Monti map (spec #59, being built)
+### The Monti map (spec #59)
 
 **Monti**:
-The coming city map: the real streets of Rione Monti in Rome, from OpenStreetMap. It replaces the **Grid city**.
-
-**Grid city**:
-The fictional city of square tiles, used until **Monti** replaces it.
+The city map: the real streets of Rione Monti in Rome, from OpenStreetMap.
 
 **Road graph**:
 The city's drivable streets as **Edges** meeting at **Junctions**.
@@ -203,7 +200,7 @@ One **Edge** meeting a **Junction** on the **Road graph**; a **Junction** may ha
 A street's importance from OpenStreetMap (secondary, tertiary, residential, service); it sets the street's width, **Speed limit** and **Priority**.
 
 **Priority**:
-Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes. On **Monti**, an **AI car** that has given way for long goes next all the same, so a steady stream can't hold it up for good.
+Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes. An **AI car** that has given way for long goes next all the same, so a steady stream can't hold it up for good.
 
 **Edge exit**:
 A street leaving the map, where **AI cars** come and go and the truck meets a barrier.
@@ -221,4 +218,4 @@ The **Spot** where a new game puts the truck, in its lane.
 - An **Offer** becomes an **Order** when accepted; an **Order** has one **Pickup** and one **Drop-off**, both **Spots**.
 - A **Dock** is a **Spot** with a **Dock bay**; dock **Order types** drop off at a **Dock**.
 - A **Rule fine** needs a **Witness**; a **Fine** for a **Contact** the truck made does not.
-- On **Monti**, an **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.
+- An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.

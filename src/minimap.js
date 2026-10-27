@@ -1,45 +1,38 @@
-// Minimap: the whole city from above, north up (map row 0 at the top), with the spots, the truck and
-// the Sim's current route. Reads Sim state each frame but redraws only at tables.minimap.rate; never writes to it.
-// Sizes in map tiles are tables.city.tileSize m each on a map without tiles (an OSM map), whose roads are its edges at
-// their widths, with the main streets (tables.osm.lightClasses) named.
+// Minimap: the whole city from above, north up, with the spots, the truck and the Sim's current route. Reads Sim state
+// each frame but redraws only at tables.minimap.rate; never writes to it. The roads are the graph's edges at their
+// widths, with the main streets (tables.osm.lightClasses) named. Sizes are in units of tables.minimap.unit m.
 export function createMinimap(canvas, map, tables) {
   const { palette } = tables;
-  const { tile, truckSize, outline, routeWidth, spotRadius, labelSize, streetLabel, rate } = tables.minimap;
+  const { unit, px, truckSize, outline, routeWidth, spotRadius, labelSize, streetLabel, rate } = tables.minimap;
   const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
   const { bounds } = map;
-  const unit = map.tileSize ?? tables.city.tileSize; // m per map tile
-  canvas.style.setProperty('--size', `${((bounds.maxZ - bounds.minZ) / unit) * tile}px`);
+  canvas.style.setProperty('--size', `${((bounds.maxZ - bounds.minZ) / unit) * px}px`);
   const ctx = canvas.getContext('2d');
   const base = document.createElement('canvas');
   const bctx = base.getContext('2d');
   const labels = document.createElement('canvas');
   const lctx = labels.getContext('2d');
-  let scale; // canvas px per map tile
+  let scale; // canvas px per unit
   let ratio; // devicePixelRatio the canvases are sized for
   let drawn = -Infinity; // performance.now() of the last redraw
   const at = (x, z) => [((x - bounds.minX) / unit) * scale, ((z - bounds.minZ) / unit) * scale]; // canvas px of a point
 
   // Sizes the canvases for the screen's pixel ratio, which changes with browser zoom or a move to another
-  // screen. Roads, open ground and spot discs never change, so they're drawn once onto `base`, and the spot
+  // screen. Roads and spot discs never change, so they're drawn once onto `base`, and the spot
   // letters, which go over the truck marker, onto `labels`.
   function resize() {
     ratio = devicePixelRatio;
-    scale = tile * ratio;
+    scale = px * ratio;
     [canvas.width, canvas.height] = [base.width, base.height] = [labels.width, labels.height] = at(bounds.maxX, bounds.maxZ);
-    bctx.fillStyle = hex(palette.ground);
-    for (const { col, row } of map.open ?? []) bctx.fillRect(col * scale, row * scale, scale, scale);
-    bctx.fillStyle = bctx.strokeStyle = hex(palette.pavement);
-    for (const { col, row } of map.roads ?? []) bctx.fillRect(col * scale, row * scale, scale, scale);
-    if (!map.roads) {
-      bctx.lineJoin = bctx.lineCap = 'round';
-      for (const e of map.graph.edges) {
-        bctx.lineWidth = (e.width / unit) * scale;
-        bctx.beginPath();
-        for (const p of e.points) bctx.lineTo(...at(p.x, p.z));
-        bctx.stroke();
-      }
-      nameStreets();
+    bctx.strokeStyle = hex(palette.pavement);
+    bctx.lineJoin = bctx.lineCap = 'round';
+    for (const e of map.graph.edges) {
+      bctx.lineWidth = (e.width / unit) * scale;
+      bctx.beginPath();
+      for (const p of e.points) bctx.lineTo(...at(p.x, p.z));
+      bctx.stroke();
     }
+    nameStreets();
     bctx.fillStyle = hex(palette.spot);
     for (const s of map.spots) {
       bctx.beginPath();

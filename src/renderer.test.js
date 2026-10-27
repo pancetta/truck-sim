@@ -34,7 +34,7 @@ describe('Renderer: parked cars', () => {
   // A car's +z turned by the heading about y.
   const front = (heading) => [Math.sin(heading), Math.cos(heading)];
 
-  it('turns a parked car along the longer side of its collider, on the grid and turned any way', () => {
+  it('turns a parked car along the longer side of its collider, square to the axes and turned any way', () => {
     const box = (x0, z0, x1, z1) => [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
     expect(front(parkedHeading(box(0, 0, 4.5, 2))).map((v) => Math.abs(v))).toEqual([1, expect.closeTo(0)]);
     expect(front(parkedHeading(box(0, 0, 2, 4.5))).map((v) => Math.abs(v))).toEqual([expect.closeTo(0), 1]);

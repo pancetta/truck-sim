@@ -5,7 +5,8 @@ import { createAutopilot } from './autopilot.js';
 
 export { seeded } from './autopilot.js';
 
-export function installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto) {
+// `mapBuild`: ms main.js took to build the map.
+export function installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto, mapBuild) {
   const { window: size, refresh } = tables.perf;
   const renderer = view.renderer;
   const parts = { sim: 0, render: 0, dom: 0, minimap: 0 }; // ms spent in the current frame
@@ -110,6 +111,7 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       // WebGPURenderer counts draw calls in drawCalls (its calls is a running total) and programs in memory.
       `calls ${r.drawCalls ?? r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  programs ${renderer.info.programs?.length ?? m.programs}  geometries ${m.geometries}  textures ${m.textures}`,
       `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}`,
+      `map build ${mapBuild.toFixed(0)} ms`,
       gpu,
     ].join('\n');
   }, refresh * 1000);

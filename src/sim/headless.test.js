@@ -5,7 +5,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 test('Sim modules use neither Three.js nor DOM APIs', () => {
   const simDir = new URL('./', import.meta.url);
   const tables = new URL('../tables.js', simDir).href;
-  const sources = readdirSync(simDir, { recursive: true }).filter((f) => f.endsWith('.js') && !f.endsWith('.test.js'));
+  // fixtures.js is the tests' helper (inline OSM fixtures, files read from disk), not part of the Sim.
+  const sources = readdirSync(simDir, { recursive: true }).filter((f) => f.endsWith('.js') && !f.endsWith('.test.js') && f !== 'fixtures.js');
 
   for (const file of sources) {
     const fileUrl = new URL(file, simDir);

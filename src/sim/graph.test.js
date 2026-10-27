@@ -1,33 +1,26 @@
 import { expect, test } from 'vitest';
 import * as tables from '../tables.js';
-import { parseMap } from './map.js';
 import { createGraph } from './graph.js';
 import { poseAt } from './lanes.js';
 
-const TILE = tables.city.tileSize;
 const { laneOffset } = tables.traffic;
+const { cell } = tables.city;
 
 test('a two-way edge has a lane each way, laneOffset right of the centre line, round its bends too', () => {
   // An L: down from the top dead end, then right to the other.
-  const map = parseMap(
-    `
-    .##
-    .##
-    ...`,
-    tables,
-  );
-  const [edge] = map.graph.edges;
-  expect(map.graph.edges.length).toBe(1);
-  expect(edge.length).toBeCloseTo(4 * TILE);
+  const nodes = [{ x: 0, z: 0 }, { x: 28, z: 28 }];
+  const edges = [{ from: 0, to: 1, class: 'residential', width: 14, name: '', oneWay: false, points: [nodes[0], { x: 0, z: 28 }, nodes[1]] }];
+  const [edge] = createGraph(nodes, edges, laneOffset, cell).edges;
+  expect(edge.length).toBeCloseTo(56);
   const [forward, backward] = edge.lanes.map((l) => l.points);
-  // Down the left (+z, right is -x), round the corner, then along the bottom (+x, right is +z).
-  expect(forward.at(0)).toEqual({ x: 0.5 * TILE - laneOffset, z: 0.5 * TILE });
-  expect(forward[1].x).toBeCloseTo(0.5 * TILE - laneOffset);
-  expect(forward[1].z).toBeCloseTo(2.5 * TILE + laneOffset);
-  expect(forward.at(-1).z).toBeCloseTo(2.5 * TILE + laneOffset);
+  // Down (+z, right is -x), round the corner, then along the bottom (+x, right is +z).
+  expect(forward.at(0)).toEqual({ x: -laneOffset, z: 0 });
+  expect(forward[1].x).toBeCloseTo(-laneOffset);
+  expect(forward[1].z).toBeCloseTo(28 + laneOffset);
+  expect(forward.at(-1).z).toBeCloseTo(28 + laneOffset);
   // The other way it keeps to the inside of the bend.
-  expect(backward[1].x).toBeCloseTo(0.5 * TILE + laneOffset);
-  expect(backward[1].z).toBeCloseTo(2.5 * TILE - laneOffset);
+  expect(backward[1].x).toBeCloseTo(laneOffset);
+  expect(backward[1].z).toBeCloseTo(28 - laneOffset);
 });
 
 test('lane paths run smoothly along edges and through junctions of 3, 5 and 6 arms, into every other arm', () => {
@@ -37,7 +30,7 @@ test('lane paths run smoothly along edges and through junctions of 3, 5 and 6 ar
     const nodes = [{ x: 0, z: 0 }, ...angles.map((a) => out(a, 60))];
     const edges = angles.map((a, i) => ({ from: 0, to: i + 1, class: 'residential', width: 7, name: '', oneWay: false, points: [{ x: 0, z: 0 }, out(a, 30), nodes[i + 1]] }));
     edges[0].points[1] = { x: 6, z: 30 };
-    const { paths, nodes: [centre] } = createGraph(nodes, edges, laneOffset, TILE);
+    const { paths, nodes: [centre] } = createGraph(nodes, edges, laneOffset, cell);
 
     const turns = paths.filter((p) => p.kind === 'turn' && p.node === 0);
     expect(turns).toHaveLength(angles.length * (angles.length - 1));
@@ -60,7 +53,7 @@ test('a one-way edge has one lane, along its centre line, and no turn leads into
   // A T: the east arm one-way out of the junction.
   const nodes = [{ x: 0, z: 0 }, { x: 0, z: 50 }, { x: 50, z: 0 }, { x: -50, z: 0 }];
   const edges = [1, 2, 3].map((to) => ({ from: 0, to, class: 'residential', width: 7, name: '', oneWay: to === 2, points: [nodes[0], nodes[to]] }));
-  const { paths, nodes: [centre] } = createGraph(nodes, edges, laneOffset, TILE);
+  const { paths, nodes: [centre] } = createGraph(nodes, edges, laneOffset, cell);
 
   const oneWay = paths.filter((p) => p.kind === 'run' && p.edge === edges[1]);
   expect(oneWay.map((p) => [p.from, p.to])).toEqual([[0, 2]]);
@@ -73,7 +66,7 @@ test('routes obey one-ways: the shortest legal way, round the block where the sh
   // A 100 m square, its north side one-way east (node 0 to 1), the rest two-way.
   const nodes = [{ x: 0, z: 0 }, { x: 100, z: 0 }, { x: 100, z: 100 }, { x: 0, z: 100 }];
   const edges = [0, 1, 2, 3].map((from) => ({ from, to: (from + 1) % 4, class: 'residential', width: 7, name: '', oneWay: from === 0, points: [nodes[from], nodes[(from + 1) % 4]] }));
-  const { route } = createGraph(nodes, edges, laneOffset, TILE);
+  const { route } = createGraph(nodes, edges, laneOffset, cell);
   const [north, east] = edges;
 
   expect(route({ edge: north, s: 20 }, { edge: north, s: 80 }).length).toBeCloseTo(60); // along it

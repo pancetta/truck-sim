@@ -52,7 +52,7 @@ export const orders = {
   hitDamage: 0.2, // per new collision at hitSpeed or faster
   hitSpeed: 1.5, // m/s; slower touches, e.g. while manoeuvring, do no damage
   maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade; heavier is a 'heavy' offer
-  // Dock bonus: a share of the pay when unloading at a dock (city.docks) ends with the truck reversed into the
+  // Dock bonus: a share of the pay when unloading at a dock (osm.docks) ends with the truck reversed into the
   // bay, facing out of it within dockHeading, centred on it within dockCentre and its rear within dockDepth.
   dockBonus: 0.25,
   dockHeading: 0.2, // rad (~11°)
@@ -141,38 +141,33 @@ export const lights = {
   // m from an approach's stop line back from its signal post (on the junction's near right corner), German style,
   // so the first vehicle in the queue still sees the lamps. Germany paints ~3 m, but from the cab the post would
   // then stand ~44° right, out of the view and under the minimap; at 9 m its lamps show beside the minimap at
-  // tablet size (1180×820) and wider (#70). parseMap wants a plain road tile before each approach; with only one, the
-  // first car queued at the line stands 0.7 m into the junction behind it, so leave two.
+  // tablet size (1180×820) and wider (#70).
   stopLine: 9,
 };
 
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
   redLight: 100, // only while a police car sees the truck (see police)
-  speeding: 50, // on Monti, only while a police car sees the truck, at most once per `speeding.cooldown`
+  speeding: 50, // only while a police car sees the truck, at most once per `speeding.cooldown`
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
 };
 
-// km/h in town on the grid city (on Monti each edge has its road class's, tables.osm): AI cars cruise at it and the
-// speedometer turns red above it.
+// km/h before the truck is on a road edge (each edge has its road class's limit, tables.osm): the speedometer turns red
+// above it.
 export const speedLimit = 50;
 
-// The speeding rule fine (fines.speeding), on Monti: over the limit of the edge the truck is on by more than `tolerance`
+// The speeding rule fine (fines.speeding): over the limit of the edge the truck is on by more than `tolerance`
 // km/h while a police car sees it; at most one fine per `cooldown` s, however long the speeding lasts.
 export const speeding = { tolerance: 10, cooldown: 30 };
 
-// Road signs (map.signs, not solid), on the right-hand pavement facing the traffic. Speed limit signs where a street
-// begins, that is on its first tile out of a light junction or out of the road round the city's edge; right before
-// left warning signs on the last tile before an unsignalled junction.
+// Road signs (map.signs, not solid), on the right-hand pavement facing the traffic (osm.js): speed limit signs where the
+// limit changes and on the way in from an edge exit.
 export const signs = {
-  along: 3, // m from the tile edge the street begins at, for a speed limit sign
-  inset: 0.7, // m from the kerb-side tile edge, mid-pavement
+  along: 3, // m into the street from the junction it begins at, for a speed limit sign
   height: 2.6, // m, middle of the plate
   radius: 0.45, // m, the plate; the red ring is the outer `ring` of it
   ring: 0.09, // m
   post: 0.08, // m square
-  side: 1, // m, the warning sign's triangle; its red border is `border` of it, measured square to each side
-  border: 0.12, // m
   hint: 50, // m from the truck's front bumper to the next junction ahead within which the HUD shows its rule
 };
 
@@ -180,7 +175,7 @@ export const signs = {
 // car keeps clear of the parked ones (3.6 m out) and of oncoming traffic.
 export const traffic = {
   laneOffset: 2.2, // m; cars cruise at the limit of the edge they are on and slow down before a slower one
-  turnAccel: 4.5, // m/s² sideways round corners: ~4.6 m/s turning right (4.8 m radius), ~6.4 m/s left (9.2 m)
+  turnAccel: 4.5, // m/s² sideways round corners: a turn of radius r is taken at up to sqrt(turnAccel · r)
   accel: 2, // m/s²
   brake: 4, // m/s², planned braking for stop lines, corners and the car or truck ahead
   maxBrake: 8, // m/s²; a light that would need harder braking (it turned amber too late) is driven through
@@ -197,7 +192,7 @@ export const traffic = {
   // truck doesn't hold up the city
   truckHold: 10,
   truckLine: 6, // m
-  // s a car waits at an unsignalled crossing on Monti, giving way, before the others let it go first: no one else
+  // s a car waits at an unsignalled crossing, giving way, before the others let it go first: no one else
   // drives in, and it goes once the crossing is clear
   patience: 20,
   boxSpeed: 2, // m/s; a car or the truck slower than this just past a crossing is queued, and nobody drives in after it
@@ -228,35 +223,25 @@ export const police = {
 };
 
 export const city = {
-  tileSize: 14, // m per ASCII map tile; road width
   cell: 14, // m, side of the spatial index cells the colliders and road edges are filed under
   resetSpacing: 14, // m between the road points along each edge that Reset to road picks from
-  docks: ['C', 'F', 'H'], // spots with a loading dock; its bay opens onto the spot's zone
-  // m; kerbGap is the space between the obstacle and the tile edge. The road models' pavement
-  // is the outer 1.4 m of a road tile: poles stand on it, cars park just past it.
+  // Footprints in m.
   obstacles: {
-    car: { length: 4.5, width: 1.9, height: 1.5, kerbGap: 1.5 },
-    pole: { length: 0.3, width: 0.3, height: 4, kerbGap: 0.3 },
-    // A traffic light's post, `inset` from both tile edges at a light junction's corner; closer in, right
-    // turns from the kerb lane clip it.
+    car: { length: 4.5, width: 1.9, height: 1.5 },
+    // A traffic light's post, `inset` back from a light junction's mouth and out from the road's edge, on its near
+    // right corner; closer in, right turns from the kerb lane clip it.
     signal: { width: 0.2, inset: 0.3 },
   },
-  // Trees and small props on open ground (#40), all solid: a row of trees `inset` m in from every edge the open
-  // ground shares with a road, `spacing` m apart, and beside every n-th tree the n-th of `props` (kind, m along the
-  // row from the tree; null for none). Footprints are squares `size` m across.
-  plaza: {
-    inset: 5,
-    spacing: 14,
-    props: [['bin', 1.4], null, ['bollard', -1.2], null, ['fountain', 1.6], null, ['bollard', 1.2], null],
-    size: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
-  },
+  // The trees and small props (osm.js; their look is tables.streets), all solid: footprints are squares this many m
+  // across.
+  props: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
-  barrierHeight: 1.1, // m, across an OSM map's edge exits
+  barrierHeight: 1.1, // m, across the map's edge exits
 };
 
-// The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js; loaded instead of the grid city with ?map=monti
-// until it replaces it (#67). The files are under public/, made by `npm run maps`: the roads and buildings, the street
-// furniture (trees, bollards, fountains, waste baskets), and the real buildings round the map for its skyline.
+// The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js. The files are under public/, made by
+// `npm run maps`: the roads and buildings, the street furniture (trees, bollards, fountains, waste baskets), and the
+// real buildings round the map for its skyline.
 export const osm = {
   file: 'maps/monti.json',
   furniture: 'maps/monti-furniture.json',
@@ -310,13 +295,10 @@ export const osm = {
   start: 'A', // spot id where a new game begins, in its kerb lane facing along it
 };
 
-// Procedural buildings on the building tiles (buildings.js), in the style of the Monti prototype (ADR 0001). Each run
-// of building tiles along a street is a row of buildings one tile deep, cut at random widths; a spot's tile is always
-// a building of its own. The same `seed` gives the same city.
+// Procedural buildings on the map's building outlines (buildings.js), in the style of the Monti prototype (ADR 0001).
+// The same `seed` gives the same city.
 export const buildings = {
   seed: 39,
-  width: [8, 18], // m along the street; the widest must be at least twice the narrowest
-  floors: [2, 6], // storeys, ground floor included
   groundFloor: 4.5, // m
   floor: 3.5, // m, each upper floor
   parapet: 1, // m of wall above the top floor, with the cornice
@@ -326,7 +308,7 @@ export const buildings = {
   closedShutters: 0.3, // share of windows with their shutters closed
   chunk: 196, // m square, the pieces the city's building meshes are cut into and culled by
   detailDistance: 120, // m from the camera within which facades show their window surrounds, sills and open shutters
-  nearChunk: 49, // m square, on an OSM map the pieces that close-up detail is cut into, within a chunk
+  nearChunk: 49, // m square, the pieces that close-up detail is cut into, within a chunk
   // Wall materials: CC0 textures from `npm run assets` (CREDITS.md), each for a `share` of the buildings, `repeat` m
   // per copy; a `tinted` one takes a colour from `tints`.
   walls: [
@@ -336,61 +318,41 @@ export const buildings = {
   ],
   roof: { texture: 'clay_roof_tiles_02', repeat: 3 },
   brightness: [0.85, 1.05], // each building's walls, times its tint
-  spotTint: 0.15, // a spot's building is plastered in palette.spot, this share of the way to white
   tints: [0xd9a35b, 0xc8744a, 0xe3c58f, 0xe8d9b8, 0xb8573a, 0xd8a48c, 0xcf9a6a],
   stone: 0xe6dcc6, // window surrounds, sills, cornices
   plinth: 0xa39a8a,
   shutters: [0x3f5b3a, 0x4d6b45, 0x6b4a2e, 0x55603c, 0x7a5a3a],
   doors: [0x6b4a2e, 0x4f3a26, 0x3f5b3a, 0x5a2a26, 0x7a5a3a],
   rollers: [0x9a9a96, 0xb4b2ac, 0x7d7f80, 0x5f6b5a],
-  signs: [0x24442f, 0x5a1f24, 0x1f2f4a, 0x2b2b2b, 0x7a5a2a], // shop signs; spots' signs and awnings are palette.spot
-  // A dock's opening in its building's face, as wide as the bay (dockHalf in buildings.js): `height` m tall, `depth` m
-  // deep, its floor the dock edge (`edge` m high), its back a roller door.
-  dock: { height: 3.8, depth: 0.5, edge: 1.1, door: 0x8a8d8f },
+  signs: [0x24442f, 0x5a1f24, 0x1f2f4a, 0x2b2b2b, 0x7a5a2a], // shop signs
+  // A dock's edge, as wide as the bay (dockHalf in buildings.js): a platform `depth` m deep and `edge` m high.
+  dock: { depth: 0.5, edge: 1.1 },
 };
 
-// The skyline ring (skyline.js): background buildings round the city, outside the map's edge, which stays the drivable
-// boundary. Only for the view: no colliders, no shadows. The haze (lighting.haze, camera.fog) fades it into the sky,
-// and the camera draws nothing past camera.fog[1], so any of the ring further than that from the city never shows.
-// Plain extrusions with a painted window picture and hipped roofs in the buildings' roof texture, with landmarks of our
-// own among them. The same `seed` gives the same ring.
+// The skyline ring (skyline.js): the real buildings round the map (tables.osm.ring), outside the map's edge, which
+// stays the drivable boundary. Only for the view: no colliders, no shadows. The haze (lighting.haze, camera.fog) fades
+// it into the sky, and the camera draws nothing past camera.fog[1], so any of the ring further than that from the city
+// never shows. Plain extrusions with a painted window picture under flat roofs in the buildings' roof texture. The
+// same `seed` gives the same tints.
 export const skyline = {
   seed: 42,
-  gap: 14, // m from the map's edge to the nearest ring walls: a street behind the city's outer row of buildings
-  depth: 300, // m the ring reaches out past that
-  block: 44, // m, about; the ring is cut into blocks of about this size, `street` m apart
-  street: 12, // m
-  width: [10, 22], // m, buildings along a block's longer side, in two rows back to back
-  floors: [3, 7], // storeys; a little taller than the city's (buildings.floors), so the ring shows over its outer row
   floor: 3.5, // m per storey, a row of painted windows each
   bay: 3.2, // m per painted window, about
-  monument: [4.5, 10], // m per painted window across and up on an OSM map's churches and monuments: tall arches
-  roofPitch: 0.45, // m of rise per m across the hipped roofs
+  monument: [4.5, 10], // m per painted window across and up on churches and monuments: tall arches
   tints: buildings.tints, // walls, times `brightness`
   brightness: [0.75, 1],
-  stone: buildings.stone, // the landmarks
-  // A block each, taken in turn by the north, east, south and west sides, among the blocks within `near` m of the map
-  // (the row nearest it), at the end of a street running out to the edge.
-  landmarks: ['dome', 'tower', 'arcade', 'tower', 'tower', 'dome', 'dome', 'arcade'],
-  near: 60, // m
-  // A dome on a drum (radius in m, the lantern's side a share of it, under a pyramid roof `pitch` steep) over a base of
-  // `floors` storeys.
-  dome: { floors: 5, drum: 8, radius: [10, 14], lantern: 0.25, pitch: 1.6 },
-  // A bell tower over the block's buildings: a stone shaft `side` m square, the belfry's openings, a steep pyramid roof.
-  tower: { side: 7, height: [44, 58], belfry: 6, pitch: 1.6 },
-  // A block of `floors` storeys with an open arcade on its roof: piers `pier` m square every `pitch` m round the edge,
-  // `height` m tall, under a slab `slab` m thick and a hipped roof.
-  arcade: { floors: 5, height: 6, pitch: 4.5, pier: 1, slab: 0.8 },
+  stone: buildings.stone, // churches and monuments
 };
 
 export const minimap = {
-  tile: 3, // CSS px per map tile at full size; the minimap shrinks on short screens
-  truckSize: 2, // map tiles from the truck marker's centre to its tip
-  outline: 0.4, // map tiles, truck marker outline
-  routeWidth: 1, // map tiles
-  spotRadius: 2, // map tiles
-  labelSize: 4, // map tiles, spot letter height
-  streetLabel: 2.5, // map tiles, height of a main street's name on an OSM map
+  unit: 14, // m; the sizes below are in these units
+  px: 3, // CSS px per unit at full size; the minimap shrinks on short screens
+  truckSize: 2, // units from the truck marker's centre to its tip
+  outline: 0.4, // units, truck marker outline
+  routeWidth: 1, // units
+  spotRadius: 2, // units
+  labelSize: 4, // units, spot letter height
+  streetLabel: 2.5, // units, height of a main street's name
   streetLength: 120, // m of main road a street needs to be named (squares and stubs would crowd the map)
   rate: 15, // Hz, redraws of the truck marker and route; roads, spots and letters are drawn once
 };
@@ -428,26 +390,17 @@ export const perf = {
   window: 1200, // frames the overlay's medians and p95s cover (20 s at 60 Hz)
   refresh: 1, // s between overlay updates
   seed: 1, // Sim random seed under ?auto
-  spots: ['B', 'J', 'I', 'D', 'L', 'K'], // the loop on Monti: spot ids, driven in this order along the shortest legal routes
-  route: [
-    // the grid city's loop (until #67): corners in m, driven in this order along the shortest roads between them
-    { x: 21, z: 119 },
-    { x: 805, z: 119 },
-    { x: 805, z: 511 },
-    { x: 21, z: 511 },
-  ],
-  spacing: 14, // m between the points the autopilot steers by along the loop
-  lane: 2, // m right of the road's centre line on the grid city (on Monti each edge's lane)
+  spots: ['B', 'J', 'I', 'D', 'L', 'K'], // the loop: spot ids, driven in this order along the shortest legal routes
+  // The narrow streets need points close together, corners rounded to what the truck can turn (7.3 m at a crawl) and
+  // crawling through them, as the lock fades with speed.
+  spacing: 3, // m between the points the autopilot steers by along the loop
   dodge: 1, // m off a one-way's middle, away from its parked cars
-  radius: 0, // m, the least turn radius its corners are rounded to (none on the grid city)
+  radius: 8.5, // m, the least turn radius its corners are rounded to
   cruiseSpeed: 12, // m/s on straights
-  turnSpeed: 4.5, // m/s near corners and while off line
+  turnSpeed: 2, // m/s near corners and while off line
   steerGain: 2.5, // steering input per rad of heading error
   stuckTime: 2, // s at a standstill before the autopilot resets the truck to the road
   waitTime: 40, // s, the same while waiting behind an AI car (a light cycle is 38 s)
-  // Monti's settings in place of the above (the grid city's, until #67): its narrow streets need points close together,
-  // corners rounded to what the truck can turn (7.3 m at a crawl) and crawling through them, as the lock fades with speed
-  monti: { spacing: 3, radius: 8.5, turnSpeed: 2 },
 };
 
 export const camera = {
@@ -522,19 +475,18 @@ export const lighting = {
   },
 };
 
-// Street dressing (streets.js, #40): pavements, lanterns, and the look of the trees and props on open ground
-// (placed by the Sim, city.plaza). Sizes in m. Textures and models are CC0 from `npm run assets` (CREDITS.md).
+// Street dressing (streets.js, #40): pavements, lanterns, and the look of the trees and props (placed by the Sim,
+// city.props). Sizes in m. Textures and models are CC0 from `npm run assets` (CREDITS.md).
 export const streets = {
-  // Along road tiles beside a building or spot tile, raised, over the road models' own pavement band, which the
-  // Sim keeps clear of the lanes (city.obstacles); none in front of a dock, where trucks back across it. The kerb
-  // is a stone strip `kerb` wide along the pavement's road edge, its face down to the road.
+  // Raised, tables.osm.pavement m wide along the roads (roads.js). The kerb is a stone strip `kerb` wide along the
+  // pavement's road edge, its face down to the road.
   // `height` is above the ground: the road surface is 3 cm up (renderer.js roadHeight), so the kerb stands 15 cm.
-  pavement: { width: 1.4, height: 0.18, texture: 'floor_pavement', repeat: 1.5, kerb: 0.15, kerbColour: 0xd8d2c4 },
-  // Lanterns (Poly Haven street_lamp_02) on street-facing walls about every `spacing` m and on the poles, their
+  pavement: { height: 0.18, texture: 'floor_pavement', repeat: 1.5, kerb: 0.15, kerbColour: 0xd8d2c4 },
+  // Lanterns (Poly Haven street_lamp_02) on street-facing walls about every `spacing` m, their
   // foot `height` up. Within `near` m of the camera the full model (20k triangles), then its far copy (1.2k) up to
   // `cull`, then none; the iPad simulator only held 60 fps with these short distances (docs/perf).
-  // On walls between two windows, `clear` m clear of a pole's lantern or a speed sign.
-  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 8, cull: 70, clear: 3, post: 0.09, postColour: 0x2b2d33 },
+  // On walls between two windows, `clear` m clear of a speed sign.
+  lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 8, cull: 70, clear: 3 },
   // Crossed-quad trees from pictures (`npm run assets`): species picked per tree, `size` m across, mirrored at random.
   // The Werkstatt and chase cameras keep `canopy` m from a trunk, so they don't end up inside the leaves.
   canopy: 4,
@@ -544,10 +496,10 @@ export const streets = {
     { picture: 'searsia_lucida', size: [6, 8] },
   ],
   // Our own small props, not drawn past `propCull` m and casting no shadows (both for the iPad's frame budget): cast
-  // iron and painted metal on posts and open ground; potted plants in pairs beside a `pots` share of the doors, and
+  // iron and painted metal on the ground; potted plants in pairs beside a `pots` share of the doors, and
   // flower boxes on the open windows' sills of a `flowers` share of the buildings.
   propCull: 90,
-  // m: on an OSM map, a wall gets lanterns and plants where a road's edge is at most this far in front of it (most
+  // m: a wall gets lanterns and plants where a road's edge is at most this far in front of it (most
   // stand at the pavement's back, 1.5 m from it; this takes in walls across a wider real street or a small square).
   roadReach: 8,
   pots: 0.2,
@@ -562,8 +514,8 @@ export const streets = {
 // Ground materials: CC0 PBR textures in public/textures/ from `npm run assets` (CREDITS.md), <texture>_Diffuse,
 // _nor_gl and _arm.ktx2, laid out in world space, `repeat` m per copy of the texture.
 export const ground = {
-  road: { texture: 'asphalt_02', repeat: 4 }, // road tiles
-  open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level: open tiles and round the city
+  road: { texture: 'asphalt_02', repeat: 4 }, // the roads
+  open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level, and round the city
 };
 
 // Generated cars (src/vehicles.js) for the AI cars and the parked cars, all at city.obstacles.car's footprint. Per
@@ -595,12 +547,11 @@ export const vehicles = {
 
 export const palette = {
   light: 0xffffff, // minimap
-  ground: 0x7fb069, // minimap
-  spot: 0x4f86c6, // the spots' signs and awnings, and their dots on the minimap
+  spot: 0x4f86c6, // the spots' dots on the minimap
   zone: 0x8fc1f0,
   pickup: 0x6cc551, // active order's zone marker
   dropoff: 0xf08a4b,
-  // Colours the kit models are recoloured to; see kitColours.
+  // Colours the truck's kit model is recoloured to (see kitColours), and more.
   trim: 0x2b2d33,
   dark: 0x3b4252,
   road: 0x5a5f66,
@@ -627,18 +578,16 @@ export const palette = {
   chrome: 0xdfe4ea, // chrome bumpers and rims
 };
 
-// The kit models (CREDITS.md) are recoloured face by face: each face takes the palette colour
+// The truck's kit model (CREDITS.md) is recoloured face by face: each face takes the palette colour
 // whose kit colour here is nearest to the face's colour in the kit's own colour map.
 export const kitColours = {
   trim: 0x36363a,
-  dark: 0x515566,
   road: 0x686d83,
   pavement: 0xa8b0d3,
   wall: 0xe2e2ed,
   glass: 0xe4f3ff,
   green: 0x45af7e,
   red: 0xe76047,
-  orange: 0xd5805a,
   yellow: 0xffd02b,
   blue: 0x5f73ca,
 };

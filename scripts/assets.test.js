@@ -15,7 +15,8 @@ describe('asset budget', () => {
   });
 
   // Catches an asset listed but not run through npm run assets, a texture dropped in by hand, or one left behind
-  // when its asset left the list. public/models also holds the kit models, so only the listed ones are checked there.
+  // when its asset left the list. public/models also holds the truck's kit model, so only the listed ones are checked
+  // there.
   it('serves what npm run assets made from the asset list, credited, and no other textures', () => {
     const made = assets.flatMap(outputs);
     expect(made.filter((f) => !existsSync(join('public', f)))).toEqual([]);

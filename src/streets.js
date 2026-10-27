@@ -1,79 +1,24 @@
-// Street dressing (#40, tables.streets): raised pavements with stone kerbs, lanterns on street-facing walls and on
-// the poles, and the trees and small props the Sim puts on open ground (tables.city.plaza). The layout functions are
-// plain data (streets.test.js); createStreets() builds the meshes and draws the lanterns by distance. On an OSM map
-// (#66, no tiles) the renderer lays the pavements (roads.js), the props are OSM's street furniture (osm.js), and the
-// lanterns and plants go on the walls of the real outlines that face a road.
+// Street dressing (#40, tables.streets): lanterns and potted plants on the street-facing walls of the real outlines,
+// and OSM's street furniture (trees, bollards, bins, fountains; placed by osm.js). The layout functions are plain data
+// (streets.test.js); createStreets() builds the meshes and draws the lanterns by distance. The renderer lays the
+// pavements (roads.js).
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DIRS } from './sim/map.js';
 import { facadeParts } from './buildings.js';
 import assetInfo from './assetInfo.json';
 
-const tileKey = (col, row) => `${col},${row}`;
-// Tiles a building or spot stands on: solid, with a wall along each side that faces a road.
-const blockTiles = (map) =>
-  new Set(map.colliders.filter((b) => b.kind === 'building' || b.kind === 'spot').map((b) => tileKey(Math.floor(b.minX / map.tileSize), Math.floor(b.minZ / map.tileSize))));
-
-// Pavement on road tiles, as rectangles, and the kerbs along their road edges as segments with the outward direction
-// (dx, dz). A road tile is split 3 × 3 at `width` m from each side: a side strip is pavement where a building or spot
-// tile is beside it, unless that is a dock across the strip from its zone; a corner square where any of the three
-// tiles round it is one. A cell side that faces neither pavement nor a block is kerb.
-export function pavementLayout(map, width) {
-  const ts = map.tileSize;
-  const blocks = blockTiles(map);
-  const isBlock = (col, row) => blocks.has(tileKey(col, row));
-  const docks = new Set(map.spots.filter((s) => s.dock).map((s) => `${tileKey(s.zoneTile.col, s.zoneTile.row)},${(s.dir + 2) % 4}`));
-  const bounds = [0, width, ts - width, ts]; // m across a tile, cell by cell
-  const cells = new Set(); // keys of paved cells, 3 per tile each way
-  for (const { col, row } of map.roads) {
-    for (const [i, j] of [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]]) {
-      const [dx, dz] = [i - 1, j - 1];
-      const paved = dx && dz
-        ? isBlock(col + dx, row) || isBlock(col, row + dz) || isBlock(col + dx, row + dz)
-        : isBlock(col + dx, row + dz) && !docks.has(`${tileKey(col, row)},${DIRS.findIndex(([a, b]) => a === dx && b === dz)}`);
-      if (paved) cells.add(tileKey(3 * col + i, 3 * row + j));
-    }
-  }
-  const rect = (gx, gz) => {
-    const [x, z] = [Math.floor(gx / 3) * ts, Math.floor(gz / 3) * ts];
-    return { minX: x + bounds[gx % 3], maxX: x + bounds[(gx % 3) + 1], minZ: z + bounds[gz % 3], maxZ: z + bounds[(gz % 3) + 1] };
-  };
-  const pavements = [];
-  const kerbs = [];
-  for (const key of cells) {
-    const [gx, gz] = key.split(',').map(Number);
-    const r = rect(gx, gz);
-    pavements.push(r);
-    for (const [dx, dz] of DIRS) {
-      const [nx, nz] = [gx + dx, gz + dz];
-      if (cells.has(tileKey(nx, nz)) || isBlock(Math.floor(nx / 3), Math.floor(nz / 3))) continue;
-      const x = dx > 0 ? r.maxX : r.minX;
-      const z = dz > 0 ? r.maxZ : r.minZ;
-      kerbs.push(dx ? { x0: x, z0: r.minZ, x1: x, z1: r.maxZ, dx, dz } : { x0: r.minX, z0: z, x1: r.maxX, z1: z, dx, dz });
-    }
-  }
-  return { pavements, kerbs };
-}
-
-// Where lanterns hang: { x, z, angle, pole }, (x, z) on the wall or the pole's side, turned by `angle` about y so
-// the model's +z points out over the road. One on each pole, on its road side. On the street sides of the planned
-// buildings (buildings.js), halfway between two windows, the one nearest to each point `spacing` m apart along the
-// street (counted from the map's edge, so the rhythm runs on from building to building); `clear` m clear of a pole's
-// lantern or a speed sign; none on a dock's side, where a truck backs in under it. `reach`: see roadAhead.
-export function lanternMounts(map, plan, { spacing, post, clear }, bay, reach) {
-  const ts = map.tileSize;
+// Where lanterns hang: { x, z, angle }, (x, z) on the wall, turned by `angle` about y so the model's +z points out
+// over the road. On the street sides of the planned buildings (buildings.js), halfway between two windows, the one
+// nearest to each point `spacing` m apart along the street (counted from the map's origin, so the rhythm runs on from
+// building to building); `clear` m clear of a speed sign.
+// `reach`: see roadAhead.
+export function lanternMounts(map, plan, { spacing, clear }, bay, reach) {
   const mounts = [];
-  for (const b of map.colliders.filter((c) => c.kind === 'pole')) {
-    const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
-    const angle = Math.atan2((Math.floor(x / ts) + 0.5) * ts - x, (Math.floor(z / ts) + 0.5) * ts - z); // towards the tile's middle
-    mounts.push({ x: x + Math.sin(angle) * post, z: z + Math.cos(angle) * post, angle, pole: true });
-  }
-  const crowded = [...mounts, ...map.signs];
-  for (const side of plan.flatMap((b) => b.sides).filter((s) => s.street && !s.hole)) {
+  for (const side of plan.flatMap((b) => b.sides).filter((s) => s.street)) {
     const { x, z, ux, uz, length } = side;
     const [nx, nz] = [-uz, ux]; // out of the wall
     const bays = Math.floor((length - 1) / bay); // as facadeParts lays them out
-    // m along the street: along the wall, growing east or south whichever it runs nearer, so on the grid x or z.
+    // m along the street: along the wall, growing east or south whichever it runs nearer.
     const sign = Math.abs(ux) >= Math.abs(uz) ? Math.sign(ux) : Math.sign(uz);
     const along = (px, pz) => sign * (px * ux + pz * uz);
     // Each gap between two windows as [m along the street, x, z].
@@ -86,10 +31,8 @@ export function lanternMounts(map, plan, { spacing, post, clear }, bay, reach) {
     for (let k = Math.ceil(lo / spacing - 0.5); (k + 0.5) * spacing < hi; k++) {
       if (!gaps.length) break;
       const [, gx, gz] = gaps.reduce((a, g) => (Math.abs(g[0] - (k + 0.5) * spacing) < Math.abs(a[0] - (k + 0.5) * spacing) ? g : a));
-      // Not in the middle of a spot's side either, where the letter is on its sign band.
-      const middle = side.spot && Math.hypot(gx - (x + (ux * length) / 2), gz - (z + (uz * length) / 2)) < 1;
-      if (middle || crowded.some((c) => Math.hypot(c.x - gx, c.z - gz) < clear) || !roadAhead(map, gx, gz, nx, nz, reach)) continue;
-      mounts.push({ x: gx, z: gz, angle: Math.atan2(nx, nz), pole: false });
+      if (map.signs.some((c) => Math.hypot(c.x - gx, c.z - gz) < clear) || !roadAhead(map, gx, gz, nx, nz, reach)) continue;
+      mounts.push({ x: gx, z: gz, angle: Math.atan2(nx, nz) });
     }
   }
   return mounts;
@@ -97,11 +40,10 @@ export function lanternMounts(map, plan, { spacing, post, clear }, bay, reach) {
 
 // Potted plants and flower boxes on the planned buildings' street sides: { x, y, z, angle }, standing on the
 // pavement or a sill, turned so their +z points out from the wall. A pair of pots beside a door, for a `pots` share of
-// the doors, unless a speed sign or a pole stands within a metre; a box on the sill of every open window (the ones
+// the doors, unless a speed sign stands within a metre; a box on the sill of every open window (the ones
 // with glass showing) of a `flowers` share of the buildings. Which ones comes from where they are.
 export function facadeProps(map, plan, tables) {
-  const { pots: potShare, flowers, pavement, roadReach } = tables.streets;
-  const posts = [...map.signs, ...map.colliders.filter((c) => c.kind === 'pole').map((b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 }))];
+  const { pots: potShare, flowers, roadReach } = tables.streets;
   const pots = [];
   const boxes = [];
   for (const b of plan) {
@@ -110,15 +52,15 @@ export function facadeProps(map, plan, tables) {
       const [nx, nz] = [-side.uz, side.ux]; // out of the wall
       const angle = Math.atan2(nx, nz);
       const ahead = (part) => roadAhead(map, part.x, part.z, nx, nz, roadReach);
-      for (const part of facadeParts(b, side, tables, 0)) {
+      for (const part of facadeParts(b, side, tables)) {
         if (part.cell === 'door' && hash(part.x, part.z) < potShare && ahead(part)) {
           // The door's leaf stands 8 cm out; the pots 0.45 m out, either side of it.
           const pair = [-1, 1].map((s) => {
             const along = s * (part.size[0] / 2 + 0.45);
             const [x, z] = [part.x + side.ux * along + nx * 0.37, part.z + side.uz * along + nz * 0.37];
-            return { x, y: map.roads ? pavement.height : groundAt(map, tables, x, z), z, angle };
+            return { x, y: groundAt(map, tables, x, z), z, angle };
           });
-          if (!pair.some((p) => posts.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1))) pots.push(...pair);
+          if (!pair.some((p) => map.signs.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1))) pots.push(...pair);
         } else if (boxed && part.cell.startsWith('glass') && ahead(part)) {
           // On the sill, whose top is 0.95 m under the window's middle; the glass is 1 cm out, the sill 28 cm deep.
           boxes.push({ x: part.x + nx * 0.14, y: part.y - 0.95, z: part.z + nz * 0.14, angle });
@@ -129,31 +71,12 @@ export function facadeProps(map, plan, tables) {
   return { pots, boxes };
 }
 
-// The meshes. `pavers` is the pavement's material (the renderer's ground material, maps loaded later), `loadTexture`
-// and `loader` the renderer's KTX2 texture loader and its GLTFLoader (set up for the pipeline's KTX2 textures and
-// meshopt geometry). Pavements, kerbs and the props on poles and open ground go up at once; `dress(plan)` adds what
+// The meshes. `loadTexture` and `loader` are the renderer's KTX2 texture loader and its GLTFLoader (set up for the
+// pipeline's KTX2 textures and meshopt geometry). The props on the ground go up at once; `dress(plan)` adds what
 // stands on the planned buildings, and `load()` fetches the lantern models and tree pictures, which nothing on the
 // first frame waits for. `update()` picks what to draw each frame.
-export function createStreets(scene, map, tables, { pavers, loadTexture, loader, models }) {
-  const { pavement, lantern, propCull } = tables.streets;
-  const { pavements, kerbs } = map.roads ? pavementLayout(map, pavement.width) : { pavements: [], kerbs: [] };
-
-  // Pavement tops, a quad per cell with UVs from world x and z so the texture runs on across cells.
-  const y = pavement.height;
-  const top = quads(pavements.map((r) => [[[r.minX, y, r.minZ], [r.minX, y, r.maxZ], [r.maxX, y, r.maxZ], [r.maxX, y, r.minZ]], [0, 1, 0]]), pavement.repeat);
-  // Kerb stones: a strip along the edge just above the pavement, against depth fighting, and the face down to the road.
-  const kerbTop = pavement.height + 0.003;
-  const stones = quads(kerbs.flatMap(({ x0, z0, x1, z1, dx, dz }) => {
-    const [ix, iz] = [-dx * pavement.kerb, -dz * pavement.kerb]; // into the pavement
-    const strip = [[x0, kerbTop, z0], [x0 + ix, kerbTop, z0 + iz], [x1 + ix, kerbTop, z1 + iz], [x1, kerbTop, z1]];
-    const face = [[x0, 0, z0], [x0, kerbTop, z0], [x1, kerbTop, z1], [x1, 0, z1]];
-    return [[strip, [0, 1, 0]], [face, [dx, 0, dz]]];
-  }));
-  const kerbMaterial = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
-  for (const mesh of [new THREE.Mesh(top, pavers), new THREE.Mesh(stones, kerbMaterial)]) {
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-  }
+export function createStreets(scene, map, tables, { loadTexture, loader, models }) {
+  const { lantern, propCull } = tables.streets;
 
   // Instanced sets drawn by distance (update()): each { places: [{ x, y, z, angle }], levels: [{ upTo, meshes }],
   // height }. A place is drawn with the meshes of the first level it is within `upTo` m of the camera of, if it is in
@@ -189,16 +112,12 @@ export function createStreets(scene, map, tables, { pavers, loadTexture, loader,
     addSet(places, [{ upTo, meshes: [mesh] }], height);
   };
 
-  // The props on the Sim's colliders: the poles' posts, and the bollards, bins and fountains on open ground or, on an
-  // OSM map, on whatever ground they stand on.
+  // The props on the Sim's colliders: the bollards, bins and fountains, on whatever ground they stand on.
   const { bollard, bin, fountain, pot, box } = tables.streets;
   const at = (kind) => map.colliders.filter((c) => c.kind === kind).map((b) => {
     const [x, z] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2];
-    return { x, y: map.roads ? 0 : groundAt(map, tables, x, z), z };
+    return { x, y: groundAt(map, tables, x, z), z };
   });
-  const postHeight = lantern.height + 1.7; // up to the top of the lantern's bracket
-  // The posts go with their lanterns, so none stands bare between the two cull distances.
-  prop(at('pole'), [[cylinder(lantern.post, postHeight), lantern.postColour], [cylinder(lantern.post * 1.8, 0.5), lantern.postColour]], postHeight, lantern.cull);
   prop(at('bollard'), [[cylinder(bollard.radius, bollard.height), bollard.colour], [cylinder(bollard.radius * 1.2, 0.05, bollard.height), bollard.colour]], bollard.height);
   prop(at('bin'), [[cylinder(bin.radius, bin.height), bin.colour], [cylinder(bin.radius * 1.08, 0.06, bin.height - 0.06), bin.colour]], bin.height);
   // A nasone: a post with a cap and a spout over a drain grate, turned a quarter at random.
@@ -323,19 +242,17 @@ export function createStreets(scene, map, tables, { pavers, loadTexture, loader,
 }
 
 // Whether a road lies in front of (x, z) on a wall facing (nx, nz). Not all of a planned building's street side
-// (buildings.js) does: on the grid, at the city's edge it faces off the map, and at a block's corner its end faces the
-// next block; on an OSM map, a wall can face a courtyard or open ground. There, the nearest road must be in front of
-// the wall, its edge within `reach` m.
+// (buildings.js) does: a wall can face a courtyard or open ground. The nearest road must be in front of the wall, its
+// edge within `reach` m.
 // shortcut: the nearest road only, so a courtyard wall with a road within reach beyond the courtyard counts; check
 // along the way out if lanterns show up in courtyards.
 function roadAhead(map, x, z, nx, nz, reach) {
-  if (map.roads) return map.isRoad(Math.floor((x + nx) / map.tileSize), Math.floor((z + nz) / map.tileSize));
   const p = map.graph.nearest(x + nx, z + nz);
   return p.d - p.edge.width / 2 < reach && (p.x - x) * nx + (p.z - z) * nz > 0;
 }
 
-// Ground height at (x, z) on an OSM map, off the road: the raised pavement within tables.osm.pavement m of a road's
-// edge, else open ground (pedestrian paving is only 3 cm up).
+// Ground height at (x, z), off the road: the raised pavement within tables.osm.pavement m of a road's edge, else open
+// ground (pedestrian paving is only 3 cm up).
 function groundAt(map, tables, x, z) {
   const p = map.graph.nearest(x, z);
   return p.d <= p.edge.width / 2 + tables.osm.pavement ? tables.streets.pavement.height : 0;

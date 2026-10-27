@@ -32,7 +32,7 @@ export function createTraffic(tables, map, random) {
   const { nodes, paths } = map.graph;
   const size = tables.city.obstacles.car; // AI cars are the size of the parked ones
   const room = size.length + t.followGap; // m of lane a car takes up in a queue
-  const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see parseMap)
+  const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
   const truckSize = { length: tables.vehicle.length, width: tables.vehicle.width };
   const truckRadius = Math.hypot(truckSize.length, truckSize.width) / 2;
   const cars = [];
@@ -52,8 +52,7 @@ export function createTraffic(tables, map, random) {
   const lit = new Set(map.lights.map((l) => l.node));
   const junctionNode = (n) => nodes[n].arms.length >= 3;
   // Whether edge e's end nodes' boxes touch, or lie too close to queue two cars between them (#63, on Monti: with room
-  // for one at most, a car waited in one box for the other, and small rings of such boxes locked up). The grid city's
-  // nearest apart are 14 m, so they stay single.
+  // for one at most, a car waited in one box for the other, and small rings of such boxes locked up).
   const touching = (e) => e.length < nodes[e.from].radius + nodes[e.to].radius + 2 * size.length + t.followGap + t.stopGap;
 
   // Unsignalled crossings: junction nodes without lights. Ones whose boxes touch (see touching) are one crossing (one group, the
@@ -200,7 +199,7 @@ export function createTraffic(tables, map, random) {
   // On a map with edge exits (`through`, Monti), where cars flow through and leave, also none along a run to a dead end
   // (cars would vanish there in view), nor on a run or turn where a car would touch another exit's barrier, or a run
   // out of the map too short to leave by before touching its own (#63 QA: cars drove through them, and a 1.6 m run out
-  // put its barrier across a junction: turns there are `barred`); the grid city, closed, keeps its dead ends.
+  // put its barrier across a junction: turns there are `barred`); a closed map (a test's) keeps its dead ends.
   const through = nodes.some((n) => n.exit);
   const barriers = map.colliders.filter((c) => c.kind === 'barrier');
   const ownBarrier = (n) => (n.exit ? barriers.find((b) => Math.hypot((b.minX + b.maxX) / 2 - n.x, (b.minZ + b.maxZ) / 2 - n.z) < 2) : null);
@@ -298,10 +297,10 @@ export function createTraffic(tables, map, random) {
     }
   }
   // A turn on from run `last`, picked at random from the ones that lead to no node the car went through in its last
-  // PASSED turns (on a map with edge exits) nor, in a crossing group of several nodes, to one of the group the route
+  // PASSED turns nor, in a crossing group of several nodes, to one of the group the route
   // passed already; from all, should none. #63: cars went round Monti's rings of junctions, its small ones twice at
   // times, holding the others up, and filled a ring of one-way streets until it locked.
-  const fresh = (route, turn, car) => !revisits(route, turn) && !(through && car?.passed && leadsBack(turn, car.passed, route));
+  const fresh = (route, turn, car) => !revisits(route, turn) && !(car?.passed && leadsBack(turn, car.passed, route));
   // Whether the turn leads to a node in `passed` or one the route turns at already, at once or by runs with only one
   // way on (#63: a car entering a ring of one-way streets halfway went round it again).
   function leadsBack(turn, passed, route) {
@@ -316,7 +315,6 @@ export function createTraffic(tables, map, random) {
   }
   function onward(route, last, car) {
     const list = ways[last.id];
-    if (!through && !groupAt[last.id]) return pick(list); // the grid city's draws as ever
     let n = 0;
     for (let i = 0; i < list.length; i++) if (fresh(route, list[i], car)) n++;
     if (!n) return pick(list);
@@ -364,7 +362,7 @@ export function createTraffic(tables, map, random) {
   // or, for an `exitSpawn` share of them, at a hidden edge exit in the ring, coming in from beyond the map. The
   // place is drawn at random until one fits, up to SPAWN_TRIES times, so every place that does is as likely; with none
   // found, the next step tries again.
-  const SPAWN_TRIES = 64; // the grid city's ring is ~1/13 of its places: under 1 % of calls in an empty city find none
+  const SPAWN_TRIES = 64; // a ring of ~1/13 of the places: under 1 % of calls in an empty city find none
   const clear = (p) => {
     for (let i = 0; i < cars.length; i++) if ((cars[i].x - p.x) ** 2 + (cars[i].z - p.z) ** 2 < t.lookAhead ** 2) return false;
     return true;
@@ -372,7 +370,7 @@ export function createTraffic(tables, map, random) {
   function spawn(truck, police) {
     const near = police ? Math.max(t.spawnDistance[0], tables.police.radius) : t.spawnDistance[0];
     const far = police ? Infinity : t.spawnDistance[1];
-    const atExit = exitSlots.length > 0 && random() < t.exitSpawn; // no draw on a map without exits: the grid's stay as they were
+    const atExit = exitSlots.length > 0 && random() < t.exitSpawn; // no draw on a map without exits
     const list = atExit ? exitSlots : slots;
     let at = null;
     for (let i = 0; i < SPAWN_TRIES && !at && list.length; i++) {
@@ -486,9 +484,8 @@ export function createTraffic(tables, map, random) {
   let truckAt = null; // the crossing group the truck is the first vehicle of an approach to, since step `truckSince`
   let truckSince = 0;
   let truckStill = 0; // s the truck has stood still
-  // In steps, as `since` counts; on a map with edge exits (Monti) only: the grid city keeps its right of way as it was
-  // until it goes (#59, #67).
-  const patience = through ? t.patience / tables.loop.step : Infinity;
+  // In steps, as `since` counts.
+  const patience = t.patience / tables.loop.step;
   function at(g) {
     if (g.stamp === now) return g;
     g.stamp = now;

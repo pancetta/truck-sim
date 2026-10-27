@@ -1,40 +1,36 @@
 // The pictures on the buildings' facade parts (buildings.js), our own, painted on one canvas at load: glass with
 // curtains or blinds, a louvred shutter leaf, a wooden double door, a pulled-down shop shutter, a shop window, a plain
-// white patch for stone and painted parts, and a letter plaque per spot. Mostly light, neutral tones, which a part's
+// white patch for stone and painted parts. Mostly light, neutral tones, which a part's
 // colour multiplies (shutter green, door wood).
 import * as THREE from 'three/webgpu';
 
 export const ATLAS = 1024; // px, the canvas is square
 const ROUGH = 16; // the roughness canvas is this many times smaller
 const PICTURES = ['glass0', 'glass1', 'glass2', 'glass3', 'louvre', 'door', 'roller', 'shop'];
-// Roughness per picture; the rest (plain patch, letters) is ROUGHNESS.plain.
+// Roughness per picture and the plain patch.
 const ROUGHNESS = { glass0: 0.1, glass1: 0.1, glass2: 0.1, glass3: 0.1, shop: 0.1, roller: 0.45, louvre: 0.6, door: 0.7, plain: 0.8 };
 
 // Where each picture sits on the canvas, px: name -> [x, y, width, height]. The pictures are 128 × 256 cells along the
-// top; the plain patch and the spots' letters (`letter${id}`) are 128 px squares below them.
-export function atlasCells(spotIds) {
-  const cells = Object.fromEntries(PICTURES.map((name, i) => [name, [i * 128, 0, 128, 256]]));
-  ['plain', ...spotIds.map((id) => `letter${id}`)].forEach((name, i) => (cells[name] = [(i % 8) * 128, 256 + Math.floor(i / 8) * 128, 128, 128]));
-  return cells;
+// top; the plain patch is a 128 px square below them.
+export function atlasCells() {
+  return { ...Object.fromEntries(PICTURES.map((name, i) => [name, [i * 128, 0, 128, 256]])), plain: [0, 256, 128, 128] };
 }
 
 // The colour texture and a roughness map on the same layout, for a MeshStandardMaterial with vertex colours.
-export function paintFacadePictures(cells, spotColour) {
+export function paintFacadePictures(cells) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = ATLAS;
   const g = canvas.getContext('2d');
   const rough = document.createElement('canvas');
   rough.width = rough.height = ATLAS / ROUGH;
   const r = rough.getContext('2d');
-  const spot = `#${new THREE.Color(spotColour).getHexString(THREE.SRGBColorSpace)}`;
   for (const [name, [x, y, w, h]] of Object.entries(cells)) {
     g.save();
     g.translate(x, y);
     g.beginPath();
     g.rect(0, 0, w, h);
     g.clip();
-    if (name.startsWith('letter')) letter(g, w, h, name.slice(6), spot);
-    else (PAINT[name] ?? PAINT.plain)(g, w, h);
+    (PAINT[name] ?? PAINT.plain)(g, w, h);
     g.restore();
     const level = Math.round((ROUGHNESS[name] ?? ROUGHNESS.plain) * 255);
     r.fillStyle = `rgb(${level}, ${level}, ${level})`;
@@ -46,20 +42,6 @@ export function paintFacadePictures(cells, spotColour) {
   // Each part samples one cell, so the roughness never needs blending across cells.
   const roughnessMap = Object.assign(new THREE.CanvasTexture(rough), { magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter, generateMipmaps: false });
   return { map, roughnessMap };
-}
-
-// The spot's letter, white on the spot colour inside a white rim.
-function letter(g, w, h, id, spot) {
-  g.fillStyle = spot;
-  g.fillRect(0, 0, w, h);
-  g.strokeStyle = '#ffffff';
-  g.lineWidth = 6;
-  g.strokeRect(8, 8, w - 16, h - 16);
-  g.fillStyle = '#ffffff';
-  g.font = `bold ${Math.round(h * 0.62)}px sans-serif`;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(id, w / 2, h / 2 + 4);
 }
 
 // Glass behind a painted casement (dark panes with a sky-ish sheen; white frame, mullion and transom). Variants: 0 plain,

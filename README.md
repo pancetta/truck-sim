@@ -1,6 +1,6 @@
 # Truck Sim
 
-A browser truck-delivery game: drive a heavy truck around a small low-poly city, accept orders, load and unload cargo at the spots, and get paid. Steer with the on-screen wheel and pedals (mouse or touch, landscape tablets and desktop). The UI is German only.
+A browser truck-delivery game: drive a heavy truck through the real streets of Rione Monti in Rome (map data © OpenStreetMap contributors), accept orders, load and unload cargo at the spots, and get paid. Steer with the on-screen wheel and pedals (mouse or touch, landscape tablets and desktop). The UI is German only.
 
 **Play it:** https://pancetta.github.io/truck-sim/
 
@@ -9,9 +9,9 @@ A browser truck-delivery game: drive a heavy truck around a small low-poly city,
 - **Orders:** pick one of three offers, load at the pickup, unload at the drop-off. Pay grows with the road distance, plus a **time bonus** that shrinks to nothing at the offer's expected time. **Fragile** cargo pays a premium that hard braking and hits wear away. Drop-offs at a **dock** pay a bonus when you reverse into the bay, right up to the dock edge (in R a mirrored reversing-camera picture shows at the top of the screen).
 - **Rank:** deliveries (and their bonuses) earn rank points; a higher rank unlocks harder offer types, Werkstatt upgrades and more traffic.
 - **Werkstatt:** buy upgrades (motor, brakes, tyres, suspension, cargo bed) and looks (paint, livery, light bar, cab gimmick, rims, chrome), trying looks on before buying. Opens only while standing with no order.
-- **Traffic:** AI cars drive the right-hand lane at the 50 km/h limit, stop at red lights, give way right before left at unsignalled crossings, wait to turn left at lights while traffic comes the other way, and don't drive into a crossing whose exit is queued up or where the truck stands.
-- **Speed limit:** 50 km/h everywhere in town, shown on round signs where streets begin; the speedometer turns red above it. There is no fine for speeding.
-- **Fines:** crossing the stop line and entering the light junction on red (a police car must see it; no fine in the first second of red or on red and amber), or driving into an AI car, costs money (never below 0); the notice shows what was taken. A car that drives into the truck costs nothing.
+- **Traffic:** AI cars drive the right-hand lane at each street's limit, keep to one-ways, come and go where streets leave the map, stop at red lights, give way to the bigger road and right before left between equal ones at unsignalled crossings, wait to turn left at lights while traffic comes the other way, and don't drive into a crossing whose exit is queued up or where the truck stands.
+- **Speed limit:** by road class (50 km/h on the main roads, down to 30 in the side streets), shown on round signs where it changes; the speedometer turns red above it. The truck may drive against a one-way without a fine.
+- **Fines:** crossing the stop line and entering the light junction on red (a police car must see it; no fine in the first second of red or on red and amber), speeding more than 10 km/h over the limit while a police car sees it, or driving into an AI car, costs money (never below 0); the notice shows what was taken. A car that drives into the truck costs nothing.
 - **Saving:** money, rank, upgrades, looks and the distance driven save automatically in the browser; *Spielstand zurücksetzen* in the Werkstatt starts over.
 
 On iPad (or Android), use *Zum Home-Bildschirm* to add the game to the home screen; opened from there it runs full screen in landscape. The home-screen app keeps its own save: iOS stores it separately from Safari's, so progress made in Safari doesn't carry over.
@@ -52,8 +52,8 @@ First playable frame under 3 s on a 10 Mbit/s link is measured, not tested. To m
 Vite, plain JavaScript (ES modules), Three.js, no backend.
 
 - **Sim** (`src/sim/sim.js`, AI traffic in `src/sim/traffic.js`): all game logic: vehicle, collisions, orders (offer types, time bonus, fragile damage, docks), upgrades (`buyUpgrade`), visual items (`buyVisual`, `equipVisual`, `owns`), rank, traffic lights, AI cars and their right of way, fines, and the **profile** (money and the rest of the progress that persists). It must stay headless: no Three.js, no DOM. It is the main test seam: tests build it with `createSim(tables, map, random, profile?)`, drive it through `step()` and the order and reset commands, and assert only on its state.
-- **Save** (`src/save.js`): loads, saves and resets the profile in one slot per browser. It takes a storage object of the `localStorage` shape, so it is tested with a fake; `load()` always returns a valid profile, migrating saves from older versions.
-- **Map** (`src/sim/map.js`, `src/city.txt`): parses the ASCII city grid into tiles, spots, colliders (signal posts, and the trees and props on open ground, included), traffic lights and the road graph, and answers routes.
+- **Save** (`src/save.js`): loads, saves and resets the profile in one slot per browser. It takes a storage object of the `localStorage` shape, so it is tested with a fake; `load()` always returns a valid profile; a save from an older version (the grid city's v1 and v2) starts fresh.
+- **Map** (`src/sim/osm.js`, road graph in `src/sim/graph.js`): builds the map from the OpenStreetMap extract of Monti in `public/maps/` (made from `data/osm/` by `npm run maps`): the road graph and its routes, colliders (buildings, bollards, parked cars, barriers at the edge exits, signal posts), traffic lights, speed signs and the spots from the spot table.
 - **Tables** (`src/tables.js`): every tunable (vehicle, orders and pay, cameras, sun and sky, ground materials, palette, UI sizes) as plain data. Tweak numbers here.
 - **Strings** (`src/strings.js`): all UI text, German only.
 - **Renderer** (`src/renderer.js`, `src/truckLook.js`, `src/streets.js`): Three.js scene on `WebGPURenderer` (WebGL 2 where WebGPU is missing; `?webgl` forces it), cab and chase cameras, the reversing-camera inset, and the Werkstatt's orbit camera. Draws the truck from a *look* (the equipped visual items plus Werkstatt previews) that the app hands it; `truckLook.js` holds the visual items' own geometry, `streets.js` the street dressing (pavements, lanterns, trees, small props). Reads Sim state, never writes it.

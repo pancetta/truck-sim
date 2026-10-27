@@ -854,6 +854,36 @@ Monti gets its street furniture, lanterns, plants and skyline. OSM's trees, boll
 
 Frames held 16.7 ms throughout. The dressing adds about 15 draw calls: the ring's two, plus the instanced props, lanterns and trees. The ring accounts for most of the 85k added triangles, since it is never culled. three counts 7 more textures (the tree pictures and the lantern's), but its texture bytes stay at 56.2 MB. On the iPad, the first things to cut are still `lantern.cull` and `flowers` (#40), and then the ring's triangles (one roof and wall mesh per side, so each can be culled).
 
+## Switch to Monti (#67)
+
+Monti is the only map. The grid city, the road kit, the generated skyline and the grid's spot buildings are gone. The page preloads the two map files (`index.html`) and builds the map before anything else; the skyline ring now loads after the first frame.
+
+**How measured:** production builds of main (`76a8f8a`, the grid by default) and this change, served the way Pages serves them (gzip except images and KTX2), Chrome 155 headless on the M2, 1180×820 at dpr 2, load average 1.4–2.4. The runs alternated main and #67. Relative numbers only; the iPad numbers are the owner's `?perf&auto` run.
+
+**`?perf&auto`** (vsync, overlay after 25 s; median / p95 / mean ms):
+
+| | busy | render | sim | draw calls / triangles | JS heap |
+|---|---|---|---|---|---|
+| main (grid), cab | 2.63 / 3.27 / 2.61 | 2.52 / 3.15 / 2.49 | 0.08 | 320 / 267k | 96 MB |
+| #67 (Monti), cab | 2.82 / 3.36 / 2.78 | 2.68 / 3.17 / 2.64 | 0.10 | 97 / 336k | 126 MB |
+| main (grid), chase | 2.58 / 3.16 / 2.56 | 2.46 / 3.02 / 2.43 | 0.09 | 321 / 248k | 111 MB |
+| #67 (Monti), chase | 2.92 / 3.44 / 2.87 | 2.76 / 3.25 / 2.72 | 0.10 | 91 / 335k | 127 MB |
+
+Frames held 16.7 ms throughout; three counts 56 textures in both.
+
+**Map build** (`?perf`'s new "map build" line: `buildOsmMap` in `main.js`): 138–140 ms in the production build, 673–677 ms in the dev build. The Sim's traffic setup that follows adds about 40 ms (Node).
+
+**First playable frame** (cold cache, 10 Mbit/s with 40 ms latency; two runs each):
+
+| | main (grid) | #67 |
+|---|---|---|
+| 10 Mbit/s | 2.87, 2.87 s | 3.25, 3.24 s |
+| 10 Mbit/s, before the preload and the later ring | 2.92, 2.92 s | 3.35, 3.34 s |
+| Unthrottled | 0.97 s | 1.35 s |
+| On the wire until then | 2.33 MB | 2.32 MB |
+
+*Verdict:* 0.25 s over the 3 s target, and about 0.45 s over #38's 2.7–2.8 s. The bytes are the same as main's, so the gap is CPU before the renderer can start its downloads. A CPU profile of an unthrottled load puts about 0.25 s of it in the map build: cutting the building outlines back from the roads (`subtract` in `osm.js`), the road graph's `nearest`, and the bollards along pedestrian ways. Creating the renderer before the Sim gained nothing. To get under 3 s, bake the built map (or at least the cut-back outlines) in `npm run maps`, or build it in a worker while the textures download.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

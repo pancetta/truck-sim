@@ -19,10 +19,10 @@ export function createOrders(root, sim, map, tables, strings) {
   const eur = (n) => `${n.toLocaleString('de-DE')} €`;
   const km = (m) => `${(m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
   const clock = (s) => `${Math.floor(Math.ceil(s) / 60)}:${String(Math.ceil(s) % 60).padStart(2, '0')}`;
-  // A spot as the player knows it: business and street on Monti, its letter on the grid city.
+  // A spot as the player knows it: business and street.
   const place = (id) => {
     const s = map.spots.find((s) => s.id === id);
-    return s.name ? `${s.name}, ${s.street}` : id;
+    return `${s.name}, ${s.street}`;
   };
   const offerHtml = (o) =>
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${place(o.pickup)} → ${place(o.dropoff)}</small><br>` +
