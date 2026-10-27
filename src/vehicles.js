@@ -77,6 +77,16 @@ function loftBody(c, nx, nr, mirrors) {
       index.push(p, r, q, q, r, s); // outward: k runs up the side, i forwards
     }
   }
+  // Close both ends with a fan about the ring's centre, so the shell has no hole (the plan-view pinch leaves the end
+  // sections wide open). The rings run anticlockwise seen from the rear, so the rear fan keeps that order.
+  for (const [ring, flip] of [[0, false], [nx - 1, true]]) {
+    const [first, centre] = [ring * nr, pos.length / 3];
+    pos.push(pos[first * 3], pos[first * 3 + 1], 0); // ring point 0 (phi = 0) is at mid-height
+    for (let k = 0; k < nr; k++) {
+      const [p, q] = [first + k, first + ((k + 1) % nr)];
+      index.push(...(flip ? [centre, q, p] : [centre, p, q]));
+    }
+  }
   // Mirrors: a cap on a short arm at each A-pillar foot, reaching MIRROR past the body.
   const aFoot = Math.max(...c.glass.filter(([, y]) => y < c.belt + 0.05).map(([x]) => x));
   for (const side of mirrors ? [-1, 1] : []) {
@@ -125,9 +135,11 @@ function carDetails(c, rich, police) {
   const rear = (y) => cross(c.body, y, 1)[0];
   const W = c.width;
   const segs = rich ? 20 : 8;
+  // How far out a part at x may reach: not past the body, whose plan view rounds in at the ends.
+  const reach = (x, out) => Math.min(out, halfWidth(c, x) - 0.03);
   const parts = [
-    detail(new THREE.BoxGeometry(0.16, 0.22, W * 0.92).translate(front(0.42) - 0.04, 0.42, 0), '#262626'),
-    detail(new THREE.BoxGeometry(0.16, 0.22, W * 0.92).translate(rear(0.45) + 0.04, 0.45, 0), '#262626'),
+    detail(new THREE.BoxGeometry(0.16, 0.22, 2 * reach(front(0.42) - 0.12, W * 0.46)).translate(front(0.42) - 0.04, 0.42, 0), '#262626'),
+    detail(new THREE.BoxGeometry(0.16, 0.22, 2 * reach(rear(0.45) + 0.12, W * 0.46)).translate(rear(0.45) + 0.04, 0.45, 0), '#262626'),
   ];
   for (const ax of c.axles) {
     for (const side of [-1, 1]) {
@@ -138,8 +150,8 @@ function carDetails(c, rich, police) {
   const [head, tail] = [0.72, 0.85];
   for (const side of [-1, 1]) {
     // Headlights at every detail level, so a lights-on look shows from afar too.
-    parts.push(detail(new THREE.BoxGeometry(0.08, 0.13, 0.3).translate(front(head) - 0.03, head, side * (W / 2 - 0.3)), '#f2efe6', { headlight: true }));
-    if (rich) parts.push(detail(new THREE.BoxGeometry(0.08, 0.16, 0.24).translate(rear(tail) + 0.03, tail, side * (W / 2 - 0.27)), '#9a1414'));
+    parts.push(detail(new THREE.BoxGeometry(0.08, 0.13, 0.3).translate(front(head) - 0.03, head, side * (reach(front(head) - 0.03, W / 2 - 0.15) - 0.15)), '#f2efe6', { headlight: true }));
+    if (rich) parts.push(detail(new THREE.BoxGeometry(0.08, 0.16, 0.24).translate(rear(tail) + 0.03, tail, side * (reach(rear(tail) + 0.03, W / 2 - 0.15) - 0.12)), '#9a1414'));
   }
   if (rich) {
     parts.push(detail(new THREE.BoxGeometry(0.02, 0.11, 0.52).translate(front(0.42) + 0.045, 0.42, 0), '#ffffff', { plate: true }));
@@ -157,7 +169,9 @@ function carDetails(c, rich, police) {
       parts.push(detail(band, '#ffffff', { band: true }));
     }
     // And across the rear, so it shows in the chase view; turned like the rear plate to read upright.
-    const back = new THREE.BoxGeometry(0.02, BAND.height * 0.6, BAND.length * 0.6).rotateY(Math.PI).translate(rear(0.65) - 0.02, 0.65, 0);
+    // shortcut: sized at x = 0.06 where the body is wide enough to read; its ends float a few cm off the curved corners.
+    const scale = Math.min(0.6, (2 * reach(0.06, W)) / BAND.length);
+    const back = new THREE.BoxGeometry(0.02, BAND.height * scale, BAND.length * scale).rotateY(Math.PI).translate(rear(0.65) - 0.01, 0.65, 0);
     parts.push(detail(back, '#ffffff', { band: true }));
   }
   return mergeGeometries(parts);
