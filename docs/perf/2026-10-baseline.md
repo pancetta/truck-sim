@@ -759,6 +759,20 @@ Two police cars (`tables.police`) drive on top of the tier's AI cars and stay an
 
 **Verdict:** no measurable frame cost. The bench step is about 8 % slower with 2 % more cars. The police cars drive far from the truck, and their spawns change the random draws, so the replayed traffic is not the same. It stays far under the bench's 1 ms limit.
 
+## Junction rules (#69)
+
+The city gains 5 light junctions (12 in all, 48 lights) and 208 right before left warning signs, which join the city's batched mesh as one more geometry (a post and five thin layers, culled with the rest). Each Sim step walks at most a few tiles ahead of the truck for the HUD hint. In the traffic step, a car that is first at a crossing gets an arrival stamp. `atJunctions` uses index loops and plain bit stores, because the extra lights pushed the old loop's per-step allocation over the bench's 32 KB.
+
+**How measured:** `traffic.bench.test.js` on the M2, Node 26, several runs each, at a load average under 5. Main `1cdb2b4` on the old and new maps was against this change.
+
+| | traffic step, 100 (+2 police) cars | allocated per step |
+|---|---|---|
+| main, old map | 105 µs | 26 KB |
+| main, new map | 104 µs | 35 KB (over budget) |
+| this change, new map | 104–112 µs | 23–28 KB |
+
+**Verdict:** within the bench's budget (1 ms, 32 KB). Frame times weren't measured with `?perf`. The added signs and lights are static geometry in batches that already exist.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
