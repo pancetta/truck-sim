@@ -7,9 +7,13 @@ const KEY = 'truck-sim.save';
 export function createSave(storage, tables) {
   // Always a valid profile: anything missing, corrupt, wrong-typed, out of range or from another version
   // gives a fresh one; ids the tables don't know are dropped.
+  let newer = false; // whether the stored save is from a newer build; save() leaves it alone
   function load() {
     try {
-      return validate(JSON.parse(storage.getItem(KEY))) ?? freshProfile();
+      const data = JSON.parse(storage.getItem(KEY));
+      // A newer build's save (this build running from a cache after it): play fresh, but never write over it.
+      newer = data?.version > freshProfile().version;
+      return validate(data) ?? freshProfile();
     } catch {
       return freshProfile();
     }
@@ -66,7 +70,7 @@ export function createSave(storage, tables) {
       timeOfDay: Math.floor(profile.timeOfDay / 15),
       timePlayed: Math.floor(profile.timePlayed / 60),
     });
-    if (key === written) return;
+    if (newer || key === written) return;
     written = key;
     try {
       storage.setItem(KEY, JSON.stringify(profile));
@@ -77,6 +81,7 @@ export function createSave(storage, tables) {
 
   function reset() {
     written = null;
+    newer = false; // the player chose to start over
     try {
       storage.removeItem(KEY);
     } catch {

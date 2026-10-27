@@ -84,6 +84,20 @@ describe('save module', () => {
     expect(stored(v2)).toEqual(fresh);
   });
 
+  test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
+    const newer = JSON.stringify({ ...valid, version: 5 });
+    const storage = fakeStorage({ [KEY]: newer });
+    const save = createSave(storage, tables);
+    const profile = save.load();
+    expect(profile).toEqual(fresh);
+    save.save({ ...profile, money: 10 });
+    expect(storage.items[KEY]).toBe(newer);
+
+    save.reset(); // Spielstand zurücksetzen: the player starts over on purpose
+    save.save(profile);
+    expect(JSON.parse(storage.items[KEY])).toEqual(fresh);
+  });
+
   test('an unknown version loads a fresh profile', () => {
     for (const version of [0, 5, '4', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
