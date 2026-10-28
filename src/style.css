@@ -759,10 +759,15 @@ body:has(.rear-inset:not([hidden])) .goal {
   color: #fff;
 }
 
-/* A petrol station's services, while the truck stands in its zone, as buttons over the notices. */
+/* A service spot's services, while the truck stands in its zone, as buttons over the notices; hidden while the orders
+   panel is open, which they would cover. */
 .services {
   display: flex;
   gap: 8px;
+}
+
+.orders-panel:not([hidden]) ~ .notices .services {
+  display: none;
 }
 
 .services button {
