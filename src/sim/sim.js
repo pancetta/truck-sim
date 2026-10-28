@@ -28,6 +28,9 @@ export function freshProfile() {
   };
 }
 
+// Litres the profile's tank holds: tables.fuel.tank, times the Werkstatt's tank upgrade.
+export const tankOf = (profile, tables) => tables.fuel.tank * (tables.upgrades.tank.levels[(profile.upgrades.tank ?? 0) - 1]?.factor ?? 1);
+
 // `map` comes from buildOsmMap() (osm.js); without one the truck drives on an open plane with nothing to hit
 // (and resetToRoad() and requestOffers() have nowhere to go). `random` returns floats in [0, 1);
 // pass a seeded one for repeatable offers. `profile` must already be valid (see save.js); it is copied.
@@ -54,11 +57,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
   // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
-  // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell.
-  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres);
+  // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell: at
+  // home (see atHome()), standing, with no active order.
+  // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres) and
+  // `tank` the litres it holds (tankOf());
   // `energy` profile.energy (0..1), `tired` and `exhausted` whether it is below tables.energy's thresholds.
   // `serviceOffer` is what the service spot the truck stands still in the zone of sells, [{ id, price }] with id 'fuel'
-  // or 'snack' at a petrol station and 'meal' at the restaurant, each only while it would add something (empty
+  // or 'snack' at a petrol station, 'meal' at the restaurant and 'sleep' (price 0, see sleep()) at home with no active
+  // order, each only while it would add something (empty
   // elsewhere and while a stop runs), replaced only when it changes; `service` the running stop bought with
   // buyService(), { id, price, progress 0..1 }, or null. `lastTow` ({ station (spot id), fee }) is replaced on
   // every tow.
@@ -84,13 +90,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     service: null,
     lastTow: null,
     get garageAvailable() {
-      return truck.speed === 0 && !state.order;
+      return truck.speed === 0 && !state.order && atHome();
     },
     get timeOfDay() {
       return state.profile.timeOfDay;
     },
     get fuel() {
       return state.profile.fuel;
+    },
+    get tank() {
+      return tankOf(state.profile, tables);
     },
     get energy() {
       return state.profile.energy;
@@ -293,7 +302,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // litres and a snack, the restaurant a meal; a bought stop fills `progress` while the truck stands there, and charges
   // the price and gives what it sells when done. Moving ends it unpaid.
   const stations = map?.spots.filter((s) => s.station) ?? [];
-  const servicePlaces = map?.spots.filter((s) => s.station || s.restaurant) ?? [];
+  const servicePlaces = map?.spots.filter((s) => s.station || s.restaurant || s.home) ?? [];
   const { snack, meal } = tables.energy;
   const stopTime = { fuel: tables.fuel.fillTime, snack: snack.time, meal: meal.time };
   function serve(dt) {
@@ -305,15 +314,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     else if (service) service.progress = Math.min(1, service.progress + dt / stopTime[service.id]);
     if (service?.progress === 1) {
       p.money = Math.max(0, p.money - service.price);
-      if (service.id === 'fuel') p.fuel = tables.fuel.tank;
+      if (service.id === 'fuel') p.fuel = state.tank;
       else p.energy = service.id === 'meal' ? 1 : Math.min(1, p.energy + snack.restore);
       state.service = null;
     }
     const offer = [];
     if (at && !state.service) {
-      if (at.station && tables.fuel.tank - p.fuel >= 1) offer.push({ id: 'fuel', price: Math.ceil((tables.fuel.tank - p.fuel) * tables.fuel.price) });
+      const missing = state.tank - p.fuel;
+      if (at.station && missing >= 1) offer.push({ id: 'fuel', price: Math.ceil(missing * tables.fuel.price) });
       if (at.station && p.energy < 1) offer.push({ id: 'snack', price: snack.price });
       if (at.restaurant && p.energy < 1) offer.push({ id: 'meal', price: meal.price });
+      if (at.home && !state.order) offer.push({ id: 'sleep', price: 0 });
     }
     const same = offer.length === state.serviceOffer.length && offer.every((s, i) => s.id === state.serviceOffer[i].id && s.price === state.serviceOffer[i].price);
     if (!same) state.serviceOffer = offer;
@@ -691,9 +702,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const refuse = (reason) => ({ ok: false, reason });
   const OK = { ok: true, reason: null };
 
-  // Starts a stop for one of state.serviceOffer's services (see serve()); paid when it completes. Returns { ok, reason };
-  // a refusal changes nothing.
+  // Starts a stop for one of state.serviceOffer's services (see serve()); paid when it completes. 'sleep' is sleep().
+  // Returns { ok, reason }; a refusal changes nothing.
   function buyService(id) {
+    if (id === 'sleep') return sleep();
     if (Math.abs(truck.speed) >= v.stopSpeed) return refuse('moving');
     const offer = state.serviceOffer.find((s) => s.id === id);
     if (!offer) return refuse(state.service ? 'busy' : 'unknown');
@@ -703,9 +715,26 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return OK;
   }
 
+  // Whether the truck is in home's zone. An open plane, or a test's map without a home, has its Werkstatt and bed
+  // anywhere.
+  const home = map?.spots.find((s) => s.home);
+  const atHome = () => !home || inZone(home.zone);
+
+  // Sleeps at home: full energy, and the clock on to tables.clock.wake (the next one; the clock keeps no date).
+  // Returns { ok, reason }; a refusal changes nothing.
+  function sleep() {
+    if (!atHome()) return refuse('notAtHome');
+    if (Math.abs(truck.speed) >= v.stopSpeed) return refuse('moving');
+    if (state.order) return refuse('notIdle');
+    state.profile.energy = 1;
+    state.profile.timeOfDay = tables.clock.wake;
+    return OK;
+  }
+
   // Raises one upgrade by a level. Returns { ok, reason }; a refusal changes nothing.
   function buyUpgrade(id) {
     if (!Object.hasOwn(tables.upgrades, id)) return refuse('unknown');
+    if (!atHome()) return refuse('notAtHome');
     if (!state.garageAvailable) return refuse('notIdle');
     const level = state.profile.upgrades[id] ?? 0;
     const next = tables.upgrades[id].levels[level];
@@ -725,6 +754,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Buys a visual item and wears it; no rank needed. Returns { ok, reason }; a refusal changes nothing.
   function buyVisual(id) {
     if (!Object.hasOwn(tables.visuals, id)) return refuse('unknown');
+    if (!atHome()) return refuse('notAtHome');
     if (!state.garageAvailable) return refuse('notIdle');
     if (owns(id)) return refuse('owned');
     const { price } = tables.visuals[id];
@@ -738,6 +768,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // only ever holds bought items (as save.js expects).
   function equipVisual(id) {
     if (!Object.hasOwn(tables.visuals, id)) return refuse('unknown');
+    if (!atHome()) return refuse('notAtHome');
     if (!state.garageAvailable) return refuse('notIdle');
     if (!owns(id)) return refuse('notOwned');
     const { slot, price } = tables.visuals[id];
@@ -759,7 +790,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // unloading and slack.
   function requestOffers() {
     state.offers = [];
-    const places = map.spots.filter((s) => !s.station && !s.restaurant);
+    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home);
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
@@ -885,7 +916,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns, buyService };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns, buyService, sleep };
 }
 
 // Whether (x, z) lies inside the polygon `points` (even–odd rule).

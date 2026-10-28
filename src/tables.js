@@ -91,7 +91,8 @@ export const rank = {
 
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
 // rank tier that may buy a level. `factor` scales a base vehicle constant: motor the torque curve, brakes
-// brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and fragile damage. cargoBed's `maxCargo` replaces orders.maxCargo.
+// brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and fragile damage, tank fuel.tank. cargoBed's `maxCargo`
+// replaces orders.maxCargo.
 // The save module drops ids not listed here.
 export const upgrades = {
   motor: { levels: [{ price: 1200, rank: 0, factor: 1.15 }, { price: 3000, rank: 1, factor: 1.3 }, { price: 6000, rank: 3, factor: 1.45 }] },
@@ -99,6 +100,7 @@ export const upgrades = {
   tyres: { levels: [{ price: 800, rank: 0, factor: 1.25 }, { price: 2000, rank: 1, factor: 1.5 }, { price: 4500, rank: 3, factor: 1.8 }] },
   suspension: { levels: [{ price: 700, rank: 0, factor: 0.8 }, { price: 1800, rank: 1, factor: 0.6 }, { price: 4000, rank: 3, factor: 0.45 }] },
   cargoBed: { levels: [{ price: 1500, rank: 0, maxCargo: 14 }, { price: 3500, rank: 2, maxCargo: 18 }, { price: 7000, rank: 4, maxCargo: 24 }] },
+  tank: { levels: [{ price: 1000, rank: 0, factor: 1.25 }, { price: 2500, rank: 1, factor: 1.5 }, { price: 5000, rank: 3, factor: 1.75 }] },
 };
 // Werkstatt visual items by id (names in strings.visuals, slot names in strings.visualSlots), bought with
 // money and no rank. Each slot's one free item is the stock look, which everyone owns. Colours name palette
@@ -155,10 +157,10 @@ export const fines = {
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
-// starts at `start`.
-export const clock = { minutesPerSecond: 1, start: 8 * 60 };
+// starts at `start`; sleeping at home wakes the driver at `wake`.
+export const clock = { minutesPerSecond: 1, start: 8 * 60, wake: 6 * 60 };
 
-// The fuel tank (profile.fuel, litres); a new profile starts full. A full tank lasts about 4–5 average deliveries (one
+// The fuel tank (profile.fuel, litres), `tank` litres before the Werkstatt's tank upgrade; a new profile starts full. A full tank lasts about 4–5 average deliveries (one
 // is about 1.7 km of driving on Monti, to the pickup and on).
 export const fuel = {
   tank: 400,
@@ -212,6 +214,14 @@ export const restaurant = {
   tables: 3,
   table: [0.7, 0.75],
   parasol: [1.6, 2.3],
+};
+
+// Home's look (renderer.js), our own: on the facade at the back of the pavement beside its zone, a garage door
+// [width, height] m, and a front door [width, height] m with its middle `doorAt` m on along the road from the garage's.
+export const home = {
+  garage: [3.6, 3],
+  door: [1.1, 2.3],
+  doorAt: 3.2,
 };
 
 // km/h before the truck is on a road edge (each edge has its road class's limit, tables.osm): the speedometer turns red
@@ -373,11 +383,14 @@ export const osm = {
     { id: 'P', name: 'Benzina Ponte Verde', street: 'Largo Corrado Ricci', way: 190022892, at: 32, side: 'right' },
     // The restaurant (`restaurant`): a service spot on a main street, never an order's pickup or drop-off.
     { id: 'Q', name: 'Osteria Due Lucciole', street: 'Via Panisperna', way: 23694979, at: 40, side: 'right' },
+    // Home (`home`): the driver's own house and garage on a quiet street, never an order's pickup or drop-off.
+    { id: 'R', name: 'Casa', street: 'Via dei Capocci', way: 95509138, at: 100, side: 'right' },
   ],
   docks: ['C', 'F', 'H'], // spot ids with a loading dock
   stations: ['N', 'O', 'P'], // spot ids of the petrol stations
   restaurant: 'Q', // spot id of the restaurant
-  start: 'A', // spot id where a new game begins, in its kerb lane facing along it
+  home: 'R', // spot id of home, where the driver sleeps and the Werkstatt is
+  start: 'R', // spot id where a new game begins, in its kerb lane facing along it
 };
 
 // Procedural buildings on the map's building outlines (buildings.js), in the style of the Monti prototype (ADR 0001).
@@ -636,6 +649,7 @@ export const palette = {
   zone: 0x8fc1f0,
   station: 0x2f8f5b, // petrol stations: their minimap dots, zones, pumps and canopy fascia
   restaurant: 0xb5452f, // the restaurant: its minimap dot, zone and parasols
+  home: 0x8a5cb8, // home: its minimap dot, zone and garage door
   pickup: 0x6cc551, // active order's zone marker
   dropoff: 0xf08a4b,
   // Colours the truck's kit model is recoloured to (see kitColours), and more.

@@ -118,7 +118,7 @@ export function createOrders(root, sim, map, tables, strings) {
     if (serviceOffer !== shownServices) {
       shownServices = serviceOffer;
       services.innerHTML = serviceOffer
-        .map((s) => `<button type="button" data-service="${s.id}">${strings.services[s.id]} · ${eur(s.price)}</button>`)
+        .map((s) => `<button type="button" data-service="${s.id}">${strings.services[s.id]}${s.price ? ` · ${eur(s.price)}` : ''}</button>`)
         .join('');
     }
 

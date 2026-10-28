@@ -71,7 +71,7 @@ export function createHud(root, tables, strings) {
 
   // In the cab view the 3D instruments show speed, gear and RPM, so the overlay hides but for the limit, the signs and
   // the rank panel (style.css).
-  function update({ truck, rank, profile, policeSees, junctionRule, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
+  function update({ truck, rank, profile, tank, policeSees, junctionRule, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
     root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
@@ -92,10 +92,10 @@ export function createHud(root, tables, strings) {
     if (playedMinute !== shownPlayed) played.textContent = playedText((shownPlayed = playedMinute) * 60, strings);
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
     if (police.hidden === policeSees) police.hidden = !policeSees;
-    const fuel = (profile.fuel / tables.fuel.tank).toFixed(2);
+    const fuel = (profile.fuel / tank).toFixed(2);
     if (fuel !== shownFuel) {
       fuelBar.style.transform = `scaleX(${(shownFuel = fuel)})`;
-      const low = profile.fuel < tables.fuel.low * tables.fuel.tank;
+      const low = profile.fuel < tables.fuel.low * tank;
       fuelBar.classList.toggle('low', low);
       fuelLow.hidden = !low;
     }

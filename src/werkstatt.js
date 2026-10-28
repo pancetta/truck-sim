@@ -4,7 +4,7 @@
 // only in `previews` here, never in the profile, and closing the panel drops it.
 export function createWerkstatt(root, sim, tables, strings, onReset) {
   root.innerHTML = `
-    <button type="button" class="werkstatt-toggle">${strings.werkstatt}</button>
+    <button type="button" class="werkstatt-toggle" hidden>${strings.werkstatt}</button>
     <div class="werkstatt" hidden>
       <div class="werkstatt-panel">
         <h2>${strings.werkstatt} <small></small></h2>
@@ -128,8 +128,9 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
     if (action === 'reset' && confirm(strings.resetConfirm)) onReset();
   });
 
+  // The button shows only where the Werkstatt sells: at home, standing, with no active order.
   function update({ garageAvailable }) {
-    if (toggle.disabled === garageAvailable) toggle.disabled = !garageAvailable; // writes only on a change
+    if (toggle.hidden === garageAvailable) toggle.hidden = !garageAvailable; // writes only on a change
   }
 
   return {

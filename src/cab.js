@@ -230,11 +230,11 @@ export function createCab(tables, strings) {
   );
   interior.add(column);
 
-  function update({ truck: { speed, rpm, gear }, profile }, wheelTurn) {
+  function update({ truck: { speed, rpm, gear }, profile, tank }, wheelTurn) {
     wheel.rotation.z = THREE.MathUtils.degToRad(wheelTurn);
     needles[0].rotation.z = dialAngle(Math.abs(speed) * 3.6, cab.speedMax, sweep);
     needles[1].rotation.z = dialAngle(rpm, rpmMax, sweep);
-    needles[2].rotation.z = dialAngle((profile.fuel / fuel.tank) * 4, 4, sweep);
+    needles[2].rotation.z = dialAngle((profile.fuel / tank) * 4, 4, sweep);
     needles[3].rotation.z = dialAngle(profile.energy * 4, 4, sweep);
     if (gear !== shownGear) showGear([String((shownGear = gear))], CLUSTER.gear.size[1] * 0.8);
     // Whole km and minutes, so it redraws about once a game minute (a real second), not every frame.

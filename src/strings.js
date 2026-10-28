@@ -39,11 +39,12 @@ export const strings = {
   level: 'Stufe',
   maxLevel: 'Höchste Stufe',
   from: 'ab',
-  upgrades: { motor: 'Motor', brakes: 'Bremsen', tyres: 'Reifen', suspension: 'Fahrwerk', cargoBed: 'Ladefläche' },
-  effects: { motor: 'Drehmoment', brakes: 'Bremskraft', tyres: 'Lenkung bei Tempo', suspension: 'Seitenneigung', cargoBed: 'Ladung bis' },
-  // Why buyUpgrade(), buyVisual() or equipVisual() refused, by its reason.
+  upgrades: { motor: 'Motor', brakes: 'Bremsen', tyres: 'Reifen', suspension: 'Fahrwerk', cargoBed: 'Ladefläche', tank: 'Tank' },
+  effects: { motor: 'Drehmoment', brakes: 'Bremskraft', tyres: 'Lenkung bei Tempo', suspension: 'Seitenneigung', cargoBed: 'Ladung bis', tank: 'Tankinhalt' },
+  // Why buyUpgrade(), buyVisual(), equipVisual(), buyService() or sleep() refused, by its reason.
   refusals: {
     notIdle: 'Nur im Stand ohne Auftrag',
+    notAtHome: 'Nur zu Hause',
     noMoney: 'Nicht genug Geld',
     rankTooLow: 'Rang zu niedrig',
     maxLevel: 'Höchste Stufe schon erreicht',
@@ -98,7 +99,7 @@ export const strings = {
   energy: 'Energie', // the driver's energy gauge, in the HUD and the cab
   tired: 'Müde: Zeit für eine Pause', // HUD, below tables.energy.tired
   exhausted: 'Erschöpft: Lenken und Bremsen träge', // HUD, below tables.energy.exhausted
-  services: { fuel: 'Tanken', snack: 'Snack', meal: 'Essen' }, // what a service spot sells (state.serviceOffer), on its buttons
+  services: { fuel: 'Tanken', snack: 'Snack', meal: 'Essen', sleep: 'Schlafen' }, // what a service spot sells (state.serviceOffer), on its buttons
   serving: { fuel: 'Wird getankt…', snack: 'Kurze Pause…', meal: 'Beim Essen…' }, // the running stop's progress bar
   towed: 'Tank leer, abgeschleppt zu', // the tow notice, then the station and the fee
   rules: { light: 'Ampel', rightBeforeLeft: 'Rechts vor links', priority: 'Vorfahrtstraße', giveWay: 'Vorfahrt achten', stop: 'Stop' }, // HUD, the next junction's rule (state.junctionRule)

@@ -1,6 +1,6 @@
 // Persistence of the profile (spec #12, "Save module"): one slot per browser. Takes a storage object of the
 // localStorage shape (getItem/setItem/removeItem) instead of touching localStorage, so tests can pass a fake.
-import { freshProfile } from './sim/sim.js';
+import { freshProfile, tankOf } from './sim/sim.js';
 
 const KEY = 'truck-sim.save';
 
@@ -21,7 +21,7 @@ export function createSave(storage, tables) {
 
   function validate(data) {
     // Migrations first, then the checks for the current version; any other starts fresh (v1 and v2 were the grid
-    // city's, #67). Fuel over the tank is cut back to a full one. v3 → v4 (#48) adds a full tank, a rested driver, the clock at its start and no time played.
+    // city's, #67). Fuel over the (upgraded) tank is cut back to a full one. v3 → v4 (#48) adds a full tank, a rested driver, the clock at its start and no time played.
     const fresh = freshProfile();
     if (isObject(data) && data.version === 3) {
       const { fuel, energy, timeOfDay, timePlayed } = fresh;
@@ -40,15 +40,16 @@ export function createSave(storage, tables) {
     if (!levels.every(inRange)) return null;
     const kept = [...new Set(owned)].filter((id) => Object.hasOwn(tables.visuals, id));
     const worn = Object.entries(equipped).filter(([slot, id]) => kept.includes(id) && tables.visuals[id].slot === slot);
+    const bought = Object.fromEntries(levels);
     return {
       version: data.version,
       money,
       rankPoints,
       distance,
-      upgrades: Object.fromEntries(levels),
+      upgrades: bought,
       owned: kept,
       equipped: Object.fromEntries(worn),
-      fuel: Math.min(fuel, tables.fuel.tank),
+      fuel: Math.min(fuel, tankOf({ upgrades: bought }, tables)),
       energy,
       timeOfDay,
       timePlayed,

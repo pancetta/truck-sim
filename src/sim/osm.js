@@ -18,7 +18,8 @@
 //   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay, and its
 //     kerb `lane` pose; a petrol station (tables.osm.stations) has its pump island (`pumps`, solid, kind 'station') on
 //     the pavement beside its zone, the restaurant (tables.osm.restaurant) its terrace (`terrace`, solid, kind
-//     'restaurant'). `start` is the start spot's kerb lane pose, where a new game begins.
+//     'restaurant'), and home (tables.osm.home) its `garage` pose there, on which the renderer draws its doors.
+//     `start` is the start spot's kerb lane pose, where a new game begins.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
@@ -276,8 +277,9 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     const [length, width] = station ? tables.station.island : tables.restaurant.terrace;
     if (station || restaurant) colliders.push({ kind: station ? 'station' : 'restaurant', ...outline(rect(beside, [u[0] * side, u[1] * side], length / 2, width / 2)) });
     const kerbLane = { ...kerb, heading };
-    const [pumps, terrace] = [station ? beside : null, restaurant ? beside : null];
-    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, restaurant, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps, terrace });
+    const home = o.home === t.id;
+    const [pumps, terrace, garage] = [station ? beside : null, restaurant ? beside : null, home ? beside : null];
+    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, restaurant, home, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps, terrace, garage });
     if (t.id === o.start) start = kerbLane;
   }
   colliders.push(...parkedCars(graph, spots, tables));

@@ -1,5 +1,5 @@
 // Minimap: the whole city from above, north up, with the spots (petrol stations with a pump, the restaurant with a knife
-// and fork), the truck and the Sim's current route. Reads Sim state
+// and fork, home with a house), the truck and the Sim's current route. Reads Sim state
 // each frame but redraws only at tables.minimap.rate; never writes to it. The roads are the graph's edges at their
 // widths, with the main streets (tables.osm.lightClasses) named. Sizes are in units of tables.minimap.unit m.
 export function createMinimap(canvas, map, tables) {
@@ -35,7 +35,7 @@ export function createMinimap(canvas, map, tables) {
     }
     nameStreets();
     for (const s of map.spots) {
-      bctx.fillStyle = hex(palette[s.station ? 'station' : s.restaurant ? 'restaurant' : 'spot']);
+      bctx.fillStyle = hex(palette[s.station ? 'station' : s.restaurant ? 'restaurant' : s.home ? 'home' : 'spot']);
       bctx.beginPath();
       bctx.arc(...zoneCentre(s), spotRadius * scale, 0, 2 * Math.PI);
       bctx.fill();
@@ -50,8 +50,8 @@ export function createMinimap(canvas, map, tables) {
     lctx.fillStyle = hex(palette.light);
     for (const s of map.spots) {
       const [x, y] = zoneCentre(s);
-      if (s.station || s.restaurant) {
-        (s.station ? pump : cutlery)(x, y);
+      if (s.station || s.restaurant || s.home) {
+        (s.station ? pump : s.restaurant ? cutlery : house)(x, y);
         continue;
       }
       lctx.strokeText(s.id, x, y + 0.1 * scale);
@@ -98,6 +98,15 @@ export function createMinimap(canvas, map, tables) {
     strokes();
     lctx.fillRect(x + 1.2 * u, y - 2.2 * u, 0.6 * u, 2.4 * u); // the blade
     [lctx.strokeStyle, lctx.lineWidth] = [hex(palette.trim), width];
+  }
+  // A house centred on (x, y) canvas px, outlined as the letters are: a square body under a pointed roof.
+  function house(x, y) {
+    const u = scale * 0.5;
+    lctx.beginPath();
+    for (const [px, py] of [[-1.6, 2], [-1.6, -0.4], [0, -2.2], [1.6, -0.4], [1.6, 2]]) lctx.lineTo(x + px * u, y + py * u);
+    lctx.closePath();
+    lctx.stroke();
+    lctx.fill();
   }
   const zoneCentre = ({ zone }) => at((zone.minX + zone.maxX) / 2, (zone.minZ + zone.maxZ) / 2);
 

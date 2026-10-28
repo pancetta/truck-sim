@@ -622,11 +622,6 @@ body:has(.rear-inset:not([hidden])) .goal {
   cursor: pointer;
 }
 
-.werkstatt-toggle:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
 .werkstatt {
   position: fixed;
   inset: 0;

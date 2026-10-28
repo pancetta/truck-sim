@@ -90,6 +90,11 @@ _Avoid_: gas station, station (alone), fuel stop
 The **Service spot** that sells a **Meal**, with a café terrace on the pavement beside its **Zone**.
 _Avoid_: diner, rest stop
 
+**Home** ("Zuhause"):
+The driver's own house and garage, a **Service spot** where a new game begins: sleeping there ("Schlafen") restores
+all **Energy** and moves the clock on to the morning, and the **Werkstatt** is there.
+_Avoid_: base, depot, garage (alone)
+
 **Service**:
 What a **Service spot** sells; bought while standing still in its **Zone**, it takes a short stop and is paid when done.
 
@@ -108,7 +113,8 @@ The bay of a **Dock**; reversing straight into it at the **Drop-off** earns the 
 _Avoid_: ramp (in English), loading bay
 
 **Werkstatt**:
-The garage where the player buys **Upgrades** and **Visuals**; open only while the truck stands still with no **Order**.
+The garage at **Home** where the player buys **Upgrades** and **Visuals**; open only while the truck stands still in
+**Home**'s **Zone** with no **Order**.
 _Avoid_: garage, shop, showroom (the showroom is only its camera)
 
 **Upgrade** ("Technik"):

@@ -105,6 +105,8 @@ describe('save module', () => {
 
   test('fuel over the tank is cut back to a full tank', () => {
     expect(stored({ ...valid, fuel: baseTables.fuel.tank + 50 })).toEqual({ ...valid, fuel: baseTables.fuel.tank });
+    const upgraded = { ...valid, upgrades: { tank: 2 }, fuel: 10000 };
+    expect(stored(upgraded).fuel).toBe(baseTables.fuel.tank * baseTables.upgrades.tank.levels[1].factor);
   });
 
   test('unknown ids are dropped, and so is an equipped item not owned or in the wrong slot', () => {

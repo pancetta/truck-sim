@@ -322,9 +322,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const signsOf = (kind, limit) => map.signs.filter((s) => s.kind === kind && s.limit === limit).map(({ x, z, angle }) => ({ x, z, angle, size: [1, 1, 1] }));
   const limits = new Set(map.signs.filter((s) => s.kind === 'speed').map((s) => s.limit));
   addSigns([...[...limits].map((limit) => [speedSign(limit), signsOf('speed', limit)]), [giveWaySign(), signsOf('giveWay')], [stopSign(), signsOf('stop')]]);
-  addBoxes(palette.zone, map.spots.filter((s) => !s.station && !s.restaurant).map((s) => s.zone), 0.04);
+  addBoxes(palette.zone, map.spots.filter((s) => !s.station && !s.restaurant && !s.home).map((s) => s.zone), 0.04);
   addBoxes(palette.station, map.spots.filter((s) => s.station).map((s) => s.zone), 0.04);
   addBoxes(palette.restaurant, map.spots.filter((s) => s.restaurant).map((s) => s.zone), 0.04);
+  addBoxes(palette.home, map.spots.filter((s) => s.home).map((s) => s.zone), 0.04);
 
   // The box on pose `p` (heading along the road, the road on its left), `length` m along and `width` m across, its middle
   // `along` m on and `out` m right of p, from `y` m up, `height` m tall.
@@ -365,10 +366,23 @@ export function createRenderer(canvas, tables, map, onProgress) {
       parasols.push(part(along, 0, rt.parasol[0], rt.parasol[0], deck + rt.parasol[1], 0.12));
     }
   }
+  // Home (tables.home), our own boxes on the facade behind its pavement (spot.garage): a garage door in a dark frame, and
+  // a front door beside it.
+  const hm = tables.home;
+  const garageDoors = [];
+  for (const { garage } of map.spots.filter((s) => s.home)) {
+    const part = partOf(garage);
+    const back = walk / 2; // the pavement's back, where the facade stands
+    const [width, height] = hm.garage;
+    posts.push(part(0, back, width + 0.3, 0.3, 0, height + 0.15));
+    garageDoors.push(part(0, back - 0.1, width, 0.3, 0, height));
+    posts.push(part(hm.doorAt, back - 0.05, hm.door[0], 0.3, 0, hm.door[1]));
+  }
   addBoxes(palette.wall, isle);
   addBoxes(palette.trim, posts);
   addBoxes(palette.station, coloured);
   addBoxes(palette.restaurant, parasols);
+  addBoxes(palette.home, garageDoors);
 
   // Dock bays, our own boxes, from each dock's bay: a dock edge (a low dark platform, on the Sim's platform collider,
   // wall or not), and painted lines on either side of the bay, as far apart as the docking check allows. They stand a
