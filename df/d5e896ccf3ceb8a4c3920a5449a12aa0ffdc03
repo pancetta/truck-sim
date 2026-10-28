@@ -20,6 +20,7 @@ src/sim/osm.js
   s_a8e9be5f91e5ac::t_52efad7423a301 31,244-252
   s_a8e9be5f91e5ac::t_323691e3a06a71 11
   s_a8e9be5f91e5ac::t_4e12065ec0b6c6 242-243
+  s_a8e9be5f91e5ac::t_790848c51be56c 303
 src/sim/paved.js
   s_a8e9be5f91e5ac::t_72ca7346091ed3 1-2,5-64,68-69,75-77,79-87,92-151
   s_a8e9be5f91e5ac::t_629e25aabecffc 65-67,70-74,78
