@@ -77,7 +77,7 @@ export const orders = {
 
 // Rank points per delivery; a tier is reached at its points and brings `traffic` AI cars into the city.
 // Titles are in strings.rankTitles, same order. The economy run (#58, scripts/economy.js) earns about 150 points an
-// hour, so the tiers come at about 0.4, 1.3, 3.3 and 7 h of play, alongside the Werkstatt levels they unlock.
+// hour, so the tiers come at about 0.4, 1.5, 3.5 and 6.6 h of play, alongside the Werkstatt levels they unlock.
 export const rank = {
   pointsPerDelivery: 10,
   timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned

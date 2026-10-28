@@ -12,11 +12,11 @@ node scripts/economy.js 4 1,2,3,4 careless   # the same player, but it never ref
 ## The player
 
 - **Orders:** it takes the first offer. Offers are random, so its deliveries are the average one.
-- **Fuel:** below 30 % of the tank it refuels at the nearest station by road, with a snack if the driver is below 70 % energy.
+- **Fuel:** below 30 % of the tank, if it can pay for a full one, it refuels at the nearest station by road, with a snack if the driver is below 70 % energy and it keeps 300 €.
 - **Rest:** when tired it drives to the nearer of home (sleep, free) and the restaurant (a meal, if it can pay).
 - **Upgrades:** whenever it may and can afford an upgrade level, keeping 300 €, it drives home and buys the cheapest ones.
 - **Driving:** it drives like the autopilot: at the street's limit, waiting only for cars ahead. It ignores red lights, give-way and stop signs, so its rule fines are a careless driver's. It also drives into AI cars more often than a player would (collision fines).
-- **Stuck:** where the autopilot can't turn, it jumps on along its route. A leg it can't finish in 10 minutes jumps into the target's zone and counts as a rescue (a handful in 4 h).
+- **Stuck:** where the autopilot can't turn, it jumps on along its route. A leg it can't finish in 10 minutes jumps into the target's zone (a dock's bay) and counts as a rescue (a handful in 4 h).
 
 A human drives slower and less directly than the autopilot, so their money and rank per hour are lower. The shares (costs against pay, deliveries per tank) carry over better than the rates.
 

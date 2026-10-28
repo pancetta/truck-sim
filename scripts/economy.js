@@ -4,7 +4,7 @@
 // `node scripts/economy.js 4 1,2,3,4`; `careless` never refuels, so the tow is its only fuel.
 //
 // The player takes the first offer (offers are random, so its deliveries are the average one), refuels below `refuel` of
-// the tank (default 0.3) (with a snack if the driver is half tired), and when tired drives to the nearer of home (sleep, free) and the
+// the tank (default 0.3) and can pay for a full one (with a snack below 70 % energy, if it keeps `reserve` €), and when tired drives to the nearer of home (sleep, free) and the
 // restaurant (meal). Whenever it may and can afford an upgrade level, keeping `reserve` €, it drives home and buys the
 // cheapest ones (sleeping there too if it's below `nap` energy). It drives like the autopilot: at the
 // street's limit, waiting only for cars ahead, so it ignores red lights, give-way and stop signs (the rule fines are a
@@ -40,7 +40,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
   const nearest = (from, ids) => ids.reduce((best, id) => (length(from, id) < length(from, best) ? id : best));
   const end = hours * 3600;
   const r = {
-    seed, hours, startMoney: p().money, deliveries: 0, pay: {}, fines: {}, finesCount: {}, tows: 0, towFees: 0, fuel: { stops: 0, litres: 0, cost: 0 },
+    seed, hours, startMoney: p().money, deliveries: 0, pay: {}, fines: {}, finesCount: {}, tows: 0, towFees: 0, fuel: { stops: 0, cost: 0 },
     snacks: 0, meals: 0, sleeps: 0, food: 0, upgrades: [], upgradeCost: 0, burnt: 0, driving: 0, rescues: 0, ranks: [], lowest: p().money, hourly: [],
   };
   let here = tables.osm.start;
@@ -98,7 +98,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
       }
       if (t > legLimit) {
         r.rescues++;
-        Object.assign(s.truck, spot(to).lane, { speed: 0 });
+        Object.assign(s.truck, { x: cx, z: cz, heading: spot(to).bay?.heading ?? spot(to).lane.heading, speed: 0 }); // a dock's zone is in its bay
         step(IDLE);
         break;
       }
@@ -120,7 +120,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
     wait(() => s.serviceOffer.length > 0, 2);
     const offer = s.serviceOffer.find((x) => x.id === id);
     if (!offer || !sim.buyService(id).ok) return false;
-    if (id === 'fuel') Object.assign(r.fuel, { stops: r.fuel.stops + 1, litres: r.fuel.litres + s.tank - p().fuel, cost: r.fuel.cost + offer.price });
+    if (id === 'fuel') Object.assign(r.fuel, { stops: r.fuel.stops + 1, cost: r.fuel.cost + offer.price });
     wait(() => !s.service);
     return true;
   }
@@ -193,8 +193,8 @@ export function report(r) {
   const fines = Object.values(r.fines).reduce((a, b) => a + b, 0);
   const costs = r.fuel.cost + r.food + r.towFees + fines;
   const perH = (x) => Math.round(x / h);
-  const list = (o) => Object.entries(o).map(([k, v]) => `${k} ${perH(v)}`).join(', ');
-  const counts = (o) => Object.entries(o).map(([k, v]) => `${k} ${(v / h).toFixed(1)}`).join(', ');
+  const list = (o) => Object.entries(o).map(([k, v]) => `${k} ${perH(v)}`).join(', ') || 'none';
+  const counts = (o) => Object.entries(o).map(([k, v]) => `${k} ${(v / h).toFixed(1)}`).join(', ') || 'none';
   return [
     `seed ${r.seed}, ${h} h: money ${r.startMoney} → ${r.money} (lowest ${r.lowest}), net ${perH(r.money - r.startMoney)} €/h, ${(r.deliveries / h).toFixed(1)} deliveries/h, rank points ${r.rankPoints}`,
     `  pay ${perH(pay)} €/h (${list(r.pay)}); running costs ${perH(costs)} €/h (${Math.round((100 * costs) / pay)} % of pay), leaving ${perH(pay - costs)} €/h`,
@@ -207,10 +207,15 @@ export function report(r) {
   ].join('\n');
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const hours = Number(process.argv[2] ?? 1);
-  const seeds = (process.argv[3] ?? '1,2,3').split(',').map(Number);
-  const refuel = process.argv[4] === 'careless' ? 0 : undefined;
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [hoursArg = '1', seedsArg = '1,2,3', mode] = process.argv.slice(2);
+  const hours = Number(hoursArg);
+  const seeds = seedsArg.split(',').map(Number);
+  if (!(hours > 0) || !seeds.every(Number.isInteger) || ![undefined, 'careless'].includes(mode)) {
+    console.error('usage: node scripts/economy.js [hours > 0] [seeds, e.g. 1,2,3] [careless]');
+    process.exit(1);
+  }
+  const refuel = mode === 'careless' ? 0 : undefined;
   const map = montiMap();
   for (const seed of seeds) console.log(report(runEconomy({ map, seed, hours, refuel })));
 }
