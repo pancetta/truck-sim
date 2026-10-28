@@ -66,7 +66,9 @@ export const orders = {
   // else fragile if marked so, heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3 },
   shares: { express: 0.2, oversized: 0.15 },
-  express: { time: 0.7, pay: 1.5 }, // factors on the expected time and the pay (base and distance)
+  // Factors on the expected time and the pay (base and distance). At 0.8 a 1.2 km express needs about 7.9 m/s on average,
+  // a dash at the 30 km/h (8.3 m/s) limit of most streets; 0.7 would need 9.1 m/s, over it.
+  express: { time: 0.8, pay: 1.5 },
   oversizedWidth: 7, // m; an oversized load's route keeps to edges this wide or wider: on Monti, off the 4 m service lanes
   cargo: [
     { name: 'Paletten', weight: 6 }, // t

@@ -681,7 +681,7 @@ describe('Sim: the clean Star and Rule fines', () => {
 });
 
 describe('Sim: express and oversized offers', () => {
-  const { types, shares, express, oversizedWidth } = tables.orders;
+  const { types, shares, oversizedWidth } = tables.orders;
   const atTier = (tier) => ({ ...freshProfile(), stars: tables.rank.tiers[tier].stars });
   const only = (type, orders = tables.orders) => ({ ...tables, orders: { ...orders, shares: { express: 0, oversized: 0, [type]: 1 } } });
 
@@ -705,12 +705,12 @@ describe('Sim: express and oversized offers', () => {
   });
 
   test("express pays the table's factor and has its shorter expected time, which the on-time Star uses", () => {
-    // The nook at 30 s loading and 20 s slack: 80 s expected, 56 s express; the order is delivered at 60 s.
-    const example = only('express', { ...tables.orders, basePay: 100, loadTime: 30, slack: 20 });
+    // The nook at 30 s loading and 10 s slack: 70 s expected, 56 s express; the order is delivered at 60 s.
+    const example = only('express', { ...tables.orders, basePay: 100, loadTime: 30, slack: 10, express: { time: 0.8, pay: 1.5 } });
     const sim = simOn(nook(example), 1, atTier(types.express));
     const offer = sim.requestOffers()[0];
-    expect(offer).toMatchObject({ type: 'express', pay: Math.round(express.pay * 100) });
-    expect(offer.expectedTime).toBeCloseTo(express.time * 80, 6);
+    expect(offer).toMatchObject({ type: 'express', pay: 150 });
+    expect(offer.expectedTime).toBeCloseTo(56, 6);
 
     sim.acceptOrder(offer.id);
     drive(sim, 61, IDLE);
