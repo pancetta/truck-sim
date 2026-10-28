@@ -22,7 +22,7 @@ export const strings = {
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
-  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag' }, // state.lastPayment line labels
+  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag' }, // state.lastPayment line labels
   offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe' },
   damage: 'Schaden',
   expectedTime: 'Soll-Zeit',

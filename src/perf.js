@@ -114,7 +114,7 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       `sim steps per frame ≤ ${Math.max(...rings.steps)}`,
       // WebGPURenderer counts draw calls in drawCalls (its calls is a running total) and programs in memory.
       `calls ${r.drawCalls ?? r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  programs ${renderer.info.programs?.length ?? m.programs}  geometries ${m.geometries}  textures ${m.textures}`,
-      `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}  hour ${(sim.state.timeOfDay / 60).toFixed(1)}`,
+      `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}  hour ${(sim.state.timeOfDay / 60).toFixed(1)}  ${sim.state.weather.kind} ${sim.state.weather.intensity.toFixed(2)}`,
       `map build ${mapBuild.toFixed(0)} ms`,
       gpu,
     ].join('\n');

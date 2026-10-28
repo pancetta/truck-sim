@@ -59,6 +59,7 @@ export const orders = {
   dockCentre: 1, // m either side of the bay's centre line; the painted bay lines show it
   dockDepth: 1, // m from the middle of the truck's rear to the dock edge (the building face)
   nightBonus: 0.15, // share of the pay for a delivery completed at night (clock.night)
+  rainBonus: 0.15, // share of the pay for a delivery completed in rain (weather)
   // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
   // the drop-off and the cargo: dock or fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, dock: 2, fragileDock: 3 },
@@ -162,6 +163,33 @@ export const fines = {
 // (the wake time, so sleeping skips it): the headlights and street lights are on, the city has traffic.night of its AI
 // cars, and a delivery pays orders.nightBonus.
 export const clock = { minutesPerSecond: 1, start: 8 * 60, wake: 6 * 60, night: [20 * 60, 6 * 60] };
+
+// The weather (state.weather, #53), not saved: clear spells `clear` s long (drawn between the two) and rain or fog spells
+// `spell` s long by turns, a `fog` share of them fog, timed on profile.timePlayed from the `seed`. A spell's intensity
+// ramps from 0 to 1 over `ramp` s, and back down before the next. At full rain the truck's brake force and steer fade
+// speed (its grip) are `rain.grip` times theirs, the AI cars drive at `rain.traffic` of their cruise and turn speeds,
+// and a delivery pays orders.rainBonus.
+// `look` is each kind's at full intensity, blended in from clear's (renderer.js): camera.fog's range (the far plane
+// too), lighting.haze, the sun's and the sky's share of their light, how far the sky turns an even grey (its horizon's
+// brightness), and how wet
+// the roads and pavements look (their colour times 1 − wet · `darken`, roughness times 1 − wet · `gloss`).
+// Rain streaks fall in a `box` m round the camera (x, y, z), `drops` of them, `size` m wide and long, at `fall` m/s,
+// `opacity` at full rain, fading out within `near` m of the camera (so none fall in the cab); `colour` times the sky's
+// time-of-day tint (daylight()), plus `floor` so they still show at night.
+export const weather = {
+  seed: 53,
+  clear: [6 * 60, 15 * 60],
+  spell: [3 * 60, 6 * 60],
+  fog: 0.35,
+  ramp: 30,
+  rain: { grip: 0.7, traffic: 0.8 },
+  look: {
+    rain: { fog: [40, 200], haze: 0.007, sun: 0.2, sky: 0.6, grey: 0.9, wet: 1 },
+    fog: { fog: [8, 110], haze: 0.018, sun: 0.25, sky: 0.9, grey: 1, wet: 0.3 },
+  },
+  wet: { darken: 0.4, gloss: 0.7 },
+  streaks: { box: [30, 14, 30], drops: 1500, size: [0.02, 0.8], fall: 11, opacity: 0.5, near: [1.5, 4], colour: 0xc8d0d8, floor: 0.12 },
+};
 
 // The fuel tank (profile.fuel, litres), `tank` litres before the Werkstatt's tank upgrade; a new profile starts full. A full tank lasts about 4–5 average deliveries (one
 // is about 1.7 km of driving on Monti, to the pickup and on).

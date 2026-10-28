@@ -62,6 +62,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres) and
   // `tank` the litres it holds (tankOf());
   // `energy` profile.energy (0..1), `tired` and `exhausted` whether it is below tables.energy's thresholds.
+  // `weather` is { kind: 'clear', 'rain' or 'fog', intensity 0..1 } (see updateWeather()); not saved.
   // `serviceOffer` is what the service spot the truck stands still in the zone of sells, [{ id, price }] with id 'fuel'
   // or 'snack' at a petrol station, 'meal' at the restaurant and 'sleep' (price 0, see sleep()) at home with no active
   // order, each only while it would add something (empty
@@ -89,6 +90,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     serviceOffer: [],
     service: null,
     lastTow: null,
+    weather: { kind: 'clear', intensity: 0 },
     get garageAvailable() {
       return truck.speed === 0 && !state.order && atHome();
     },
@@ -127,6 +129,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const traffic = map ? createTraffic(tables, map, random) : null;
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
+  // The weather's spells (tables.weather): clear and rain or fog by turns, drawn from its own seeded random and timed on
+  // profile.timePlayed, so the same seed brings the same weather and it goes on across loads without being saved.
+  const w = tables.weather;
+  const sky = seeded(w.seed);
+  const lasting = ([least, most]) => least + (most - least) * sky();
+  let spell = { kind: 'clear', until: lasting(w.clear) };
+  const nextSpell = () => {
+    const kind = spell.kind === 'clear' ? (sky() < w.fog ? 'fog' : 'rain') : 'clear';
+    spell = { kind, until: spell.until + lasting(kind === 'clear' ? w.clear : w.spell) };
+  };
   // map.colliders in a spatial cell index by their bounds, so fits() and inSight() test only those near.
   const solids = createCells(tables.city.cell);
   for (const b of map?.colliders ?? []) solids.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
@@ -177,6 +189,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const p = state.profile;
     p.timeOfDay = (p.timeOfDay + dt * tables.clock.minutesPerSecond) % (24 * 60);
     p.timePlayed += dt;
+    updateWeather(dt);
+    const wet = state.weather.kind === 'rain' ? state.weather.intensity : 0;
+    const grip = 1 - wet * (1 - w.rain.grip);
     const speedBefore = Math.abs(truck.speed);
     updateLights();
     const stopped = Math.abs(truck.speed) < v.stopSpeed;
@@ -213,7 +228,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       drive = input.gas * wheelForce(truck.gear, truck.rpm);
     }
     if (p.fuel <= 0) drive = 0; // out of fuel: it coasts
-    const resist = brake * v.brakeForce + v.rollingResistance * truck.mass * G + v.drag * truck.speed ** 2;
+    const resist = brake * v.brakeForce * grip + v.rollingResistance * truck.mass * G + v.drag * truck.speed ** 2;
     truck.speed += (drive / truck.mass) * dt;
     // Resistance slows the truck towards zero but never pushes it the other way.
     const slow = (resist / truck.mass) * dt;
@@ -221,7 +236,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     truck.speed = Math.max(-v.reverseSpeed, truck.speed);
 
     // Bicycle model; positive steer turns right, which lowers the heading. Lock fades with speed².
-    const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / v.steerFadeSpeed) ** 2);
+    const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / (v.steerFadeSpeed * grip)) ** 2);
     const yawRate = -(truck.speed / v.wheelbase) * Math.tan(angle);
     const { x, z, heading } = truck;
     const frontBefore = front();
@@ -247,7 +262,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const moved = Math.hypot(truck.x - x, truck.z - z);
     p.distance += moved;
     burn(moved, reversing ? input.brake : input.gas);
-    updateTraffic(dt);
+    updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
     if (map) checkGiveWay(dt);
@@ -271,6 +286,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (map && p.fuel <= 0 && Math.abs(truck.speed) < v.stopSpeed && !canFill && state.progress === 0) tow();
 
     updateRoute(here);
+  }
+
+  // The weather follows the spell profile.timePlayed is in: its intensity ramps up over tables.weather.ramp s, and down
+  // again before the next kind comes in.
+  function updateWeather(dt) {
+    while (spell.until <= state.profile.timePlayed) nextSpell();
+    const now = state.weather;
+    if (now.kind === spell.kind) now.intensity = now.kind === 'clear' ? 0 : Math.min(1, now.intensity + dt / w.ramp);
+    else if ((now.intensity = Math.max(0, now.intensity - dt / w.ramp)) === 0) now.kind = spell.kind;
   }
 
   // The controls as the driver applies them: as they are, but exhausted the steering and brake move towards them at a
@@ -372,11 +396,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // AI cars as many as the rank tier brings (fewer at night), reacting to the truck where it now stands; the ones it
-  // is in contact with stand still. At dusk the extra cars leave as they drive out of the truck's surroundings.
-  function updateTraffic(dt) {
+  // AI cars as many as the rank tier brings (fewer at night), reacting to the truck where it now stands, at `pace` of
+  // their speeds; the ones it is in contact with stand still. At dusk the extra cars leave as they drive out of the
+  // truck's surroundings.
+  function updateTraffic(dt, pace) {
     const count = tables.rank.tiers[state.rank.tier].traffic;
-    traffic?.step(dt, truck, state.lights, isNight(state.timeOfDay, tables.clock) ? Math.round(count * tables.traffic.night) : count, contacts);
+    traffic?.step(dt, truck, state.lights, isNight(state.timeOfDay, tables.clock) ? Math.round(count * tables.traffic.night) : count, contacts, pace);
   }
 
   // A new contact with an AI car (`met`: the cars the truck touches after its move) costs a fine when the
@@ -655,6 +680,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const docked = to.dock && reversedInto(to.bay);
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
       if (isNight(state.timeOfDay, tables.clock)) lines.push({ label: 'night', amount: Math.round(o.nightBonus * order.pay) });
+      if (state.weather.kind === 'rain') lines.push({ label: 'rain', amount: Math.round(o.rainBonus * order.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
       const { pointsPerDelivery, timeBonusPoints, fragilePoints, dockPoints } = tables.rank;
@@ -919,6 +945,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns, buyService, sleep };
+}
+
+// A seeded random (mulberry32): for the Sim under ?auto, so every run meets the same traffic and offers, and for the
+// weather's spells.
+export function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), a | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 // Whether `minutes` (the game clock) is at night: from clock.night[0] over midnight to clock.night[1].

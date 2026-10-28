@@ -189,7 +189,8 @@ export function createTraffic(tables, map, random) {
   let found = new Int32Array(64);
   let targets = new Float64Array(64);
 
-  const turnSpeed = (r) => Math.sqrt(t.turnAccel * r);
+  let pace = 1; // the share of their cruise and turn speeds cars drive at (less in rain, see step())
+  const turnSpeed = (r) => pace * Math.sqrt(t.turnAccel * r);
 
   // The runs cars drive (#63): along an edge two cars can pass on, a one-way or a two-way whose lanes lie a car and its
   // side gaps apart (Monti's two-way service edges are too narrow), and that comes no nearer than that to another run
@@ -934,7 +935,7 @@ export function createTraffic(tables, map, random) {
   const curveReach = top ** 2 / (2 * t.brake); // m from which a curve or limit can't slow a car below cruise
   function curves(ci) {
     const car = cars[ci];
-    let speed = Math.min(cruise[car.lane.id], car.prim.r ? turnSpeed(car.prim.r) : top);
+    let speed = Math.min(pace * cruise[car.lane.id], car.prim.r ? turnSpeed(car.prim.r) : top);
     let dist = -car.s; // centre to the start of the path
     for (let i = 0; i < car.route.length && dist < curveReach; i++) {
       const p = car.route[i];
@@ -953,7 +954,7 @@ export function createTraffic(tables, map, random) {
     let dist = car.lane.length - car.s; // centre to the start of route path i
     for (let i = 1; i < car.route.length && dist < curveReach; i++) {
       const p = car.route[i];
-      targets[ci] = Math.min(targets[ci], limit(dist - size.length / 2, cruise[p.id]));
+      targets[ci] = Math.min(targets[ci], limit(dist - size.length / 2, pace * cruise[p.id]));
       dist += p.length;
     }
   }
@@ -994,9 +995,10 @@ export function createTraffic(tables, map, random) {
   }
 
   // Drops cars that left the road or (police aside) the truck's surroundings, spawns one while fewer than `count`
-  // and a police car while fewer than tables.police.count, then drives each car; the ones in `held` (ids, a Set
-  // or Map) stand still.
-  function step(dt, truck, lights, count, held = new Set()) {
+  // and a police car while fewer than tables.police.count, then drives each car at `share` of their cruise and turn
+  // speeds; the ones in `held` (ids, a Set or Map) stand still.
+  function step(dt, truck, lights, count, held = new Set(), share = 1) {
+    pace = share;
     let police = 0;
     for (let i = cars.length - 1; i >= 0; i--) {
       if (cars[i].gone || (!cars[i].police && hidden(cars[i], truck, t.despawnDistance))) cars.splice(i, 1);

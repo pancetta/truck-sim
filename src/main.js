@@ -42,7 +42,10 @@ try {
 }
 const save = createSave(auto ? null : storage, tables);
 // The autopilot's drive never runs dry or tires, so a tow never breaks the loop and its steering never lags.
-const simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0 }, energy: { ...tables.energy, drive: Infinity } } : tables;
+let simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0 }, energy: { ...tables.energy, drive: Infinity } } : tables;
+// ?perf&weather=rain (or fog) brings only that weather, coming in over weather.ramp s, so it can be measured (#53).
+const only = perf && params.get('weather');
+if (only === 'rain' || only === 'fog') simTables = { ...simTables, weather: { ...tables.weather, clear: [0, 0], fog: only === 'fog' ? 1 : 0 } };
 const sim = createSim(simTables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
 const blend = createBlend();
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck

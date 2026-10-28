@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { texture, uniform, uv, equirectUV, normalWorldGeometry, positionWorld, cameraPosition, fog, densityFogFactor, rangeFogFactor, float } from 'three/tsl';
+import { texture, uniform, uv, equirectUV, normalWorldGeometry, positionWorld, positionLocal, cameraPosition, fog, densityFogFactor, rangeFogFactor, vec2, vec3, mix, luminance, smoothstep, attribute, time } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -28,6 +28,7 @@ const TRUCK = 'cars/delivery.glb';
 const roadHeight = 0.06; // m, kerb top; the road surface sits at half of it
 
 const SUN_DISTANCE = 300; // m from the shadow area's centre to the sun, back along its light
+const CLEAR = { kind: 'clear', intensity: 0 }; // the weather in the Werkstatt
 const SHADOW_ONLY = 1; // layer the sun's shadow camera and the reversing camera see, but not the main camera
 // One-texel maps sampled like the KTX2 ones (filters, wrapping, colour space), for materials whose maps load later.
 const standIn = (rgba, colorSpace = THREE.NoColorSpace) => Object.assign(new THREE.DataTexture(new Uint8Array(rgba), 1, 1), {
@@ -182,6 +183,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   });
   let showFullSky;
   const skyTint = uniform(new THREE.Color(1, 1, 1)); // the time of day's (daylight())
+  // The weather's (tables.weather.look): the haze, the fog's range, and how far the sky turns an even grey.
+  const haze = uniform(lighting.haze);
+  const fogRange = uniform(new THREE.Vector2(...cam.fog));
+  const grey = uniform(0);
   let skyLight = 0; // the sky's light at noon, once it is in
   loads.push(loadSky(lighting.skyFirst).then((sky) => {
     scene.environment = sky;
@@ -190,13 +195,15 @@ export function createRenderer(canvas, tables, map, onProgress) {
     // the sky behind it, and the far city fades out instead of popping.
     const skyScale = uniform(sky.userData.scale);
     const skyMaps = [];
-    const skyAt = (direction) => {
-      const map = texture(sky, equirectUV(direction.normalize()));
+    const sample = (at) => {
+      const map = texture(sky, at);
       skyMaps.push(map);
-      return map.rgb.mul(skyScale).mul(skyTint);
+      return map.rgb.mul(skyScale);
     };
+    const overcast = vec3(luminance(sample(vec2(0.5, 0.5)))); // the horizon's brightness, in grey all round
+    const skyAt = (direction) => mix(sample(equirectUV(direction.normalize())), overcast, grey).mul(skyTint);
     scene.backgroundNode = skyAt(normalWorldGeometry);
-    const clear = densityFogFactor(float(lighting.haze)).oneMinus().mul(rangeFogFactor(float(cam.fog[0]), float(cam.fog[1])).oneMinus());
+    const clear = densityFogFactor(haze).oneMinus().mul(rangeFogFactor(fogRange.x, fogRange.y).oneMinus());
     scene.fogNode = fog(skyAt(positionWorld.sub(cameraPosition)), clear.oneMinus());
     showFullSky = (full) => {
       skyScale.value = full.userData.scale;
@@ -205,6 +212,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }));
   const sun = new THREE.DirectionalLight(); // its colour, intensity and direction follow the clock (render())
   const { shadow } = lighting;
+  const { weather } = tables;
   sun.castShadow = true;
   sun.shadow.mapSize.set(shadow.mapSize, shadow.mapSize);
   Object.assign(sun.shadow.camera, { left: -shadow.extent, right: shadow.extent, top: shadow.extent, bottom: -shadow.extent, near: 1, far: 2 * SUN_DISTANCE });
@@ -746,7 +754,44 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const headlights = glowOut(beam.width, beam.length, 1);
   const reversingLights = glowOut(...beam.reversing, -1);
   truck.add(headlights, reversingLights);
-  let warmNight = true; // drawn in the first frame (behind the loading screen) too, so its shader is ready at dusk
+
+  // Rain streaks (tables.weather.streaks): `drops` thin crossed quads, each falling through a box round the camera. The
+  // vertex shader wraps each drop's place into the box about the camera, so the drops stay put in the world (bar their
+  // fall) as the camera moves; they fade out near the camera and towards the box's sides.
+  const { streaks } = weather;
+  const drop = mergeGeometries([new THREE.PlaneGeometry(...streaks.size), new THREE.PlaneGeometry(...streaks.size).rotateY(Math.PI / 2)]);
+  const corners = drop.getAttribute('position').array;
+  const per = corners.length / 3;
+  const rainGeometry = new THREE.BufferGeometry();
+  const rainPositions = new Float32Array(streaks.drops * corners.length);
+  const rainPlaces = new Float32Array(streaks.drops * corners.length);
+  const rainIndex = [];
+  for (let i = 0; i < streaks.drops; i++) {
+    rainPositions.set(corners, i * corners.length);
+    const place = [Math.random(), Math.random(), Math.random()];
+    for (let k = 0; k < per; k++) rainPlaces.set(place, (i * per + k) * 3);
+    for (const k of drop.index.array) rainIndex.push(i * per + k);
+  }
+  rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+  rainGeometry.setAttribute('place', new THREE.BufferAttribute(rainPlaces, 3));
+  rainGeometry.setIndex(rainIndex);
+  const rainShare = uniform(0);
+  const box = vec3(...streaks.box);
+  const fallen = attribute('place').mul(box).sub(vec3(0, time.mul(streaks.fall), 0)).sub(cameraPosition);
+  const offset = fallen.sub(box.mul(fallen.div(box).floor())).sub(box.mul(0.5)); // from the camera, within the box
+  const rainMaterial = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+  rainMaterial.positionNode = offset.add(cameraPosition).add(positionLocal);
+  rainMaterial.colorNode = vec3(...new THREE.Color(streaks.colour)).mul(skyTint).add(streaks.floor);
+  const across = offset.xz.length();
+  rainMaterial.opacityNode = rainShare.mul(streaks.opacity).mul(smoothstep(...streaks.near, offset.length())).mul(smoothstep(streaks.box[0] / 2, streaks.box[0] / 3, across));
+  const rain = new THREE.Mesh(rainGeometry, rainMaterial);
+  rain.frustumCulled = false; // its shader places it round the camera
+  scene.add(rain);
+  // Wet roads and pavements in rain: darker and glossier than their own colour and roughness.
+  const wetMaterials = [asphalt.material, pavers, kerbs].map((material) => ({ material, colour: material.color.clone(), roughness: material.roughness }));
+  const dry = { fog: cam.fog, haze: lighting.haze, sun: 1, sky: 1, grey: 0, wet: 0 }; // the clear weather's look
+
+  let warmNight = true; // the night lights and rain drawn in the first frame (behind the loading screen) too, so their shaders are ready
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
   const eye = new THREE.Vector3();
@@ -905,7 +950,26 @@ export function createRenderer(canvas, tables, map, onProgress) {
     daylight(clock, lighting, daytime);
     light.x.crossVectors(up, light.z).normalize();
     light.y.crossVectors(light.z, light.x);
-    sun.intensity = daytime.sun;
+    // The weather's look, blended in from clear's by its intensity; the Werkstatt is dry.
+    const { kind, intensity } = showroom ? CLEAR : state.weather;
+    const wet = weather.look[kind] ?? dry;
+    const blend = (from, to) => from + (to - from) * intensity;
+    daytime.sky.multiplyScalar(blend(1, wet.sky));
+    fogRange.value.set(blend(dry.fog[0], wet.fog[0]), blend(dry.fog[1], wet.fog[1]));
+    if (camera.far !== fogRange.value.y) {
+      camera.far = fogRange.value.y;
+      camera.updateProjectionMatrix();
+    }
+    haze.value = blend(dry.haze, wet.haze);
+    grey.value = blend(0, wet.grey);
+    const wetness = blend(0, wet.wet);
+    for (const { material, colour, roughness } of wetMaterials) {
+      material.color.copy(colour).multiplyScalar(1 - wetness * weather.wet.darken);
+      material.roughness = roughness * (1 - wetness * weather.wet.gloss);
+    }
+    rainShare.value = kind === 'rain' ? intensity : 0;
+    rain.visible = rainShare.value > 0 || warmNight;
+    sun.intensity = daytime.sun * blend(1, wet.sun);
     sun.color.copy(daytime.colour);
     scene.environmentIntensity = (skyLight * (daytime.sky.r + daytime.sky.g + daytime.sky.b)) / 3;
     const night = isNight(clock, tables.clock);

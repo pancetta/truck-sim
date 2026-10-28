@@ -21,6 +21,9 @@ _Avoid_: savegame, slot, autosave (as a noun)
 **Night** ("Nacht"):
 The part of the game clock's day from 20:00 to 06:00, when sleeping at home ends: the headlights and street lights are on, there are fewer **AI cars**, and deliveries earn the night bonus.
 
+**Weather** ("Wetter"):
+Clear, rain ("Regen") or fog ("Nebel"), changing on a fixed schedule over play time and fading in and out. Rain lowers the truck's grip, slows the **AI cars** and earns the rain bonus; fog shortens how far you can see. Not saved.
+
 **Rank** ("Rang"):
 The player's standing, a **Tier** reached by collecting rank points from deliveries.
 _Avoid_: level (that word belongs to **Upgrades**), XP
@@ -66,7 +69,7 @@ _Avoid_: source/target, from/to
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
 **Pay lines**:
-The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie"), **Dock bonus** ("Rampenbonus") and the night bonus ("Nachtzuschlag") for a delivery completed at **Night**.
+The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie"), **Dock bonus** ("Rampenbonus") and the night bonus ("Nachtzuschlag") and the rain bonus ("Regenzuschlag") for a delivery completed at **Night** or in rain (**Weather**).
 _Avoid_: reward, payout
 
 **Damage** ("Schaden"):

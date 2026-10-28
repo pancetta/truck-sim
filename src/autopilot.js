@@ -181,13 +181,4 @@ function resample(points, spacing) {
   return out;
 }
 
-// A seeded random (mulberry32) for the Sim under ?auto, so every run meets the same traffic and offers.
-export function seeded(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), a | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export { seeded } from './sim/sim.js';
