@@ -282,19 +282,19 @@ describe('Sim: fragile cargo', () => {
   test('fragile offers come only from their rank tier, and offers are the same for the same seed', () => {
     const below = { ...freshProfile(), stars: tables.rank.tiers[types.fragile - 1].stars };
     expect(typesOffered(laneSim(1, below))).toEqual(new Set(['normal']));
-    expect(typesOffered(laneSim(1, fragileTier))).toEqual(new Set(['normal', 'fragile']));
+    expect(typesOffered(laneSim(1, fragileTier))).toEqual(new Set(['normal', 'fragile', 'express'])); // express's tier too
 
     const offers = laneSim(3, fragileTier).requestOffers();
     expect(laneSim(3, fragileTier).requestOffers()).toEqual(offers);
-    for (const o of offers) expect(o.type).toBe(o.cargo.fragile ? 'fragile' : 'normal');
+    for (const o of offers) if (o.type !== 'express') expect(o.type).toBe(o.cargo.fragile ? 'fragile' : 'normal');
   });
 
   test('cargo heavier than the base Ladefläche carries is a heavy offer', () => {
     const sim = laneSim(1, { ...fragileTier, upgrades: { cargoBed: 1 } });
     for (let i = 0; i < 50; i++) {
-      for (const o of sim.requestOffers()) if (!o.cargo.fragile) expect(o.type).toBe(o.cargo.weight > maxCargo ? 'heavy' : 'normal');
+      for (const o of sim.requestOffers()) if (!o.cargo.fragile && o.type !== 'express') expect(o.type).toBe(o.cargo.weight > maxCargo ? 'heavy' : 'normal');
     }
-    expect(typesOffered(sim)).toEqual(new Set(['normal', 'heavy', 'fragile']));
+    expect(typesOffered(sim)).toEqual(new Set(['normal', 'heavy', 'fragile', 'express']));
   });
 
   test('hard braking with fragile cargo loaded raises the damage; speeding up and coasting do not', () => {
@@ -677,5 +677,87 @@ describe('Sim: the clean Star and Rule fines', () => {
     expect(sim.state.order).toBe(null);
     expect(starsOf(sim).clean).toEqual(['speeding']);
     expect(sim.state.profile.stars).toBe(before + 2);
+  });
+});
+
+describe('Sim: express and oversized offers', () => {
+  const { types, shares, express, oversizedWidth } = tables.orders;
+  const atTier = (tier) => ({ ...freshProfile(), stars: tables.rank.tiers[tier].stars });
+  const only = (type, orders = tables.orders) => ({ ...tables, orders: { ...orders, shares: { express: 0, oversized: 0, [type]: 1 } } });
+
+  test('each type comes from its tier on, at its share, with cargo that is not fragile to a drop-off that is not a dock', () => {
+    expect(typesOffered(laneSim(1, atTier(types.express - 1))).has('express')).toBe(false);
+    expect(typesOffered(laneSim(1, atTier(types.oversized - 1))).has('oversized')).toBe(false);
+
+    const sim = simOn(lane(tables, ['A']), 1, atTier(types.fragileDock));
+    const count = { all: 0, express: 0, oversized: 0 };
+    for (let i = 0; i < 400; i++) {
+      for (const o of sim.requestOffers()) {
+        count.all++;
+        if (o.type !== 'express' && o.type !== 'oversized') continue;
+        count[o.type]++;
+        expect(o.cargo.fragile).toBeFalsy();
+        expect(o.dropoff).toBe('B'); // A is the dock
+      }
+    }
+    expect(count.express / count.all).toBeCloseTo(shares.express, 1);
+    expect(count.oversized / count.all).toBeCloseTo(shares.oversized, 1);
+  });
+
+  test("express pays the table's factor and has its shorter expected time, which the on-time Star uses", () => {
+    // The nook at 30 s loading and 20 s slack: 80 s expected, 56 s express; the order is delivered at 60 s.
+    const example = only('express', { ...tables.orders, basePay: 100, loadTime: 30, slack: 20 });
+    const sim = simOn(nook(example), 1, atTier(types.express));
+    const offer = sim.requestOffers()[0];
+    expect(offer).toMatchObject({ type: 'express', pay: Math.round(express.pay * 100) });
+    expect(offer.expectedTime).toBeCloseTo(express.time * 80, 6);
+
+    sim.acceptOrder(offer.id);
+    drive(sim, 61, IDLE);
+
+    expect(sim.state.order).toBe(null);
+    expect(starsOf(sim).onTime).toEqual(['late']); // a normal order would have been on time
+  });
+
+  // A ring round a block 80 m east–west by 40 m north–south whose east street is a narrow service lane. A is on the north
+  // street and B on the south street, each 10 m from the east end: 60 m apart by the service lane, 180 m by the west.
+  function narrowRing() {
+    const corners = [[-40, -20], [40, -20], [40, 20], [-40, 20], [-40, -20]]; // north-west, north-east, south-east, south-west
+    const ways = ['Via Nord', 'Vicolo Est', 'Via Sud', 'Via Ovest'].map((name, i) => way(i === 1 ? 'service' : 'residential', [corners[i], corners[i + 1]], { name }));
+    const [north, , south] = ways;
+    const t = withSpots([
+      { id: 'A', name: 'Magazzino Nord', street: 'Via Nord', way: north.id, at: 70, side: 'right' },
+      { id: 'B', name: 'Bottega Sud', street: 'Via Sud', way: south.id, at: 10, side: 'right' },
+    ]);
+    return { t, map: build(ways, t) };
+  }
+
+  test('an oversized route keeps to edges at least oversizedWidth wide: its pay distance and the arrow go the long way', () => {
+    expect(classes.service.width).toBeLessThan(oversizedWidth);
+    expect(width).toBeGreaterThanOrEqual(oversizedWidth);
+    const { t, map } = narrowRing();
+    const plain = simOn({ t, map }, 1).requestOffers()[0];
+    expect(plain.distance).toBeCloseTo(60, 0);
+
+    const sim = simOn({ t: { ...t, orders: only('oversized').orders }, map }, 1, atTier(types.oversized));
+    const offer = acceptFrom(sim, 'A');
+    expect(offer).toMatchObject({ type: 'oversized', dropoff: 'B' });
+    expect(offer.distance).toBeCloseTo(180, 0);
+    expect(offer.pay).toBe(Math.round(tables.orders.basePay + (tables.orders.payPerKm * offer.distance) / 1000));
+
+    Object.assign(sim.state.truck, map.spots.find((s) => s.id === 'A').lane, { speed: 0 });
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    expect(sim.state.order.phase).toBe('dropoff');
+    expect(sim.state.route.length).toBeGreaterThan(1);
+    for (const p of sim.state.route) expect(p.x).toBeLessThan(40 - classes.service.width); // never on the service lane
+  });
+
+  test('no oversized offer is made where no wide route leads', () => {
+    // The lane as a service lane: both spots on an edge too narrow.
+    const vicolo = way('service', [[0, -28], [0, 28]], { name: 'Vicolo' });
+    const spot = (id, at) => ({ id, name: `Bottega ${id}`, street: 'Vicolo', way: vicolo.id, at, side: 'right' });
+    const t = withSpots([spot('A', 0), spot('B', 56)], [], null, only('oversized'));
+    const sim = createSim(t, build([vicolo], t), seeded(1), atTier(types.oversized));
+    for (let i = 0; i < 20; i++) expect(sim.requestOffers()).toEqual([]);
   });
 });

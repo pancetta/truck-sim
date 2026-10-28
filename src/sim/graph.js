@@ -113,9 +113,11 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
 
   // Shortest legal ways by length to the pose `to`, one search for any number of starts: a function from a start pose
   // to { length (m), points } (the polyline from the start to `to`, both ends included), or null where no road leads.
-  // One-way edges are only followed from their `from` node to their `to` node, unless `legal` is false.
-  function towards(to, legal = true) {
+  // One-way edges are only followed from their `from` node to their `to` node, unless `legal` is false. Edges narrower
+  // than `minWidth` m are never followed, nor is one the way ends on; the one it starts on always is.
+  function towards(to, legal = true, minWidth = 0) {
     const t = to.edge;
+    if (t.width < minWidth) return () => null;
     const dist = new Float64Array(nodes.length).fill(Infinity);
     const via = new Array(nodes.length).fill(null); // the edge on from each node towards `to`; null: on along t
     const done = new Uint8Array(nodes.length);
@@ -129,7 +131,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       done[n] = 1;
       for (const id of nodes[n].arms) {
         const e = edges[id];
-        if (against(e) && e.to !== n) continue; // m → n would run against it
+        if ((against(e) && e.to !== n) || e.width < minWidth) continue; // m → n would run against it, or is too narrow
         const m = e.from === n ? e.to : e.from;
         if (dist[n] + e.length < dist[m]) [dist[m], via[m]] = [dist[n] + e.length, e];
       }
@@ -156,7 +158,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     };
   }
 
-  const route = (from, to) => towards(to)(from);
+  const route = (from, to, minWidth) => towards(to, true, minWidth)(from);
 
   return { nodes, edges, paths: lanePaths(nodes, edges), nearest, project, onRoad, along, pointAt, towards, route };
 }

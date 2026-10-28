@@ -7,7 +7,7 @@ import { createCells } from './cells.js';
 import { roadPieces, pavementPieces, pedestrianPieces } from './paved.js';
 import { lanePath, poseAt } from './lanes.js';
 import { offset } from './graph.js';
-import { seeded, way, building, bounds, monti } from './fixtures.js';
+import { acceptFrom, seeded, way, building, bounds, monti } from './fixtures.js';
 
 const build = (...ways) => buildOsmMap({ bounds, ways }, tables);
 const { classes, pavement } = tables.osm;
@@ -266,8 +266,7 @@ describe('OSM map: spots', () => {
 
   test('the route leads on against the one-ways where no legal way leads to the target', () => {
     const sim = createSim(t, map, seeded(1));
-    const offer = sim.requestOffers().find((o) => o.pickup === 'A');
-    sim.acceptOrder(offer.id);
+    acceptFrom(sim, 'A');
     Object.assign(sim.state.truck, { x: 60, z: 50, heading: 0, speed: 0 }); // down the one-way, which only leads on to its dead end
     sim.step(1 / 60, { steer: 0, gas: 0, brake: 0 });
     expect(sim.state.route.length).toBeGreaterThan(0);

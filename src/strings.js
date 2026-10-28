@@ -23,7 +23,17 @@ export const strings = {
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
   payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag' }, // state.lastPayment line labels
-  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe' },
+  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße' },
+  // What is special about an offer of each type, on its line in the orders panel.
+  offerTags: {
+    normal: 'Hinfahren, abladen, fertig',
+    heavy: 'Schwere Ladung, längerer Bremsweg',
+    fragile: 'Sanft bremsen, sonst leidet die Ladung',
+    dock: 'Rückwärts an die Rampe',
+    fragileDock: 'Sanft bremsen, dann rückwärts an die Rampe',
+    express: 'Knappe Zeit, dafür mehr Lohn',
+    oversized: 'Zu breit für Gassen: Route nur über breite Straßen',
+  },
   damage: 'Schaden',
   expectedTime: 'Soll-Zeit',
   bonusTime: 'Bonuszeit',

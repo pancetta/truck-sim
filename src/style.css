@@ -472,8 +472,9 @@ body:has(.rear-inset:not([hidden])) .goal {
   white-space: nowrap;
 }
 
-/* Business and street names (Monti) wrap, so the pay and the button stay in the panel. */
-.orders-panel .places {
+/* Business and street names (Monti) and the offer type's tag line wrap, so the pay and the button stay in the panel. */
+.orders-panel .places,
+.orders-panel .tag {
   white-space: normal;
 }
 

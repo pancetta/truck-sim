@@ -60,7 +60,7 @@ steering and brake lag behind the controls, more the lower the **Energy**.
 ### Orders
 
 **Offer**:
-A proposed delivery the player may accept, with its **Order type**, cargo, **Pickup**, **Drop-off**, pay and **Expected time**.
+A proposed delivery the player may accept, with its **Order type** and that type's tag line (what is special about it), cargo, **Pickup**, **Drop-off**, pay and **Expected time**.
 _Avoid_: job, mission, quest
 
 **Order** ("Auftrag"):
@@ -68,7 +68,15 @@ An accepted **Offer** being driven: first to its **Pickup**, then to its **Drop-
 _Avoid_: active offer, job
 
 **Order type**:
-The kind of delivery: normal ("Normal"), heavy ("Schwerlast"), fragile ("Zerbrechlich"), dock ("Rampe") or fragile dock.
+The kind of delivery: normal ("Normal"), heavy ("Schwerlast"), fragile ("Zerbrechlich"), dock ("Rampe"), fragile dock,
+**Express** or **Oversized**. Each comes from its **Tier** on.
+
+**Express**:
+An **Order type** with a shorter **Expected time** and higher pay, for a share of **Offers**.
+
+**Oversized** ("Übergröße"):
+An **Order type** whose load is too wide for narrow streets: its route, the pay distance and the route arrow keep to
+edges of at least a set width, and it is only offered between **Spots** such a route joins. Today's truck takes it.
 
 **Pickup** ("Beladestelle") / **Drop-off** ("Entladestelle"):
 The **Spots** where an **Order**'s cargo is loaded and unloaded.
