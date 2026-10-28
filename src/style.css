@@ -635,6 +635,17 @@ body:has(.rear-inset:not([hidden])) .goal {
   background: rgb(40 40 48 / 0.85);
 }
 
+/* The junction's rule and the zebra crossing sign side by side, so the stack is no taller with both (#79 QA: in the cab
+   view at 1180×820 a taller stack ran into the notices). */
+.dash-rules {
+  display: flex;
+  gap: 6px;
+}
+
+.dash-rules:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
 .dash-fuel-low {
   background: #d1495b;
 }

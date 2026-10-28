@@ -38,8 +38,10 @@ export function createHud(root, tables, strings) {
     <div class="dash-trip"><small aria-label="${strings.distance}"></small><small aria-label="${strings.clock}"></small></div>
     <div class="dash-signs">
       <div class="dash-street" aria-label="${strings.street}" hidden></div>
-      <div class="dash-rule" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"></svg><span></span></div>
-      <div class="dash-rule dash-zebra" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true">${ZEBRA_ICON}</svg>${strings.zebraAhead}</div>
+      <div class="dash-rules">
+        <div class="dash-rule" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"></svg><span></span></div>
+        <div class="dash-rule dash-zebra" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true">${ZEBRA_ICON}</svg>${strings.zebraAhead}</div>
+      </div>
       <div class="dash-police" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5"/></svg>${strings.policeSees}</div>
       <div class="dash-fuel-low" role="status" hidden>${strings.fuelLow}</div>
       <div class="dash-tired" role="status" hidden></div>

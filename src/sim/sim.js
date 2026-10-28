@@ -491,14 +491,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // A zebra crossing the truck is on, or is heading for and couldn't stop before at full brake (on this `grip`, with
-  // tables.zebras.margin m to spare), is `passing`, as one an AI car is committed to (traffic.js): no pedestrian sets
-  // out over it. After the traffic's step, which clears the flags. A zebra with people at it while the truck isn't
+  // A zebra crossing the truck is on, or is heading for and couldn't stop before at full brake (on this `grip`), with as
+  // much to spare as sends people on it back (`reach` and `warn`, see step), is `passing`, as one an AI car is
+  // committed to (traffic.js): no pedestrian sets out over it, only to turn back. After the traffic's step, which clears the flags. A zebra with people at it while the truck isn't
   // committed to it is `owed` until they are gone.
   function truckAtZebras(grip) {
     const sign = Math.sign(truck.speed);
     const [fx, fz] = [Math.sin(truck.heading) * sign, Math.cos(truck.heading) * sign];
-    const stop = truck.speed ** 2 / ((2 * v.brakeForce * grip) / truck.mass) + tables.zebras.margin;
+    const { reach, warn } = tables.zebras;
+    const stop = truck.speed ** 2 / ((2 * v.brakeForce * grip) / truck.mass) + reach + Math.abs(truck.speed) * warn;
     for (const zebra of state.zebras) {
       const [dx, dz] = [zebra.x - truck.x, zebra.z - truck.z];
       const ahead = dx * fx + dz * fz - v.length / 2 - tables.zebras.depth / 2; // the leading bumper to the strip
