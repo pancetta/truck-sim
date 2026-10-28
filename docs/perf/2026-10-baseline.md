@@ -888,7 +888,7 @@ Frames held 16.7 ms throughout; three counts 56 textures in both.
 
 The light follows the game clock: the sun moves and changes colour and strength, the sky, its haze and its light are tinted, and at night the moon lights the city. At night the truck's headlights and the street lights come on. They are drawn glows, not lights: an additive glow on the road ahead of the truck, and for each lantern a glow on its wall and one on the pavement, drawn by distance with the lanterns (`lantern.cull`), plus the lantern glass glowing. `?perf&hour=22` sets the clock, so `?perf&auto&hour=22` measures the loop at night.
 
-*Why not real lights:* three's lights cost every lit fragment of every frame, whatever their intensity, so they cost by day too. Switching them on only at night rebuilt every shader, which stalled a frame for 6.9 s in one run. One spot light for the headlights and three point lights in the nearest lanterns took the cab view's GPU time from 8.0 to 11.5 ms, by day as well as at night. The glows cost 0.4 ms at night and nothing by day. They are drawn by day with no instances (the headlight glow in the first frame), so their shaders are ready at dusk: no frame over 100 ms when the lights switch on at 20:00 or off at 06:30.
+*Why not real lights:* three's lights cost every lit fragment of every frame, whatever their intensity, so they cost by day too. Switching them on only at night rebuilt every shader, which stalled a frame for 6.9 s in one run. One spot light for the headlights and three point lights in the nearest lanterns took the cab view's GPU time from 8.0 to 11.5 ms, by day as well as at night. The glows cost 0.4 ms at night and nothing by day. They are drawn by day with no instances (the headlight glow in the first frame), so their shaders are ready at dusk: no frame over 100 ms when the lights switch on at 20:00 or off at 06:00.
 
 **How measured:** production builds of main (`0cd86ce`) and this change, Chrome 155 headless on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), load average 1.5–4. GPU time is from WebGPU timestamp queries (`trackTimestamp` in a patched copy of each build, 900 frames after 6 s of driving), so it is inflated by the GPU's low clocks at vsync and good for comparing only. Relative numbers; the iPad numbers are the owner's `?perf&auto&hour=22` run.
 
@@ -903,6 +903,8 @@ The light follows the game clock: the sun moves and changes colour and strength,
 | #52 with real lights (1 spot + 3 point), cab, day or night | 11.5 / 12.0 | | |
 
 Frames held 16.7 ms throughout. At night the city has 5 AI cars rather than 8 (`traffic.night`); the overlay counts 7 and 10 with the two police cars. By day at 08:00 the low sun's shadow takes in more buildings than #37's fixed noon sun: 16 more draw calls and 52k more triangles in the shadow pass, at 0.1 ms of GPU and 0.3 ms of render CPU.
+
+After these numbers, QA made the night lighter (moon 0.6, sky key `0x2a3450`), added a reversing-light glow in gear R, and lit the Werkstatt showroom as at noon. These change uniform values and add one glow mesh that is drawn only in reverse, so the table still holds.
 
 ## Files
 

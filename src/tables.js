@@ -569,21 +569,22 @@ export const lighting = {
   // in between they blend linearly. Noon is the look of #37.
   lowSun: 0.18,
   day: [
-    { at: 0, sun: 0.35, colour: 0x8ea6ff, sky: 0x0b1020 },
-    { at: 5, sun: 0.35, colour: 0x8ea6ff, sky: 0x0b1020 },
+    { at: 0, sun: 0.6, colour: 0x8ea6ff, sky: 0x2a3450 },
+    { at: 5, sun: 0.6, colour: 0x8ea6ff, sky: 0x2a3450 },
     { at: 6.5, sun: 1.3, colour: 0xffb07a, sky: 0xc4b0a8 },
     { at: 8.5, sun: 2.9, colour: 0xffeccf, sky: 0xf2f0ec },
     { at: 12, sun: 3.2, colour: 0xfff3e0, sky: 0xffffff },
     { at: 17, sun: 2.9, colour: 0xffeccf, sky: 0xf2f0ec },
     { at: 19.5, sun: 1.3, colour: 0xff9a5c, sky: 0xc8a494 },
-    { at: 21, sun: 0.35, colour: 0x8ea6ff, sky: 0x0b1020 },
+    { at: 21, sun: 0.6, colour: 0x8ea6ff, sky: 0x2a3450 },
   ],
   // The headlights and street lights at night (clock.night, #52) are drawn glows added on top of the scene, not lights:
   // a real light costs every fragment of every frame, all day (switching one on at dusk rebuilt every shader, a stall
   // of up to 7 s), and one headlight and three street lights took the M2's GPU from 8.0 to 11.5 ms a frame (docs/perf).
   // The truck's headlights: a glow `width` × `length` m on the road ahead of the front bumper (renderer.js), `glow` times
-  // `colour` in its middle, `height` m up so it also shows on the pavements.
-  headlights: { width: 11, length: 42, height: 0.2, colour: 0xfff1d8, glow: 0.55 },
+  // `colour` in its middle, `height` m up so it also shows on the pavements; the reversing lights' glow, in gear R, is
+  // `reversing` m (width, length) behind the rear bumper.
+  headlights: { width: 11, length: 42, height: 0.2, colour: 0xfff1d8, glow: 0.55, reversing: [7, 16] },
   lampGlow: 1.5, // traffic light lamps and light bars shine this many times their palette colour
   // Sky-coloured haze, exponential squared, per m; camera.fog fades the rest to the sky at the far plane.
   haze: 0.0022,

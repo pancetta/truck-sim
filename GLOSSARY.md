@@ -19,7 +19,7 @@ The one stored copy of the **Profile** per browser; an unreadable or outdated on
 _Avoid_: savegame, slot, autosave (as a noun)
 
 **Night** ("Nacht"):
-The part of the game clock's day from 20:00 to 06:30: the headlights and street lights are on, there are fewer **AI cars**, and deliveries earn the night bonus.
+The part of the game clock's day from 20:00 to 06:00, when sleeping at home ends: the headlights and street lights are on, there are fewer **AI cars**, and deliveries earn the night bonus.
 
 **Rank** ("Rang"):
 The player's standing, a **Tier** reached by collecting rank points from deliveries.

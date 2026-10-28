@@ -41,8 +41,9 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
   time(minimap, 'update', 'minimap');
 
   // ?hour=22 sets the game clock, so the autopilot's loop can be measured at night (#52).
-  const hour = new URLSearchParams(location.search).get('hour');
-  if (hour) sim.state.profile.timeOfDay = (Number(hour) * 60) % (24 * 60);
+  // Only 0 to 24: without ?auto the profile is saved, and an invalid clock would make the next load start fresh.
+  const hour = Number(new URLSearchParams(location.search).get('hour') ?? NaN);
+  if (hour >= 0 && hour < 24) sim.state.profile.timeOfDay = hour * 60;
   if (auto) {
     const autopilot = createAutopilot(sim, map, tables);
     sim.requestOffers();

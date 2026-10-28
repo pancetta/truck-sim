@@ -143,7 +143,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     const glowAt = (size, base) => Object.assign(new THREE.InstancedMesh(new THREE.PlaneGeometry(size, size), material, mounts.length), { userData: { base } });
     const onWall = glowAt(wall, new THREE.Matrix4().makeTranslation(0, lantern.height + up, 0.05));
     const onGround = glowAt(ground, new THREE.Matrix4().makeTranslation(0, tables.streets.pavement.height + 0.02, out).multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2)));
-    addSet(mounts, [{ upTo: lantern.cull, meshes: [onWall, onGround] }], ground, true);
+    addSet(mounts, [{ upTo: lantern.cull, meshes: [onWall, onGround] }], ground + 2 * out, true); // takes in the pavement's glow
     const { pots, boxes } = facadeProps(map, plan, tables);
     prop(pots, [
       [new THREE.CylinderGeometry(pot.radius, pot.radius * 0.75, pot.height, 10).translate(0, pot.height / 2, 0), pot.colour],

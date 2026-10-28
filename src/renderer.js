@@ -736,12 +736,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
   truck.add(interior);
   scene.add(truck);
 
-  // The headlights at night (tables.lighting.headlights): a round glow stretched along the road, its middle a third of
-  // its length ahead of the front bumper, so it also fades out under the truck rather than starting at an edge.
+  // The headlights at night (tables.lighting.headlights), and the reversing lights in gear R: a round glow stretched
+  // along the road, its middle a third of its length out from the bumper, so it also fades out under the truck rather
+  // than starting at an edge.
   const beam = lighting.headlights;
-  const beamGeometry = new THREE.PlaneGeometry(beam.width, beam.length).rotateX(-Math.PI / 2).translate(0, beam.height, tables.vehicle.length / 2 + beam.length / 3);
-  const headlights = new THREE.Mesh(beamGeometry, glowMaterial(beam.colour, beam.glow));
-  truck.add(headlights);
+  const beamMaterial = glowMaterial(beam.colour, beam.glow);
+  const glowOut = (width, length, side) =>
+    new THREE.Mesh(new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2).translate(0, beam.height, side * (tables.vehicle.length / 2 + length / 3)), beamMaterial);
+  const headlights = glowOut(beam.width, beam.length, 1);
+  const reversingLights = glowOut(...beam.reversing, -1);
+  truck.add(headlights, reversingLights);
   let warmNight = true; // drawn in the first frame (behind the loading screen) too, so its shader is ready at dusk
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
@@ -896,14 +900,18 @@ export function createRenderer(canvas, tables, map, onProgress) {
       rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     }
     // The time of day: the sun or moon and the sky, and at night the headlights and street lights.
-    daylight(state.timeOfDay, lighting, daytime);
+    // The Werkstatt shows the truck at noon, so its paint can be seen.
+    const clock = showroom ? 12 * 60 : state.timeOfDay;
+    daylight(clock, lighting, daytime);
     light.x.crossVectors(up, light.z).normalize();
     light.y.crossVectors(light.z, light.x);
     sun.intensity = daytime.sun;
     sun.color.copy(daytime.colour);
     scene.environmentIntensity = (skyLight * (daytime.sky.r + daytime.sky.g + daytime.sky.b)) / 3;
-    const night = isNight(state.timeOfDay, tables.clock);
+    const night = isNight(clock, tables.clock);
     headlights.visible = night || warmNight;
+    reversingLights.visible = (night && state.truck.gear === 'R') || warmNight;
+    headlights.rotation.z = reversingLights.rotation.z = -roll; // flat on the road while the body rolls
     warmNight = false;
     // The sun's shadow covers the ground around a point ahead of the camera.
     camera.getWorldDirection(focus).setY(0).normalize().multiplyScalar(lighting.shadow.ahead).add(camera.position);
