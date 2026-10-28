@@ -937,7 +937,7 @@ Frames held 16.7 ms throughout. The weather costs about 0.3 ms of GPU in every f
 
 ## Zebra crossings (#79)
 
-The map builder places 23 zebra crossings on Monti; each is a few white boxes in one instanced mesh with the other road markings' material (+1 draw call). Pedestrians cross at them, AI cars stop for them, and the Sim checks the truck against them each step. The traffic bench (`src/sim/traffic.bench.test.js`) now runs with zebras, every other one occupied: 159 µs and 22 KB a step at 100 cars, within the range main measured under load. The pedestrian bench is unchanged at about 22 µs for 300 people.
+The map builder places 23 zebra crossings on Monti; each is a few white boxes in one instanced mesh with the other road markings' material (+1 draw call). Pedestrians cross at them, AI cars stop for them, and the Sim checks the truck against them each step. The traffic bench (`src/sim/traffic.bench.test.js`) now runs with zebras, a quarter of them occupied by turns: about 155 µs and 24 KB a step at 100 cars, against 147–171 µs and 21–23 KB for main on the same machine. With half of them occupied for the whole run, cars queued at them throughout, and the existing queueing code drove allocation to 24–35 KB, over the 32 KB budget under the full suite's load. The pedestrian bench is unchanged at about 22 µs for 300 people.
 
 **How measured:** production builds of main (`fd98b9c`) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames after 50 s, cab view, alternating main, this change, main, this change, load average 2.6–3.6. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
 
