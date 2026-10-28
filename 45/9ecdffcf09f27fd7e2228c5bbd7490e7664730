@@ -1,0 +1,23 @@
+src/sim/pedestrians.js
+  s_3b623a7c3d2175::t_6a6cf3363891a9 80-81
+src/sim/zebras.test.js
+  s_3b623a7c3d2175::t_6a6cf3363891a9 161-172
+src/sim/sim.js
+  s_3b623a7c3d2175::t_6a6cf3363891a9 279,281-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "459ecdffcf09f27fd7e2228c5bbd7490e7664730",
+  "prompts": {},
+  "sessions": {
+    "s_3b623a7c3d2175": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72145cca-60dd-490a-bacb-34ccdc6cda0e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
