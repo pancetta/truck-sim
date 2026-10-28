@@ -935,6 +935,17 @@ Frames held 16.7 ms throughout. The weather costs about 0.3 ms of GPU in every f
 | main, cab (3 runs) | 16.7 / 16.7–16.8 | 2.3–2.5 / 2.57–2.70 | 0.08–0.09 | 2.2–2.4 / 2.46–2.57 | 117–118 / 336k | 145–154 ms |
 | #78, cab (3 runs) | 16.7 / 16.7–16.8 | 2.5 / 2.66–2.70 | 0.10 | 2.4 / 2.52–2.57 | 118 / 336k | 161–162 ms |
 
+## Zebra crossings (#79)
+
+The map builder places 23 zebra crossings on Monti; each is a few white boxes in one instanced mesh with the other road markings' material (+1 draw call). Pedestrians cross at them, AI cars stop for them, and the Sim checks the truck against them each step. The traffic bench (`src/sim/traffic.bench.test.js`) now runs with zebras, every other one occupied: 159 µs and 22 KB a step at 100 cars, within the range main measured under load. The pedestrian bench is unchanged at about 22 µs for 300 people.
+
+**How measured:** production builds of main (`fd98b9c`) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames after 50 s, cab view, alternating main, this change, main, this change, load average 2.6–3.6. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.8 | 2.5 / 2.63–2.73 | 0.10–0.11 | 2.3–2.4 / 2.48–2.59 | 108–145 / 361–459k (with what was in view at the end) | 362–372 ms |
+| #79, cab (2 runs) | 16.7 / 16.7 | 2.6 / 2.90–2.91 | 0.10–0.11 | 2.5 / 2.75–2.78 | 109 / 361k | 338–367 ms |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
