@@ -287,7 +287,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.
   const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
-  const pavements = pavementLines(graph, colliders.filter((c) => c.kind === 'building'), tables);
+  const pavements = pavementLines(graph, colliders.filter((c) => ['building', 'barrier', 'dock'].includes(c.kind)), bounds, tables);
   return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: { lines: lines.map(toXZ), squares } };
 }
 

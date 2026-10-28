@@ -34,7 +34,7 @@ export function createPeople(scene, tables) {
       Object.assign(mesh, { castShadow: level === 0, receiveShadow: true });
       mesh.setColorAt(0, outfits[0]); // allocates the colours
       scene.add(mesh);
-      return { mesh, colour: part ? (id) => skins[(id * 3) % skins.length] : (id) => outfits[id % outfits.length] };
+      return { mesh, colour: part ? (id) => skins[Math.floor(id / outfits.length) % skins.length] : (id) => outfits[id % outfits.length] };
     }));
   const all = meshes.flat().map(({ mesh }) => mesh);
   // The first update leaves them all visible, so their shaders are set up before the first pedestrian comes into view.

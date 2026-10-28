@@ -4,7 +4,7 @@ import { createSim } from './sim.js';
 import { createAutopilot } from '../autopilot.js';
 import { outOfView } from './traffic.js';
 import { inside } from './sim.js';
-import { build, lane, monti, seeded, undrained, way } from './fixtures.js';
+import { box, build, lane, monti, seeded, undrained, way } from './fixtures.js';
 
 const { pavement } = tables.osm;
 const p = tables.pedestrians;
@@ -27,6 +27,17 @@ function roadOf({ nodes, edges }) {
     return d;
   };
 }
+
+// The point `s` m along a line.
+function pointAt(line, s) {
+  let k = 0;
+  while (k < line.points.length - 2 && line.at[k + 1] <= s) k++;
+  const t = (s - line.at[k]) / (line.at[k + 1] - line.at[k]);
+  return { x: line.points[k].x + t * (line.points[k + 1].x - line.points[k].x), z: line.points[k].z + t * (line.points[k + 1].z - line.points[k].z) };
+}
+
+// Whether (x, z) is inside one of the colliders.
+const within = (colliders, x, z) => colliders.some((b) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && inside(x, z, b.points));
 
 describe('pavement lines', () => {
   test('a crossroads has a line round each corner, in the middle of the pavements, stopping at the edge exits', () => {
@@ -53,20 +64,25 @@ describe('pavement lines', () => {
     expect(ring.length).toBeCloseTo(2 * 56 + 2 * Math.PI * r, 0); // both sides, and half a circle round each end
   });
 
-  test('on Monti the lines cover most of both sides of the streets, clear of the road and the buildings', () => {
+  test('round the sharp corner of a fork the line keeps clear of a building in the corner', () => {
+    const map = build([way('residential', [[-90, 0], [0, 0], [90, 0]]), way('residential', [[0, 0], [60, 15], [60, 90]]), box(70, 6, 85, 10)]);
+    const [building] = map.colliders.filter((c) => c.kind === 'building');
+    for (const line of map.pavements) for (let s = 0; s <= line.length; s += 0.5) expect(within([building], pointAt(line, s).x, pointAt(line, s).z)).toBe(false);
+  });
+
+  test('on Monti the lines cover most of both sides of the streets, in the map, clear of the road, buildings, barriers and docks', () => {
     const map = monti();
     const sides = map.graph.edges.reduce((s, e) => s + 2 * e.length, 0);
     expect(map.pavements.reduce((s, l) => s + l.length, 0)).toBeGreaterThan(0.85 * sides);
-    const buildings = map.colliders.filter((c) => c.kind === 'building');
+    const solid = map.colliders.filter((c) => ['building', 'barrier', 'dock'].includes(c.kind));
     const offRoad = roadOf(map.graph);
+    const { minX, minZ, maxX, maxZ } = map.bounds;
     for (const line of map.pavements) {
       for (let s = 0; s <= line.length; s += 1) {
-        let k = 0;
-        while (k < line.points.length - 2 && line.at[k + 1] <= s) k++;
-        const t = (s - line.at[k]) / (line.at[k + 1] - line.at[k]);
-        const [x, z] = [line.points[k].x + t * (line.points[k + 1].x - line.points[k].x), line.points[k].z + t * (line.points[k + 1].z - line.points[k].z)];
+        const { x, z } = pointAt(line, s);
         expect(offRoad(x, z)).toBeGreaterThan(p.keepRight + p.clear - 0.01);
-        expect(buildings.some((b) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ && inside(x, z, b.points))).toBe(false);
+        expect(within(solid, x, z)).toBe(false);
+        expect(x > minX && x < maxX && z > minZ && z < maxZ).toBe(true);
       }
     }
   });
@@ -91,16 +107,17 @@ describe('pedestrians', () => {
   }
 
   test('they walk the pavements at walking pace, never on the road, as many as the tables say', () => {
+    // Long enough for people to turn back at the ends of open lines (about 50 times), which they walk round too.
     const last = new Map(); // id → its pose the step before
     let [turned, steps, offRoad] = [0, 0, null];
-    const sim = drive(90, ({ state }, { graph }, dt) => {
+    const sim = drive(300, ({ state }, { graph }, dt) => {
       offRoad ??= roadOf(graph);
       const checked = steps++ % 30 === 0; // every half second: the road check is brute force
       for (const q of state.pedestrians) {
         if (checked) expect(offRoad(q.x, q.z)).toBeGreaterThan(p.clear - 0.01);
         const before = last.get(q.id);
         if (before) {
-          expect(Math.hypot(q.x - before.x, q.z - before.z)).toBeLessThan(2 * p.speed * dt);
+          expect(Math.hypot(q.x - before.x, q.z - before.z)).toBeLessThanOrEqual(p.speed * dt * 1.001); // no jumps, to rounding
           if (Math.abs(Math.sin(q.heading - before.heading)) > 0.01) turned++;
         }
         last.set(q.id, { x: q.x, z: q.z, heading: q.heading });
@@ -108,7 +125,7 @@ describe('pedestrians', () => {
     });
     expect(sim.state.pedestrians).toHaveLength(p.count);
     expect(turned).toBeGreaterThan(0); // round corners and bends
-  });
+  }, 60_000);
 
   test('they appear and leave out of the truck’s view', () => {
     let seen = new Map(); // id → pose last step

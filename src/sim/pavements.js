@@ -1,20 +1,20 @@
 // Pavement lines (#78): where pedestrians walk, along the middle of the pavements (tables.osm.pavement wide) on both
-// sides of every edge. At a node each side turns the corner onto the side of the next arm round: where the two cross
-// inside an angle under 180°, else round an arc on the node, out past its road disc (the outside of a bend, a straight
-// side, a dead end's end). Sides stop short of an edge exit's barrier. A piece that comes within tables.pedestrians
-// keepRight + clear m of the road (an edge, or a node's disc as roads.js draws it) or into a building is left out.
+// sides of every edge. At a node each side turns the corner onto the side of the next arm round: where the two cross,
+// if that is ahead along both (inside an angle under 180°), else round an arc on the node, out past its road disc (the
+// outside of a bend, a straight side, a dead end's end). Sides stop short of an edge exit's barrier. A stretch that
+// comes within tables.pedestrians keepRight + clear m of the road (an edge, or a node's disc as roads.js draws it), into
+// one of the `solid` colliders or out of the map's `bounds` is left out.
 // The pieces are joined end to end into lines { points: [{ x, z }], at (m along at each point), length, closed }: a
 // closed one runs round a block; an open one ends where a piece was left out or at an edge exit.
 // shortcut: lines go through the props, signal posts, pump islands and terraces on the pavement (pedestrians aren't
-// solid); cut them round those if players notice.
+// solid), as osm.js passes only buildings, barriers and docks as `solid`; add those kinds if players notice.
 import { offset } from './graph.js';
 import { createCells } from './cells.js';
 import { inside } from './sim.js';
 
 const STRAIGHT = Math.PI - 0.1; // rad between two arms, under which their sides meet in a corner, else round an arc
 
-// `buildings`: the building colliders.
-export function pavementLines(graph, buildings, tables) {
+export function pavementLines(graph, solid, bounds, tables) {
   const { pavement, barrier } = tables.osm;
   const margin = tables.pedestrians.keepRight + tables.pedestrians.clear;
   const { nodes, edges } = graph;
@@ -53,12 +53,11 @@ export function pavementLines(graph, buildings, tables) {
       const [pb, eb] = sideOf(b, 1);
       const [ra, rb] = [a.edge.width / 2 + pavement / 2, b.edge.width / 2 + pavement / 2];
       const [ua, ub] = [[Math.cos(a.angle), Math.sin(a.angle)], [Math.cos(b.angle), Math.sin(b.angle)]];
-      if (gap < STRAIGHT) {
-        // Where the sides cross: node + ua·t + (a's normal towards b)·ra = node + ub·s + (b's towards a)·rb.
-        const d = [ub[1] * rb + ua[1] * ra, -ub[0] * rb - ua[0] * ra];
-        const den = Math.sin(gap);
-        pa.trim[ea] = (d[0] * ub[1] - d[1] * ub[0]) / den;
-        pb.trim[eb] = (d[0] * ua[1] - d[1] * ua[0]) / den;
+      // Where the sides cross: node + ua·t + (a's normal towards b)·ra = node + ub·s + (b's towards a)·rb. Behind the
+      // node along one (a wide street running nearly straight into a narrow one) that is off the pavement: round instead.
+      const [t, s] = [(rb + ra * Math.cos(gap)) / Math.sin(gap), (ra + rb * Math.cos(gap)) / Math.sin(gap)];
+      if (gap < STRAIGHT && t >= 0 && s >= 0) {
+        [pa.trim[ea], pb.trim[eb]] = [t, s];
         return join(pa, ea, pb, eb);
       }
       // Round the node at radius r, just past its disc's edge; each side is cut back to where it meets the arc.
@@ -74,14 +73,15 @@ export function pavementLines(graph, buildings, tables) {
     });
   });
 
-  // Each piece cut to its trims and checked; a dropped one leaves the pieces it joined open there.
-  // The road (every edge segment `width` / 2 either side, every node's disc) and the buildings, `margin` m out.
+  // The road (every edge segment `width` / 2 either side, every node's disc), `margin` m out, and the solid colliders.
   const cells = createCells(tables.city.cell);
   const near = ({ a, b, r }) => cells.add({ a, b, r }, Math.min(a.x, b.x) - r, Math.min(a.z, b.z) - r, Math.max(a.x, b.x) + r, Math.max(a.z, b.z) + r);
   for (const e of edges) for (let k = 1; k < e.points.length; k++) near({ a: e.points[k - 1], b: e.points[k], r: e.width / 2 + margin });
   nodes.forEach((n, i) => near({ a: n, b: n, r: disc[i] + margin }));
-  for (const b of buildings) cells.add({ building: b }, b.minX, b.minZ, b.maxX, b.maxZ);
-  const clear = (x, z) => !cells.some(x, z, x, z, (c) => (c.building ? inside(x, z, c.building.points) : segmentDistance(x, z, c.a, c.b) < c.r));
+  for (const c of solid) cells.add({ solid: c }, c.minX, c.minZ, c.maxX, c.maxZ);
+  const clear = (x, z) =>
+    x > bounds.minX && x < bounds.maxX && z > bounds.minZ && z < bounds.maxZ &&
+    !cells.some(x, z, x, z, (c) => (c.solid ? inside(x, z, c.solid.points) : segmentDistance(x, z, c.a, c.b) < c.r));
   // Each piece, cut to its trims, splits into the runs of it that are clear (checked every m); a run reaching one of
   // its ends keeps that end's link, onto the run of the other piece that reaches the end it joins.
   const pieces = [...sides.flat().filter(Boolean), ...arcs];
@@ -141,13 +141,15 @@ function seam(points) {
   return { points: [m, ...points.slice(k + 1), ...points.slice(0, k + 1), m], closed: true };
 }
 
-// Drops, in place, the inner points under 0.25 m from the one before or where the line doubles back (turns by over
-// 150°): where two pieces' cut ends overlap at a corner. Offset to keep right, either made a spike.
+// Drops, in place, the inner points under 0.25 m from the one before, or where the line doubles back (turns by over
+// 150°) next to a segment under 1 m: where two pieces' cut ends overlap at a corner. Offset to keep right, either made a
+// spike. A long sharp corner (an acute fork) stays: dropping it would cut across the wedge, which isn't checked.
 function tidy(points) {
   for (let k = 1; k < points.length - 1; ) {
     const [a, p, b] = [points[k - 1], points[k], points[k + 1]];
     const [ux, uz, vx, vz] = [p.x - a.x, p.z - a.z, b.x - p.x, b.z - p.z];
-    if (Math.hypot(ux, uz) < 0.25 || ux * vx + uz * vz < -0.87 * Math.hypot(ux, uz) * Math.hypot(vx, vz)) {
+    const [u, v] = [Math.hypot(ux, uz), Math.hypot(vx, vz)];
+    if (u < 0.25 || (Math.min(u, v) < 1 && ux * vx + uz * vz < -0.87 * u * v)) {
       points.splice(k, 1);
       k = Math.max(1, k - 1);
     } else k++;
@@ -163,7 +165,7 @@ function segmentDistance(x, z, a, b) {
 }
 
 // `at` (m along at each point) and `length` of a polyline.
-function measure(points) {
+export function measure(points) {
   const at = [0];
   for (let k = 1; k < points.length; k++) at.push(at[k - 1] + Math.hypot(points[k].x - points[k - 1].x, points[k].z - points[k - 1].z));
   return { at, length: at.at(-1) };
