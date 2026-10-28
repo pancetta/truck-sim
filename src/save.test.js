@@ -24,9 +24,9 @@ function fakeStorage(items = {}) {
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
 const valid = {
-  version: 4,
+  version: 5,
   money: 1234,
-  rankPoints: 40,
+  stars: 4,
   distance: 5678.9,
   upgrades: { motor: 2 },
   owned: ['red', 'dice'],
@@ -36,9 +36,11 @@ const valid = {
   timeOfDay: 1300.5,
   timePlayed: 3600.25,
 };
-// The same progress as saved by the earlier versions: 3, before fuel, energy and the clock (#48), and the grid city's
-// 1, before the distance counter, and 2 (#67: no migration).
-const { distance, fuel, energy, timeOfDay, timePlayed, ...v1Fields } = valid;
+// The same progress as saved by the earlier versions: 4, with rank points before Stars (#81), 3, before fuel, energy
+// and the clock (#48), and the grid city's 1, before the distance counter, and 2 (#67: no migration).
+const { stars, ...v5Fields } = valid;
+const v4 = { ...v5Fields, rankPoints: 47, version: 4 };
+const { distance, fuel, energy, timeOfDay, timePlayed, ...v1Fields } = v4;
 const v3 = { ...v1Fields, distance, version: 3 };
 const v1 = { ...v1Fields, version: 1 };
 const v2 = { ...v3, version: 2 };
@@ -59,7 +61,8 @@ describe('save module', () => {
     expect(createSave(fakeStorage(), tables).load()).toEqual(fresh);
     expect(createSave(fakeStorage({ [KEY]: '{not json' }), tables).load()).toEqual(fresh);
     for (const bad of [null, 42, 'x', [], { ...valid, money: '1234' }, { ...valid, money: -5 }, { ...valid, money: NaN },
-      { ...valid, rankPoints: null }, { ...valid, upgrades: [] }, { ...valid, upgrades: { motor: 4 } },
+      { ...valid, stars: null }, { ...valid, stars: 1.5 }, { ...valid, stars: -1 }, { ...v4, rankPoints: null },
+      { ...v4, rankPoints: '40' }, { ...valid, upgrades: [] }, { ...valid, upgrades: { motor: 4 } },
       { ...valid, upgrades: { motor: 1.5 } }, { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
       { ...valid, distance: -1 }, { ...valid, distance: '12' }, { ...valid, distance: Infinity }, v1Fields,
       { ...valid, fuel: -1 }, { ...valid, fuel: '400' }, { ...valid, fuel: undefined }, { ...valid, energy: 1.01 },
@@ -74,9 +77,23 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 3 save loads as version 4 with all progress kept, a full tank, a rested driver, 08:00 and no time played', () => {
-    expect(fresh.version).toBe(4);
-    expect(stored(v3)).toEqual({ ...v3, version: 4, fuel: baseTables.fuel.tank, energy: 1, timeOfDay: 8 * 60, timePlayed: 0 });
+  test('a version 4 save loads as version 5 with all progress kept and a Star for every 10 rank points, rounded down', () => {
+    expect(fresh.version).toBe(5);
+    expect(stored(v4)).toEqual(valid); // 47 points: 4 Stars
+  });
+
+  // Past the top one's next Tier (in Stars) they move up into the new Tiers, as a player who earned that many Stars would.
+  test('a migrated player keeps their Tier, at and either side of every old threshold', () => {
+    const before = [0, 60, 200, 500, 1000]; // the rank points each Tier needed in version 4
+    const top = baseTables.rank.tiers[before.length].stars * 10 - 1;
+    for (const rankPoints of [0, 9, 59, 60, 61, 199, 200, 499, 500, 999, 1000, 1009, top]) {
+      const profile = stored({ ...v4, rankPoints });
+      expect(createSim(tables, undefined, Math.random, profile).state.rank.tier, `${rankPoints} points`).toBe(before.findLastIndex((p) => rankPoints >= p));
+    }
+  });
+
+  test('a version 3 save goes through both steps: a full tank, a rested driver, 08:00, no time played, and Stars', () => {
+    expect(stored(v3)).toEqual({ ...valid, fuel: baseTables.fuel.tank, energy: 1, timeOfDay: 8 * 60, timePlayed: 0 });
   });
 
   test('a version 1 or 2 save (the grid city) loads as a fresh profile of the current version', () => {
@@ -85,7 +102,7 @@ describe('save module', () => {
   });
 
   test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
-    const newer = JSON.stringify({ ...valid, version: 5 });
+    const newer = JSON.stringify({ ...valid, version: 6 });
     const storage = fakeStorage({ [KEY]: newer });
     const save = createSave(storage, tables);
     const profile = save.load();
@@ -99,7 +116,7 @@ describe('save module', () => {
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 5, '4', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 6, '5', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 

@@ -20,16 +20,22 @@ export function createSave(storage, tables) {
   }
 
   function validate(data) {
-    // Migrations first, then the checks for the current version; any other starts fresh (v1 and v2 were the grid
-    // city's, #67). Fuel over the (upgraded) tank is cut back to a full one. v3 → v4 (#48) adds a full tank, a rested driver, the clock at its start and no time played.
+    // Migrations first, chained, then the checks for the current version; any other starts fresh (v1 and v2 were the
+    // grid city's, #67). Fuel over the (upgraded) tank is cut back to a full one. v3 → v4 (#48) adds a full tank, a
+    // rested driver, the clock at its start and no time played; v4 → v5 (#81) turns rank points into Stars, one per
+    // 10 points rounded down, which keeps the Tier (tables.rank).
     const fresh = freshProfile();
     if (isObject(data) && data.version === 3) {
       const { fuel, energy, timeOfDay, timePlayed } = fresh;
       data = { ...data, version: 4, fuel, energy, timeOfDay, timePlayed };
     }
+    if (isObject(data) && data.version === 4) {
+      const { rankPoints, ...rest } = data;
+      data = { ...rest, version: 5, stars: isAmount(rankPoints) ? Math.floor(rankPoints / 10) : null };
+    }
     if (!isObject(data) || data.version !== fresh.version) return null;
-    const { money, rankPoints, distance, upgrades, owned, equipped, fuel, energy, timeOfDay, timePlayed } = data;
-    if (!isAmount(money) || !isAmount(rankPoints) || !isAmount(distance)) return null;
+    const { money, stars, distance, upgrades, owned, equipped, fuel, energy, timeOfDay, timePlayed } = data;
+    if (!isAmount(money) || !Number.isInteger(stars) || stars < 0 || !isAmount(distance)) return null;
     if (!isAmount(fuel) || !isAmount(timePlayed)) return null;
     if (!(isAmount(energy) && energy <= 1) || !(isAmount(timeOfDay) && timeOfDay < 24 * 60)) return null;
     if (!isObject(upgrades) || !isObject(equipped)) return null;
@@ -44,7 +50,7 @@ export function createSave(storage, tables) {
     return {
       version: data.version,
       money,
-      rankPoints,
+      stars,
       distance,
       upgrades: bought,
       owned: kept,

@@ -68,14 +68,14 @@ describe('Sim: traffic', () => {
   const trafficSim = (map, seed = 1, profile) => createSim(tables, map, seeded(seed), profile);
 
   test('the number of AI cars comes from the rank tier, higher tiers bringing more', () => {
-    const count = (rankPoints) => {
-      const sim = trafficSim(lattice(), 1, { ...freshProfile(), rankPoints });
+    const count = (stars) => {
+      const sim = trafficSim(lattice(), 1, { ...freshProfile(), stars });
       drive(sim, 1, IDLE);
       return sim.state.traffic.filter((c) => !c.police).length;
     };
 
     expect(count(0)).toBe(tiers[0].traffic);
-    expect(count(tiers.at(-1).points)).toBe(tiers.at(-1).traffic);
+    expect(count(tiers.at(-1).stars)).toBe(tiers.at(-1).traffic);
     expect(tiers.at(-1).traffic).toBeGreaterThan(tiers[0].traffic);
   });
 
@@ -577,7 +577,7 @@ describe('Sim: right of way and collisions', () => {
   test('driving into an AI car fines once per contact, stops both, floors money at 0 and damages fragile cargo', () => {
     const glass = { name: 'Glas', weight: 4, fragile: true };
     const onlyGlass = { ...quiet, orders: { ...quiet.orders, cargo: [glass] } };
-    const profile = { ...freshProfile(), money: 30, rankPoints: tables.rank.tiers[tables.orders.types.fragile].points };
+    const profile = { ...freshProfile(), money: 30, stars: tables.rank.tiers[tables.orders.types.fragile].stars };
     // A long north–south street with two spots on it; the truck starts on A's.
     const street = way('residential', [[0, -90], [0, 90]], { name: 'Via Lunga' });
     const spot = (id, at) => ({ id, name: `Ditta ${id}`, street: 'Via Lunga', way: street.id, at, side: 'right' });
@@ -614,6 +614,7 @@ describe('Sim: right of way and collisions', () => {
     expect(sim.state.lastFine).toEqual({ reason: 'collision', amount: 30 }); // all the money there was
     expect(sim.state.profile.money).toBe(0);
     expect(sim.state.order.damage).toBe(tables.orders.hitDamage);
+    expect(sim.state.order.faults).toEqual(['collision']); // the Contact costs the clean Star
 
     // Backing well off and driving into it again is a new contact.
     drive(sim, 2, BRAKE);

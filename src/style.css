@@ -328,6 +328,10 @@ body:has(.rear-inset:not([hidden])) .goal {
   gap: 8px;
 }
 
+.status-rank b {
+  color: #e8c547;
+}
+
 .status small {
   opacity: 0.7;
 }
@@ -820,6 +824,18 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 .fined {
   color: #ff6b5e;
+}
+
+/* The Stars banner: the delivery's Stars large, then each missed one with why. */
+.stars-banner {
+  color: #fff;
+  font-weight: 600;
+}
+
+.stars-banner::first-line {
+  color: #e8c547;
+  font-size: 32px;
+  letter-spacing: 4px;
 }
 
 .towed {

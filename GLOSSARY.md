@@ -11,7 +11,7 @@ The headless simulation of the city, the truck, the traffic and the rules; every
 _Avoid_: engine, game loop, world
 
 **Profile**:
-The player's lasting progress: money, rank points, distance driven, bought upgrades and visuals. It is what the **Save** stores.
+The player's lasting progress: money, **Stars**, distance driven, bought upgrades and visuals. It is what the **Save** stores.
 _Avoid_: account, player data
 
 **Save** ("Spielstand"):
@@ -24,12 +24,21 @@ The part of the game clock's day from 20:00 to 06:00, when sleeping at home ends
 **Weather** ("Wetter"):
 Clear, rain ("Regen") or fog ("Nebel"), changing on a fixed schedule over play time and fading in and out. Rain lowers the truck's grip, slows the **AI cars** and earns the rain bonus; fog shortens how far you can see. Not saved.
 
+**Star** ("Stern", ★):
+What a delivery earns besides its pay: ★ delivered; ★ on time, within the **Expected time**; ★ clean, with no **Rule
+fine** and no **Contact** the truck made during the **Order**, the cargo damaged no more than a small tolerance, and no
+**Zebra crossing** driven through while a **Pedestrian** waited at it or was on it; and a bonus ★ for reversing into the
+**Dock bay** on a dock **Drop-off**. The Stars banner after each delivery shows the earned ones and why the others were
+missed.
+_Avoid_: points, rank points (the old name, before #81)
+
 **Rank** ("Rang"):
-The player's standing, a **Tier** reached by collecting rank points from deliveries.
+The player's standing: the total of **Stars**, and the **Tier** that total reaches.
 _Avoid_: level (that word belongs to **Upgrades**), XP
 
 **Tier**:
-One step of the **Rank** ladder with its own title; it unlocks **Upgrade** levels, **Order types** and more traffic.
+One step of the **Rank** ladder with its own title, reached at a number of **Stars**; it unlocks **Upgrade** levels,
+**Order types** and more traffic.
 
 **Money** ("Kontostand"):
 The player's euros, earned by deliveries and spent in the **Werkstatt** or on **Fines**; it never goes below 0.
@@ -307,6 +316,8 @@ The **Spot** where a new game puts the truck, in its lane.
 
 ## Relationships
 
+- An **Order** earns its **Stars** when it is delivered; a **Rule fine**, a **Contact** the truck made or a **Zebra
+  crossing** driven through during it costs the clean one.
 - A **Profile** has one **Rank**; the **Rank**'s **Tier** gates **Upgrade** levels, **Order types** and the amount of traffic.
 - An **Offer** becomes an **Order** when accepted; an **Order** has one **Pickup** and one **Drop-off**, both **Spots**.
 - A **Dock** is a **Spot** with a **Dock bay**; dock **Order types** drop off at a **Dock**.

@@ -2,8 +2,8 @@
 // distance and the game clock, and above it the name of the street the truck is on, the next junction's rule while one
 // is near and a zebra crossing sign while one is, a police sign while a police car sees the truck, the low-fuel warning
 // and the tired or exhausted warning.
-// A status strip at the top shows the player's and driver's: rank and its progress, the driver's energy and the time
-// played. Reads Sim state; never writes to it.
+// A status strip at the top shows the player's and driver's: rank, Stars and progress to the next tier, the driver's
+// energy and the time played. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond,
 // the give-way triangle and the stop octagon; and the zebra crossing's, a pedestrian on stripes in a blue square.
 const ZEBRA_ICON =
@@ -24,6 +24,8 @@ export const kmText = (m, strings) => `${Math.floor(m / 1000).toLocaleString('de
 const twoDigits = (n) => String(n).padStart(2, '0');
 export const clockText = (minutes) => `${twoDigits(Math.floor(minutes / 60))}:${twoDigits(Math.floor(minutes % 60))}`;
 export const playedText = (s, strings) => `${strings.timePlayed} ${Math.floor(s / 3600)}:${twoDigits(Math.floor((s % 3600) / 60))} h`;
+// The Stars (state.rank) and the next tier's, if any.
+export const starsText = ({ stars, next }) => `★ ${stars}${next === null ? '' : `/${next}`}`;
 
 export function createHud(root, tables, strings) {
   const { idleRpm, upshiftRpm, torqueCurve } = tables.vehicle;
@@ -54,11 +56,12 @@ export function createHud(root, tables, strings) {
   const status = document.createElement('div');
   status.className = 'status';
   status.innerHTML = `
-    <div class="status-rank" aria-label="${strings.rank}"><span></span><div><i></i></div></div>
+    <div class="status-rank" aria-label="${strings.rank}"><span></span><b></b><div><i></i></div></div>
     <div class="status-energy" aria-label="${strings.energy}"><small>${strings.energy}</small><div><i></i></div></div>
     <small></small>`;
   root.after(status);
   const rankTitle = status.querySelector('.status-rank span');
+  const rankStars = status.querySelector('.status-rank b');
   const rankBar = status.querySelector('.status-rank i');
   const energyBar = status.querySelector('.status-energy i');
   const played = status.querySelector(':scope > small');
@@ -76,7 +79,7 @@ export function createHud(root, tables, strings) {
     if (el.textContent !== text) el.textContent = text;
   };
   let shownBar;
-  let shownRank;
+  let shownRank; // state.rank, replaced only when the Stars change
   let shownKm;
   let shownMinute;
   let shownPlayed;
@@ -98,7 +101,6 @@ export function createHud(root, tables, strings) {
     if (fill !== shownBar) bar.style.transform = `scaleX(${(shownBar = fill)})`;
     bar.classList.toggle('high', truck.rpm > upshiftRpm);
     set(rpm, `${Math.round(truck.rpm / 50) * 50} ${strings.rpm}`);
-    set(rankTitle, rank.title);
     // Each formatted only on a change: toLocaleString is slow, and the others would make a string every frame.
     const km = Math.floor(profile.distance / 1000);
     if (km !== shownKm) distance.textContent = kmText((shownKm = km) * 1000, strings);
@@ -106,7 +108,12 @@ export function createHud(root, tables, strings) {
     if (minute !== shownMinute) clock.textContent = clockText((shownMinute = minute));
     const playedMinute = Math.floor(profile.timePlayed / 60);
     if (playedMinute !== shownPlayed) played.textContent = playedText((shownPlayed = playedMinute) * 60, strings);
-    if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
+    if (rank !== shownRank) {
+      shownRank = rank;
+      set(rankTitle, rank.title);
+      set(rankStars, starsText(rank));
+      rankBar.style.transform = `scaleX(${rank.progress})`;
+    }
     if (police.hidden === policeSees) police.hidden = !policeSees;
     if (zebra.hidden === zebraAhead) zebra.hidden = !zebraAhead;
     const fuel = (profile.fuel / tank).toFixed(2);

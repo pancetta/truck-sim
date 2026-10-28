@@ -75,20 +75,24 @@ export const orders = {
   ],
 };
 
-// Rank points per delivery; a tier is reached at its points and brings `traffic` AI cars into the city.
-// Titles are in strings.rankTitles, same order. The economy run (#58, scripts/economy.js) earns about 150 points an
-// hour, so the tiers come at about 0.4, 1.5, 3.5 and 6.6 h of play, alongside the Werkstatt levels they unlock.
+// Stars (#81): each delivery earns ★ delivered, ★ on time (within the expected time) and ★ clean: no Rule fine and no
+// Contact the truck made during the order, cargo damage at most `cleanDamage`, no zebra crossing driven through (see
+// sim.js checkZebras); a dock drop-off adds a bonus ★ for reversing into the bay. Rank is the total of Stars: a tier is
+// reached at its `stars` and brings `traffic` AI cars into the city. Titles are in strings.rankTitles, same order. The
+// first five are #58's rank points / 10, so a v4 save keeps its tier. The economy run (scripts/economy.js) earns about
+// 25 Stars an hour, more than its 15 rank points / 10 did, so the tiers come at about 0.2, 0.9, 2 and 4 h of play, and
+// the ones after, which keep the busiest traffic, at about 8, 14 and 21 h.
 export const rank = {
-  pointsPerDelivery: 10,
-  timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned
-  fragilePoints: 10, // extra points for an undamaged fragile delivery, less in proportion to the damage
-  dockPoints: 10, // extra points for a delivery reversed into a dock bay
+  cleanDamage: 0.1, // a hard stop from 50 km/h is about 0.07 (orders.brakeDamage), a Hit 0.2
   tiers: [
-    { points: 0, traffic: 8 },
-    { points: 60, traffic: 9 },
-    { points: 200, traffic: 10 },
-    { points: 500, traffic: 11 },
-    { points: 1000, traffic: 12 },
+    { stars: 0, traffic: 8 },
+    { stars: 6, traffic: 9 },
+    { stars: 20, traffic: 10 },
+    { stars: 50, traffic: 11 },
+    { stars: 100, traffic: 12 },
+    { stars: 200, traffic: 12 },
+    { stars: 350, traffic: 12 },
+    { stars: 550, traffic: 12 },
   ].map((tier, i) => ({ ...tier, title: strings.rankTitles[i] })),
 };
 

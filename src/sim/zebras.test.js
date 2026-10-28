@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as base from '../tables.js';
 import { freshProfile } from './sim.js';
-import { build, way, monti, createSim, seeded, vehiclesOverlap, DT, GAS, BRAKE, IDLE } from './fixtures.js';
+import { build, way, monti, createSim, seeded, vehiclesOverlap, withSpots, DT, GAS, BRAKE, IDLE } from './fixtures.js';
 
 // Zebra crossings (#79): placed by the map builder's rule, crossed by pedestrians, stopped at by AI cars and the truck.
 
@@ -93,15 +93,18 @@ describe('zebra crossings: pedestrians and AI cars', () => {
 });
 
 describe('zebra crossings: the truck', () => {
-  const map = build(T());
+  // Two spots at the ends of Via A, so the truck can take an order.
+  const ways = T();
+  const spot = (id, at) => ({ id, name: `Ditta ${id}`, street: 'Via A', way: ways[0].id, at, side: 'right' });
+  const map = build(ways, withSpots([spot('A', 10), spot('B', 170)]));
   const [zebra] = map.zebras;
   // The truck standing in Vicolo's northbound lane, its front bumper `gap` m short of the strip.
   const before = (gap) => ({ x: classes.residential.lane, z: zebra.z + depth / 2 + gap + base.vehicle.length / 2, heading: Math.PI, speed: 0 });
 
   // Waits with the truck standing 4 m short of the strip until a pedestrian is a metre out on it (if `crossing`), then
-  // drives through, with a police car coming along Via A (if `witness`), which sees it. Returns the fines taken, the
-  // steps a pedestrian overlapped the truck, the ones on the strip as it set off and the ones of those that reached a
-  // kerb before it was through.
+  // takes an order and drives through, with a police car coming along Via A (if `witness`), which sees it. Returns the
+  // fines taken, the order's faults, the steps a pedestrian overlapped the truck, the ones on the strip as it set off and
+  // the ones of those that reached a kerb before it was through.
   function pass(t, { crossing = true, witness = true } = {}) {
     const sim = createSim(t, map, seeded(1), { ...freshProfile(), money: 1000 });
     Object.assign(sim.state.truck, before(4));
@@ -110,6 +113,7 @@ describe('zebra crossings: the truck', () => {
     if (crossing) expect(pedestrians.some(onStrip)).toBe(true);
     const run = map.graph.paths.find((p) => p.kind === 'run' && p.startDir.x > 0 && p.prims[0].x < -50);
     if (witness) sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s: 0, police: true });
+    sim.acceptOrder(sim.requestOffers()[0].id);
     let [fines, overlaps] = [[], 0];
     const [entered, kerbed] = [pedestrians.filter(onStrip), new Set()];
     for (let s = 0; s < 20 && truck.z > zebra.z - depth / 2 - base.vehicle.length / 2; s += DT) {
@@ -119,25 +123,28 @@ describe('zebra crossings: the truck', () => {
       overlaps += pedestrians.filter((q) => vehiclesOverlap(q, PERSON, truck, base.vehicle)).length;
       for (const q of entered) if (!onStrip(q)) kerbed.add(q);
     }
-    return { fines, overlaps, entered, kerbed, through: truck.z < zebra.z - depth / 2 - base.vehicle.length / 2 };
+    return { fines, faults: sim.state.order.faults, overlaps, entered, kerbed, through: truck.z < zebra.z - depth / 2 - base.vehicle.length / 2 };
   }
 
-  test('entering a zebra a pedestrian is on, with a Witness, is one fine per pass; the pedestrian steps back off the strip', () => {
-    const { fines, overlaps, entered, kerbed, through } = pass(crowd(withTraffic(0)));
+  test('entering a zebra a pedestrian is on, with a Witness, is one fine per pass and costs the clean Star; the pedestrian steps back off the strip', () => {
+    const { fines, faults, overlaps, entered, kerbed, through } = pass(crowd(withTraffic(0)));
     expect(through).toBe(true);
     expect(fines).toEqual(['zebra']);
+    expect(faults).toEqual(['zebra']);
     expect(overlaps).toBe(0);
     expect(entered.length).toBeGreaterThan(0);
     expect(entered.every((q) => kerbed.has(q))).toBe(true); // each back at a kerb (or over, away from the truck) before it was through
   }, 30_000);
 
-  test('no fine without a Witness, and none driving over an empty zebra', () => {
+  test('no fine without a Witness, but still no clean Star; neither driving over an empty zebra', () => {
     const unseen = pass(crowd(withTraffic(0)), { witness: false });
     expect(unseen.fines).toEqual([]);
+    expect(unseen.faults).toEqual(['zebra']);
     expect(unseen.overlaps).toBe(0);
     const empty = pass({ ...withTraffic(0), pedestrians: { ...base.pedestrians, count: 0 } }, { crossing: false });
     expect(empty.through).toBe(true);
     expect(empty.fines).toEqual([]);
+    expect(empty.faults).toEqual([]);
   }, 30_000);
 
   // A Sim on the T with a crowd and a police car coming along Via A, which sees the whole T.

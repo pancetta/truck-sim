@@ -82,7 +82,7 @@ describe('the autopilot into the docks', () => {
     run(sim, () => ({ steer: 0, gas: 0, brake: 0.6 }), () => sim.state.truck.speed === 0, 10);
 
     // shortcut: the drop-off is set up directly, as offers are random and only the docking is under test.
-    sim.state.order = { id: 1, type: 'dock', cargo: tables.orders.cargo[0], pickup: from, dropoff: id, distance: 0, pay: 100, expectedTime: 1, phase: 'dropoff', elapsed: 0, damage: 0 };
+    sim.state.order = { id: 1, type: 'dock', cargo: tables.orders.cargo[0], pickup: from, dropoff: id, distance: 0, pay: 100, expectedTime: 1, phase: 'dropoff', elapsed: 0, damage: 0, faults: [] };
     expect(reverseAlong(sim, trail)).toEqual({ done: true, contacts: 0 });
     run(sim, () => ({ steer: 0, gas: 0, brake: 0 }), () => !sim.state.order, tables.orders.loadTime + 1);
     expect(sim.state.lastPayment?.lines.map((l) => l.label)).toContain('dock');

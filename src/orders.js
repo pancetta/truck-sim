@@ -1,5 +1,5 @@
 // Money counter, orders button and panel, goal banner, load/unload and service progress bar, a service spot's service
-// buttons, payment, fine and tow notices. Reads Sim state each frame; changes it only through the Sim's order and
+// buttons, the Stars banner, payment, fine and tow notices. Reads Sim state each frame; changes it only through the Sim's order and
 // service commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
@@ -8,11 +8,12 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="notices"><div class="services"></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div></div>`;
+    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
-  const paid = root.querySelector('.paid');
+  const starsBanner = root.querySelector('.stars-banner');
+  const paid = root.querySelector('.paid:not(.stars-banner)');
   const fined = root.querySelector('.fined');
   const towed = root.querySelector('.towed');
   const services = root.querySelector('.services');
@@ -58,7 +59,7 @@ export function createOrders(root, sim, map, tables, strings) {
   // Hides the notices at once: the Werkstatt panel opening over them would cover them (#orders is a stacking
   // context of its own, under the Werkstatt).
   function dismissNotices() {
-    for (const el of [paid, fined, towed]) {
+    for (const el of [starsBanner, paid, fined, towed]) {
       if (el.hidden) continue;
       clearTimeout(timers.get(el));
       el.hidden = true;
@@ -103,6 +104,10 @@ export function createOrders(root, sim, map, tables, strings) {
       lastPayment = payment;
       const lines = payment.lines.map((l) => `${strings.payLines[l.label]} +${eur(l.amount)}`);
       notify(paid, [`${strings.paid}: +${eur(payment.amount)}`, ...lines].join('\n'));
+      // Earned Stars filled, missed ones hollow, then each missed one with why.
+      const missed = payment.stars.filter((s) => s.reasons.length);
+      const why = (reason) => strings.starReasons[reason] ?? strings[reason];
+      notify(starsBanner, [payment.stars.map((s) => (s.reasons.length ? '☆' : '★')).join(' '), ...missed.map((s) => `☆ ${strings.stars[s.star]}: ${s.reasons.map(why).join(', ')}`)].join('\n'));
     }
 
     if (fine !== lastFine) {

@@ -18,6 +18,9 @@ function nook(base) {
 const simOn = ({ t, map }, seed = 1, profile) => createSim(t, map, seeded(seed), profile);
 const laneSim = (seed, profile) => simOn(lane(), seed, profile);
 
+// A delivery's Stars as state.lastPayment reports them: each name with its missed reasons (none when earned).
+const starsOf = (sim) => Object.fromEntries(sim.state.lastPayment.stars.map(({ star, reasons }) => [star, reasons]));
+
 function typesOffered(sim) {
   const seen = new Set();
   for (let i = 0; i < 100; i++) for (const o of sim.requestOffers()) seen.add(o.type);
@@ -144,8 +147,13 @@ describe('Sim: orders', () => {
         { label: 'base', amount: offer.pay },
         { label: 'time', amount: 0 },
       ],
+      stars: [
+        { star: 'delivered', reasons: [] },
+        { star: 'onTime', reasons: ['late'] },
+        { star: 'clean', reasons: [] },
+      ],
     });
-    expect(sim.state.profile.rankPoints).toBe(tables.rank.pointsPerDelivery);
+    expect(sim.state.profile.stars).toBe(2);
     expect(sim.state.truck.mass).toBe(emptyMass);
     expect(sim.state.order).toBe(null);
     expect(sim.state.progress).toBe(0);
@@ -171,7 +179,7 @@ describe('Sim: time bonus', () => {
   // Spec #12's worked example: base + distance 100 and an expected time of 120 s. On the nook the order has no route;
   // loading and unloading take 30 s each, and the slack makes up the other 60 s.
   const example = { ...tables, orders: { ...tables.orders, basePay: 100, loadTime: 30, slack: 60 } };
-  const nookSim = () => simOn(nook(example));
+  const nookSim = (t = example) => simOn(nook(t));
 
   test("an offer expects the routes to the pickup and on to the drop-off at reference speed, plus load, unload and slack", () => {
     // On the lane the truck starts 28 m from A's zone, which is 56 m from B's.
@@ -228,25 +236,32 @@ describe('Sim: time bonus', () => {
         { label: 'base', amount: 100 },
         { label: 'time', amount: 25 },
       ],
+      stars: [
+        { star: 'delivered', reasons: [] },
+        { star: 'onTime', reasons: [] },
+        { star: 'clean', reasons: [] },
+      ],
     });
     expect(sim.state.profile.money).toBe(125);
+    expect(sim.state.profile.stars).toBe(3);
   });
 
-  test('the time bonus adds rank points in proportion to the bonus earned', () => {
-    const { pointsPerDelivery, timeBonusPoints } = tables.rank;
-    const sim = nookSim();
-    sim.acceptOrder(sim.requestOffers()[0].id);
-
-    drive(sim, 61, IDLE); // half the expected time left: half the full time bonus
-
-    expect(timeBonusPoints).toBeGreaterThan(0);
-    expect(sim.state.profile.rankPoints).toBe(pointsPerDelivery + timeBonusPoints / 2);
+  test('the on-time Star needs the delivery within the expected time: one second over misses it', () => {
+    const deliveredAt = (seconds) => {
+      const sim = nookSim({ ...example, orders: { ...example.orders, slack: seconds - 60 } }); // expected 120 s at slack 60
+      sim.acceptOrder(sim.requestOffers()[0].id);
+      drive(sim, 61, IDLE); // unloaded at 60 s
+      expect(sim.state.order).toBe(null);
+      return starsOf(sim).onTime;
+    };
+    expect(deliveredAt(61)).toEqual([]);
+    expect(deliveredAt(59)).toEqual(['late']);
   });
 });
 
 describe('Sim: fragile cargo', () => {
   const { loadTime, fragilePremium, maxCargo, types } = tables.orders;
-  const fragileTier = { ...freshProfile(), rankPoints: tables.rank.tiers[types.fragile].points };
+  const fragileTier = { ...freshProfile(), stars: tables.rank.tiers[types.fragile].stars };
   const glass = { name: 'Glas', weight: 4, fragile: true };
   // Every offer is fragile, so runs with the same driving carry the same mass.
   const onlyGlass = { ...tables, orders: { ...tables.orders, cargo: [glass] } };
@@ -265,7 +280,7 @@ describe('Sim: fragile cargo', () => {
   }
 
   test('fragile offers come only from their rank tier, and offers are the same for the same seed', () => {
-    const below = { ...freshProfile(), rankPoints: tables.rank.tiers[types.fragile - 1].points };
+    const below = { ...freshProfile(), stars: tables.rank.tiers[types.fragile - 1].stars };
     expect(typesOffered(laneSim(1, below))).toEqual(new Set(['normal']));
     expect(typesOffered(laneSim(1, fragileTier))).toEqual(new Set(['normal', 'fragile']));
 
@@ -336,7 +351,7 @@ describe('Sim: fragile cargo', () => {
   });
 
   test('worked example: one hit with fragile cargo loaded is damage 0.25, and the fragile line is 30 on the 100', () => {
-    const sim = nookSim({ ...example, rank: { ...example.rank, timeBonusPoints: 0 } }); // the bump costs time
+    const sim = nookSim();
     sim.acceptOrder(sim.requestOffers()[0].id);
     drive(sim, 30.1, IDLE); // loaded at 30 s
 
@@ -350,12 +365,24 @@ describe('Sim: fragile cargo', () => {
     expect(sim.state.order).toBe(null);
     expect(sim.state.lastPayment.lines).toContainEqual({ label: 'base', amount: 100 });
     expect(sim.state.lastPayment.lines).toContainEqual({ label: 'fragile', amount: 30 });
-    const { pointsPerDelivery, fragilePoints } = tables.rank;
-    expect(sim.state.profile.rankPoints).toBe(fragileTier.rankPoints + pointsPerDelivery + Math.round(fragilePoints * 0.75));
+    expect(starsOf(sim).clean).toEqual(['damage']);
+    expect(sim.state.profile.stars).toBe(fragileTier.stars + 2);
   });
 
-  test('an undamaged fragile delivery gets the full premium and the extra rank points', () => {
-    const { pointsPerDelivery, timeBonusPoints, fragilePoints } = tables.rank;
+  test('damage within tables.rank.cleanDamage keeps the clean Star', () => {
+    const sim = nookSim({ ...example, orders: { ...example.orders, hitDamage: tables.rank.cleanDamage } });
+    sim.acceptOrder(sim.requestOffers()[0].id);
+    drive(sim, 30.1, IDLE); // loaded at 30 s
+    timeUntil(sim, GAS, () => sim.state.collision, 10); // one hit, into the map edge, still in the zone
+    drive(sim, 0.1, IDLE);
+    expect(sim.state.order.damage).toBe(tables.rank.cleanDamage);
+    drive(sim, 31, IDLE);
+
+    expect(sim.state.order).toBe(null);
+    expect(starsOf(sim).clean).toEqual([]);
+  });
+
+  test('an undamaged fragile delivery gets the full premium and the clean Star', () => {
     const sim = nookSim();
     sim.acceptOrder(sim.requestOffers()[0].id);
 
@@ -368,15 +395,19 @@ describe('Sim: fragile cargo', () => {
         { label: 'time', amount: 25 },
         { label: 'fragile', amount: fragilePremium * 100 },
       ],
+      stars: [
+        { star: 'delivered', reasons: [] },
+        { star: 'onTime', reasons: [] },
+        { star: 'clean', reasons: [] },
+      ],
     });
-    expect(fragilePoints).toBeGreaterThan(0);
-    expect(sim.state.profile.rankPoints).toBe(fragileTier.rankPoints + pointsPerDelivery + timeBonusPoints / 2 + fragilePoints);
+    expect(sim.state.profile.stars).toBe(fragileTier.stars + 3);
   });
 });
 
 describe('Sim: docking', () => {
   const { loadTime, types, dockHeading } = tables.orders;
-  const tierOf = (type) => ({ ...freshProfile(), rankPoints: tables.rank.tiers[types[type]].points });
+  const tierOf = (type) => ({ ...freshProfile(), stars: tables.rank.tiers[types[type]].stars });
   // Spec #12's worked example: base + distance 100 (no pay per km), so the dock line is 25.
   const example = (cargo = tables.orders.cargo) => ({ ...tables, orders: { ...tables.orders, basePay: 100, payPerKm: 0, cargo } });
   // The lane with `docks` as loading docks; A's bay faces south, out of its end wall into the lane.
@@ -419,12 +450,12 @@ describe('Sim: docking', () => {
   }
 
   test('dock offers go to dock spots, from their rank tier on; fragile + dock from its own', () => {
-    const below = { ...freshProfile(), rankPoints: tables.rank.tiers[types.dock - 1].points };
+    const below = { ...freshProfile(), stars: tables.rank.tiers[types.dock - 1].stars };
     expect(typesOffered(dockSim(['A'], below))).not.toContain('dock');
     expect(typesOffered(dockSim(['A'], tierOf('dock')))).toContain('dock');
     expect(typesOffered(dockSim(['A'], tierOf('fragileDock')))).toContain('fragileDock');
     expect(types.fragileDock).toBeGreaterThan(types.dock);
-    expect(typesOffered(dockSim(['A'], { ...freshProfile(), rankPoints: tables.rank.tiers[types.fragileDock - 1].points }))).not.toContain(
+    expect(typesOffered(dockSim(['A'], { ...freshProfile(), stars: tables.rank.tiers[types.fragileDock - 1].stars }))).not.toContain(
       'fragileDock',
     );
 
@@ -507,17 +538,21 @@ describe('Sim: docking', () => {
     expect(lineOf(sim, 'dock').amount).toBe(25);
   });
 
-  test('a successful dock adds rank points', () => {
-    const { dockPoints } = tables.rank;
-    // The same drive with A as a plain spot gives the points without the dock.
+  test('a dock drop-off has the bonus Star: earned reversed into the bay, missed short of it; a plain spot has none', () => {
+    // The same drive with A as a plain spot gives the Stars without the dock one.
     const pallets = [{ name: 'Paletten', weight: 6 }];
     const plain = dockSim([], tierOf('dock'), pallets);
     reverseIntoA(plain);
     const docked = dockSim(['A'], tierOf('dock'), pallets);
     reverseIntoA(docked);
+    const short = dockSim(['A'], tierOf('dock'), pallets);
+    reverseIntoA(short, 0, 3);
 
-    expect(dockPoints).toBeGreaterThan(0);
-    expect(docked.state.profile.rankPoints).toBe(plain.state.profile.rankPoints + dockPoints);
+    expect(Object.keys(starsOf(plain))).toEqual(['delivered', 'onTime', 'clean']);
+    expect(starsOf(docked)).toEqual({ ...starsOf(plain), dock: [] });
+    expect(docked.state.profile.stars).toBe(plain.state.profile.stars + 1);
+    expect(starsOf(short).dock).toEqual(['notDocked']);
+    expect(short.state.profile.stars).toBe(plain.state.profile.stars);
   });
 });
 
@@ -609,5 +644,38 @@ describe('Sim: route', () => {
     expect(sim.state.route.length).toBe(1);
     expectAt(sim.state.route[0], zoneOf(map, 'B'));
     expect(lengthOf(map, sim)).toBeCloseTo(10);
+  });
+});
+
+describe('Sim: the clean Star and Rule fines', () => {
+  // On the lane, any speed is speeding, even standing still, and a police car at the north end sees the whole lane.
+  const t = { ...tables, police: { ...tables.police, count: 0, radius: 500 }, speeding: { tolerance: -tables.osm.classes.residential.limit - 1, cooldown: 0 } };
+  const { t: withLane, map } = lane(t);
+  const witnessed = () => {
+    const sim = createSim(withLane, map, seeded(1));
+    const run = map.graph.paths.find((p) => p.kind === 'run');
+    sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s: 0, police: true });
+    return sim;
+  };
+
+  test('a Rule fine during the order costs its clean Star; one before it was accepted does not', () => {
+    const sim = witnessed();
+    sim.step(DT, IDLE);
+    expect(sim.state.lastFine?.reason).toBe('speeding'); // no order yet
+    acceptFrom(sim, 'A');
+    expect(sim.state.order.faults).toEqual([]);
+    sim.step(DT, IDLE);
+    expect(sim.state.order.faults).toEqual(['speeding']);
+    sim.state.traffic.length = 0; // the police car goes, out of the truck's way
+
+    const before = sim.state.profile.stars;
+    parkAt(sim, 'A');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    parkAt(sim, 'B');
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+
+    expect(sim.state.order).toBe(null);
+    expect(starsOf(sim).clean).toEqual(['speeding']);
+    expect(sim.state.profile.stars).toBe(before + 2);
   });
 });

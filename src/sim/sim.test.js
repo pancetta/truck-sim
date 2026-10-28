@@ -295,11 +295,11 @@ describe('Sim: city', () => {
 });
 
 describe('Sim: profile', () => {
-  const profile = { ...freshProfile(), money: 500, rankPoints: 7, distance: 1000, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
+  const profile = { ...freshProfile(), money: 500, stars: 5, distance: 1000, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
 
   test('a fresh Sim starts with no money and no payment', () => {
     const sim = laneSim();
-    expect(sim.state.profile).toMatchObject({ version: 4, money: 0, rankPoints: 0, distance: 0, fuel: tables.fuel.tank, energy: 1 });
+    expect(sim.state.profile).toMatchObject({ version: 5, money: 0, stars: 0, distance: 0, fuel: tables.fuel.tank, energy: 1 });
     expect(sim.state.lastPayment).toBe(null);
   });
 
@@ -312,7 +312,7 @@ describe('Sim: profile', () => {
     expect(sim.state.profile).toEqual({
       ...profile,
       money: 500 + offer.pay,
-      rankPoints: 7 + tables.rank.pointsPerDelivery,
+      stars: 5 + 2, // delivered and clean, but late
       distance: sim.state.profile.distance, // see 'Sim: distance'
       timeOfDay: sim.state.profile.timeOfDay, // see 'Sim: clock'
       timePlayed: sim.state.profile.timePlayed,
@@ -384,7 +384,7 @@ describe('Sim: distance', () => {
 
 describe('Sim: Werkstatt', () => {
   const MONEY = 100000;
-  const rich = (upgrades = {}, rankPoints = 0) => ({ ...freshProfile(), money: MONEY, rankPoints, upgrades });
+  const rich = (upgrades = {}, stars = 0) => ({ ...freshProfile(), money: MONEY, stars, upgrades });
   const plane = (profile = rich()) => createSim(tables, undefined, Math.random, profile);
 
   test('the Werkstatt is available only at a standstill with no active order', () => {
@@ -478,7 +478,7 @@ describe('Sim: Werkstatt', () => {
 
   test('with enough rank the next level sells', () => {
     const { rank } = tables.upgrades.motor.levels[1];
-    const sim = plane(rich({ motor: 1 }, tables.rank.tiers[rank].points));
+    const sim = plane(rich({ motor: 1 }, tables.rank.tiers[rank].stars));
 
     expect(sim.buyUpgrade('motor').ok).toBe(true);
     expect(sim.state.profile.upgrades.motor).toBe(2);
@@ -540,26 +540,36 @@ describe('Sim: visual items', () => {
 });
 
 describe('Sim: rank', () => {
-  const { pointsPerDelivery, tiers } = tables.rank;
-  const at = (rankPoints) => laneSim(1, { ...freshProfile(), rankPoints });
+  const { tiers } = tables.rank;
+  const at = (stars) => laneSim(1, { ...freshProfile(), stars });
 
   test('a fresh Sim starts at the lowest tier', () => {
-    expect(laneSim().state.rank).toEqual({ tier: 0, title: tiers[0].title, progress: 0 });
+    expect(laneSim().state.rank).toEqual({ tier: 0, title: tiers[0].title, stars: 0, next: tiers[1].stars, progress: 0 });
   });
 
-  test('a delivery adds rank points, and crossing a threshold changes the tier and title', () => {
-    const sim = at(tiers[1].points - pointsPerDelivery);
+  test("a delivery adds its Stars, and crossing a tier's Stars changes the tier and title", () => {
+    const sim = at(tiers[1].stars - 2);
     expect(sim.state.rank.tier).toBe(0);
 
-    deliver(sim, true);
+    deliver(sim, true); // late: delivered and clean
 
-    expect(sim.state.profile.rankPoints).toBe(tiers[1].points);
-    expect(sim.state.rank).toEqual({ tier: 1, title: tiers[1].title, progress: 0 });
+    expect(sim.state.profile.stars).toBe(tiers[1].stars);
+    expect(sim.state.rank).toEqual({ tier: 1, title: tiers[1].title, stars: tiers[1].stars, next: tiers[2].stars, progress: 0 });
     expect(tiers[1].title).not.toBe(tiers[0].title);
   });
 
   test('progress runs towards the next tier and stays full at the top', () => {
-    expect(at((tiers[1].points + tiers[2].points) / 2).state.rank).toMatchObject({ tier: 1, progress: 0.5 });
-    expect(at(tiers.at(-1).points + 1).state.rank).toMatchObject({ tier: tiers.length - 1, progress: 1 });
+    expect(at((tiers[1].stars + tiers[2].stars) / 2).state.rank).toMatchObject({ tier: 1, progress: 0.5 });
+    expect(at(tiers.at(-1).stars + 1).state.rank).toMatchObject({ tier: tiers.length - 1, next: null, progress: 1 });
+  });
+
+  test("the new tiers come after #58's five, each with its own title, and keep the busiest traffic", () => {
+    expect(tiers.slice(0, 5).map((t) => t.stars)).toEqual([0, 6, 20, 50, 100]); // #58's rank points / 10
+    expect(tiers.length).toBeGreaterThan(5);
+    expect(new Set(tiers.map((t) => t.title)).size).toBe(tiers.length);
+    for (const [i, t] of tiers.entries()) {
+      if (i) expect(t.stars).toBeGreaterThan(tiers[i - 1].stars);
+      if (i >= 5) expect(t.traffic).toBe(tiers[4].traffic);
+    }
   });
 });

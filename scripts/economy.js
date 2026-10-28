@@ -183,7 +183,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
     else if (affordable()) driveTo(tables.osm.home) && shop();
     else deliver();
   }
-  return { ...r, money: p().money, rankPoints: p().rankPoints, baseTank: tables.fuel.tank };
+  return { ...r, money: p().money, stars: p().stars, baseTank: tables.fuel.tank };
 }
 
 // The run's totals as a few lines of text.
@@ -196,7 +196,7 @@ export function report(r) {
   const list = (o) => Object.entries(o).map(([k, v]) => `${k} ${perH(v)}`).join(', ') || 'none';
   const counts = (o) => Object.entries(o).map(([k, v]) => `${k} ${(v / h).toFixed(1)}`).join(', ') || 'none';
   return [
-    `seed ${r.seed}, ${h} h: money ${r.startMoney} → ${r.money} (lowest ${r.lowest}), net ${perH(r.money - r.startMoney)} €/h, ${(r.deliveries / h).toFixed(1)} deliveries/h, rank points ${r.rankPoints}`,
+    `seed ${r.seed}, ${h} h: money ${r.startMoney} → ${r.money} (lowest ${r.lowest}), net ${perH(r.money - r.startMoney)} €/h, ${(r.deliveries / h).toFixed(1)} deliveries/h, Stars ${r.stars}`,
     `  pay ${perH(pay)} €/h (${list(r.pay)}); running costs ${perH(costs)} €/h (${Math.round((100 * costs) / pay)} % of pay), leaving ${perH(pay - costs)} €/h`,
     `  fuel ${perH(r.fuel.cost)} €/h in ${(r.fuel.stops / h).toFixed(1)} stops/h; ${(r.burnt / Math.max(1, r.deliveries)).toFixed(0)} L/delivery, a ${r.baseTank} L tank lasts ${((r.baseTank / r.burnt) * r.deliveries).toFixed(1)} deliveries`,
     `  food ${perH(r.food)} €/h (snacks ${(r.snacks / h).toFixed(1)}/h, meals ${(r.meals / h).toFixed(1)}/h), sleeps ${(r.sleeps / h).toFixed(1)}/h; driving ${Math.round((100 * r.driving) / (h * 3600))} % of the time`,

@@ -9,15 +9,16 @@ import { clock as dayClock, fuel } from '../tables.js';
 const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
-// migrate the old one; v3 came with the Monti map (#67), and the grid city's v1 and v2 start fresh.
-// distance: m driven in total; upgrades: id → level; equipped: slot → visual id; fuel: litres in the tank;
-// energy: the driver's, 0..1; timeOfDay: game minutes since midnight; timePlayed: s of play in total.
+// migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), and the grid city's v1 and v2 start fresh.
+// stars: the Stars earned in total, which make the Rank; distance: m driven in total; upgrades: id → level;
+// equipped: slot → visual id; fuel: litres in the tank; energy: the driver's, 0..1; timeOfDay: game minutes since
+// midnight; timePlayed: s of play in total.
 // The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
   return {
-    version: 4,
+    version: 5,
     money: 0,
-    rankPoints: 0,
+    stars: 0,
     distance: 0,
     upgrades: {},
     owned: [],
@@ -44,12 +45,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
   // 'fragile', 'dock' or 'fragileDock'. `order` is the active offer plus its phase ('pickup' or 'dropoff'),
-  // `elapsed` (s since it was accepted) and `damage` (0..1, grows only on fragile cargo once loaded);
+  // `elapsed` (s since it was accepted), `damage` (0..1, grows only on fragile cargo once loaded) and `faults`, what has
+  // cost it the clean Star so far: the reason of each fine taken since it was accepted ('collision' for a Contact the
+  // truck made) and 'zebra' for a zebra crossing driven through, Witness or not, each once;
   // `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road route to that zone's place on the road graph, as points ({ x, z }) from the next one
   // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()).
-  // `lastPayment` ({ amount, lines: [{ label, amount }] }, label a key of strings.payLines) is replaced by a
-  // new object on every payment, so the UI can tell each one apart;
+  // `lastPayment` ({ amount, lines: [{ label, amount }], stars: [{ star, reasons }] }, label a key of strings.payLines)
+  // is replaced by a new object on every payment, so the UI can tell each one apart. `stars` are the delivery's Stars in
+  // order, `star` a key of strings.stars ('delivered', 'onTime', 'clean', and 'dock' for a dock drop-off), each earned
+  // when `reasons` is empty, else missed for them: 'late'; the order's faults, plus 'damage' over
+  // tables.rank.cleanDamage; 'notDocked';
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber', 'red' or 'redAmber');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
@@ -62,7 +68,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
   // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
-  // `rank` is { tier, title, progress 0..1 to the next tier }; `garageAvailable` is whether the Werkstatt may sell: at
+  // `rank` is { tier, title, stars (profile.stars), next (the Stars the next tier needs, null at the top), progress 0..1
+  // to it }; `garageAvailable` is whether the Werkstatt may sell: at
   // home (see atHome()), standing, with no active order.
   // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres) and
   // `tank` the litres it holds (tankOf());
@@ -476,8 +483,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return state.pedestrians.some((q) => q.zebra >= 0 && !q.waiting && inside(q.x, q.z, box));
   }
 
-  // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs a fine if the
-  // police see it, once per pass: the pass lasts while the truck's footprint is on the strip (`truckOn`). Only if the
+  // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs the order's clean
+  // Star, and a fine if the police see it, once per pass: the pass lasts while the truck's footprint is on the strip (`truckOn`). Only if the
   // truck could still have stopped once they were there (`owed`, see truckAtZebras): one who came to the kerb as it
   // was already too close doesn't count.
   function checkZebras() {
@@ -486,7 +493,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const reach = v.length + 2 * tables.zebras.depth; // m between centres within which the strip and the truck may meet
     for (const zebra of state.zebras) {
       const on = (zebra.x - truck.x) ** 2 + (zebra.z - truck.z) ** 2 <= reach ** 2 && boxesOverlap(box, zebra.strip);
-      if (on && !zebra.truckOn && zebra.owed && state.policeSees) fine('zebra');
+      if (on && !zebra.truckOn && zebra.owed) {
+        fault('zebra');
+        if (state.policeSees) fine('zebra');
+      }
       zebra.truckOn = on;
     }
   }
@@ -682,6 +692,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const amount = Math.min(state.profile.money, tables.fines[reason]);
     state.profile.money -= amount;
     state.lastFine = { reason, amount };
+    fault(reason);
+  }
+
+  // Notes what costs the active order its clean Star (order.faults), once each.
+  function fault(reason) {
+    if (state.order && !state.order.faults.includes(reason)) state.order.faults.push(reason);
   }
 
   // Finds the route again only when the target changes or the truck moves: on the road onto another segment of an
@@ -746,11 +762,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         { label: 'time', amount: Math.round(o.timeBonus * timeShare * order.pay) },
       ];
       // Damage takes its share of the fragile premium and never more, so the pay never drops below the base.
-      let care = 0;
-      if (order.cargo.fragile) {
-        care = 1 - order.damage;
-        lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * care * order.pay) });
-      }
+      if (order.cargo.fragile) lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * (1 - order.damage) * order.pay) });
       const to = targetOf(order);
       const docked = to.dock && reversedInto(to.bay);
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
@@ -758,10 +770,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (state.weather.kind === 'rain' && state.weather.intensity >= w.rain.bonus) lines.push({ label: 'rain', amount: Math.round(o.rainBonus * order.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
-      const { pointsPerDelivery, timeBonusPoints, fragilePoints, dockPoints } = tables.rank;
-      state.profile.rankPoints +=
-        pointsPerDelivery + Math.round(timeBonusPoints * timeShare) + Math.round(fragilePoints * care) + (docked ? dockPoints : 0);
-      state.lastPayment = { amount, lines };
+      const stars = [
+        { star: 'delivered', reasons: [] },
+        { star: 'onTime', reasons: order.elapsed <= order.expectedTime ? [] : ['late'] },
+        { star: 'clean', reasons: order.damage > tables.rank.cleanDamage ? [...order.faults, 'damage'] : order.faults },
+      ];
+      if (to.dock) stars.push({ star: 'dock', reasons: docked ? [] : ['notDocked'] });
+      state.profile.stars += stars.filter((x) => !x.reasons.length).length;
+      state.lastPayment = { amount, lines, stars };
       state.order = null;
       updateRank();
     }
@@ -779,11 +795,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   function updateRank() {
     const { tiers } = tables.rank;
-    const points = state.profile.rankPoints;
-    const tier = tiers.findLastIndex((t) => points >= t.points);
-    const next = tiers[tier + 1];
-    const progress = next ? (points - tiers[tier].points) / (next.points - tiers[tier].points) : 1;
-    state.rank = { tier, title: tiers[tier].title, progress };
+    const { stars } = state.profile;
+    const tier = tiers.findLastIndex((t) => stars >= t.stars);
+    const next = tiers[tier + 1]?.stars ?? null;
+    const progress = next === null ? 1 : (stars - tiers[tier].stars) / (next - tiers[tier].stars);
+    state.rank = { tier, title: tiers[tier].title, stars, next, progress };
   }
 
   // The profile's bought level of an upgrade (undefined while it has none).
@@ -918,7 +934,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function acceptOrder(id) {
     const offer = state.offers.find((x) => x.id === id);
     if (state.order || !offer) return;
-    state.order = { ...offer, phase: 'pickup', elapsed: 0, damage: 0 };
+    state.order = { ...offer, phase: 'pickup', elapsed: 0, damage: 0, faults: [] };
     state.offers = [];
     updateRoute();
   }
