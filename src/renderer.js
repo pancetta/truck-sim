@@ -11,6 +11,7 @@ import { DIRS, planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets, glowMaterial } from './streets.js';
+import { createPeople } from './people.js';
 import { ringMeshes, paintSkylineWindows } from './skyline.js';
 import { roadPieces, roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { createCells } from './sim/cells.js';
@@ -512,6 +513,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Lanterns and plants on the walls, and OSM's street furniture (streets.js).
   const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
   laterLoads.push(streets.load);
+  const people = createPeople(scene, tables);
 
   // The road signs as one batched mesh with one shader: three tests each placement against the view, so only what's
   // on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is
@@ -1000,6 +1002,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
     drawCars(state.traffic, drawingRear);
+    people.update(state.pedestrians, truck.position, inView);
     streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
     if (drawingRear) {

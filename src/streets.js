@@ -316,7 +316,7 @@ export function quads(list, repeat) {
 // An upright cylinder from y = `base` to `base + height`.
 const cylinder = (radius, height, base = 0) => new THREE.CylinderGeometry(radius, radius, height, 12).translate(0, base + height / 2, 0);
 
-function coloured(geometry, colour) {
+export function coloured(geometry, colour) {
   const part = (geometry.index ? geometry.toNonIndexed() : geometry).deleteAttribute('uv');
   const c = new THREE.Color(colour);
   return part.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: part.getAttribute('position').count }, () => [c.r, c.g, c.b]).flat(), 3));

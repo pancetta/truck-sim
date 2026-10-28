@@ -20,10 +20,12 @@
 //     the pavement beside its zone, the restaurant (tables.osm.restaurant) its terrace (`terrace`, solid, kind
 //     'restaurant'), and home (tables.osm.home) its `garage` pose there, on which the renderer draws its doors.
 //     `start` is the start spot's kerb lane pose, where a new game begins.
+//   Pavement lines (`pavements`): where pedestrians walk, along both sides of every edge (see pavementLines).
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
 import { poseAt } from './lanes.js';
+import { pavementLines } from './pavements.js';
 import { inside } from './sim.js';
 
 // The furniture's props by OSM tag: [tag, value, collider kind].
@@ -285,7 +287,8 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.
   const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
-  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pedestrian: { lines: lines.map(toXZ), squares } };
+  const pavements = pavementLines(graph, colliders.filter((c) => c.kind === 'building'), tables);
+  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: { lines: lines.map(toXZ), squares } };
 }
 
 // The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.

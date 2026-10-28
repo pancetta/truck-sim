@@ -344,6 +344,26 @@ export const police = {
   lightBar: 0x2f6fe0,
 };
 
+// Pedestrians (#78, sim/pedestrians.js): `count` of them walk the pavement lines (sim/pavements.js) at `speed` m/s,
+// `keepRight` m right of the line so people meeting pass; a line keeps them `clear` m more off the road. They appear
+// `spawnDistance` m from the truck (nearest, farthest) and leave past `despawnDistance`, out of its view as the AI cars
+// do (traffic.spawnView). `seed` seeds their own random, so they don't change the traffic's or the offers' draws.
+// Their look (people.js), our own: `height` m tall, in full detail within `near` m of the truck, clothes in one of
+// `outfits` (trousers a darker shade) and one of `skins`.
+export const pedestrians = {
+  count: 60,
+  speed: 1.3,
+  keepRight: 0.3,
+  clear: 0.2,
+  spawnDistance: [30, 120],
+  despawnDistance: 140,
+  seed: 78,
+  height: 1.75,
+  near: 25,
+  outfits: [0x2f4f7f, 0x8a2f2f, 0x3d5a3a, 0xd8cfb8, 0x2b2d31, 0x9a7a4a, 0x6b4f7a, 0xc9ccce, 0xb8602e, 0x406a8a],
+  skins: [0xf1c9a5, 0xd9a47e, 0xb07a52, 0x7d5236, 0x4f3324],
+};
+
 export const city = {
   cell: 14, // m, side of the spatial index cells the colliders and road edges are filed under
   resetSpacing: 14, // m between the road points along each edge that Reset to road picks from

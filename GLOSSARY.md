@@ -144,6 +144,10 @@ _Avoid_: cop, patrol
 **Parked car**:
 A car standing still at the kerb as an obstacle; it never moves.
 
+**Pedestrian**:
+A person walking a **Pavement line**, driven by the **Sim**. Pedestrians never step onto the road, and they appear and leave out of the truck's view, like the **AI cars**.
+_Avoid_: NPC, walker, passer-by
+
 **Junction**:
 A place where three or more roads meet.
 _Avoid_: intersection
@@ -258,6 +262,10 @@ Which traffic goes first at a **Junction** without lights: the higher **Road cla
 **Edge exit**:
 A street leaving the map, where **AI cars** come and go and the truck meets a barrier.
 
+**Pavement line**:
+The line along the middle of the pavement where **Pedestrians** walk, derived by the map builder on both sides of every **Edge**. At a **Junction** it turns the corner onto the next **Edge**'s pavement, so most lines run round a block; one ends at an **Edge exit** or where the pavement comes too near another road.
+_Avoid_: sidewalk, footpath, walkway
+
 **Spot table**:
 The hand-picked list of **Spots** on **Monti**, each with a made-up business name on a real street; a **Dock**'s
 **Dock bay** is at the end of a dead-end street or lane, which the truck backs down.
@@ -274,3 +282,4 @@ The **Spot** where a new game puts the truck, in its lane.
 - The **Restaurant** is a **Service spot**; it and the **Petrol stations** restore **Energy**.
 - A **Rule fine** needs a **Witness**; a **Fine** for a **Contact** the truck made does not.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.
+- A **Pedestrian** walks one **Pavement line**; each side of an **Edge** belongs to at most one **Pavement line**.

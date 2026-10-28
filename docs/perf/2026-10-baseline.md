@@ -924,6 +924,17 @@ Rain and fog fade in and out over 30 s on a schedule (`tables.weather`). Both sh
 
 Frames held 16.7 ms throughout. The weather costs about 0.3 ms of GPU in every frame, clear weather too: the sky and haze now read uniforms (fog range, haze, grey) where they had constants, and mix in the grey, in every fogged fragment. A build without the grey horizon sample measured the same, so the sample itself is not the cost. In rain the streaks cost no more on top, as the shorter far plane draws less of the city; fog's far plane at 110 m draws fewer still.
 
+## Pedestrians (#78)
+
+60 pedestrians (`tables.pedestrians.count`) walk the pavement lines. Each is one of two detail levels of our own box figures, two instanced meshes each (outfit and skin), with only the ones in view drawn: within 25 m 224 triangles and a shadow, beyond that 36 without one. The map builder derives the pavement lines in about 12 ms on Monti. The step at 300 pedestrians takes about 20 µs on the M2 and allocates only a new pedestrian (`src/sim/pedestrians.bench.test.js`).
+
+**How measured:** production builds of main (`cc094a1`) and this change, Chrome headless on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames after 20 s of driving, cab view, main and this change alternating three times each, load average 2.4–3.9. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (3 runs) | 16.7 / 16.7–16.8 | 2.3–2.5 / 2.57–2.70 | 0.08–0.09 | 2.2–2.4 / 2.46–2.57 | 117–118 / 336k | 145–154 ms |
+| #78, cab (3 runs) | 16.7 / 16.7–16.8 | 2.5 / 2.66–2.70 | 0.10 | 2.4 / 2.52–2.57 | 118 / 336k | 161–162 ms |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

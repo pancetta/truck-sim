@@ -168,7 +168,7 @@ const segments = (e) => Math.max(1, e.points.length - 1);
 const tidy = (points) => points.filter((p, i) => i === 0 || p.x !== points[i - 1].x || p.z !== points[i - 1].z);
 
 // The polyline moved `d` m to the right of travel (right of (dx, dz) is (-dz, dx)), mitred at the bends.
-function offset(points, d) {
+export function offset(points, d) {
   if (points.length < 2) return points.map((p) => ({ ...p }));
   const unit = (a, b) => {
     const l = Math.hypot(b.x - a.x, b.z - a.z);

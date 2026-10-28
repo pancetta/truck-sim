@@ -3,6 +3,7 @@
 
 import { createCells } from './cells.js';
 import { createTraffic } from './traffic.js';
+import { createPedestrians } from './pedestrians.js';
 import { clock as dayClock, fuel } from '../tables.js';
 
 const G = 9.81; // m/s²
@@ -53,6 +54,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber', 'red' or 'redAmber');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
+  // `pedestrians` are the people on the pavements: { id, x, z, heading } and more (see pedestrians.js).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
   // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
@@ -83,6 +85,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
     lightsVersion: 0,
     traffic: [],
+    pedestrians: [],
     policeSees: false,
     junctionRule: null,
     speedLimit: tables.speedLimit,
@@ -129,6 +132,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const traffic = map ? createTraffic(tables, map, random) : null;
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   if (traffic) state.traffic = traffic.cars;
+  const pedestrians = map ? createPedestrians(tables, map, seeded(tables.pedestrians.seed)) : null;
+  if (pedestrians) state.pedestrians = pedestrians.people;
   // The weather's spells (tables.weather): clear and rain or fog by turns, drawn from its own seeded random and timed on
   // profile.timePlayed, so the same seed brings the same weather and it goes on across loads without being saved.
   const w = tables.weather;
@@ -263,6 +268,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     p.distance += moved;
     burn(moved, reversing ? input.brake : input.gas);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
+    pedestrians?.step(dt, truck, tables.pedestrians.count);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
     if (map) checkGiveWay(dt);

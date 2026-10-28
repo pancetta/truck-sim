@@ -338,15 +338,7 @@ export function createTraffic(tables, map, random) {
   // blocks hide the rest. Across open ground cars can still appear or vanish in view; upgrade to a real line-of-sight
   // test if players notice.
   const viewCos = Math.cos(t.spawnView);
-  // `at` is a car or a spawn place: passing its x and z would box them on every call.
-  function hidden(at, truck, distance) {
-    const dx = at.x - truck.x;
-    const dz = at.z - truck.z;
-    const away = dx * dx + dz * dz;
-    const along = dx * Math.sin(truck.heading) + dz * Math.cos(truck.heading);
-    const across = dx * Math.cos(truck.heading) - dz * Math.sin(truck.heading);
-    return away >= distance ** 2 && along * along < away * viewCos * viewCos && across * across < away * viewCos * viewCos;
-  }
+  const hidden = (at, truck, distance) => outOfView(at, truck, distance, viewCos);
 
   // Where a new car may appear: every 10 m along each driven lane run but the ones in a crossing group (between its
   // nodes), clear of its ends by half a car; and at each edge exit, just past its barrier.
@@ -1053,6 +1045,18 @@ export function createTraffic(tables, map, random) {
   }
 
   return { cars, step, touching: touchingCars };
+}
+
+// Whether `at` is out of the truck's view: `distance` m away or more and off the lines along and across the truck by
+// more than the angle whose cosine is `viewCos` (see hidden above). `at` is a car, pedestrian or spawn place: passing
+// its x and z would box them on every call.
+export function outOfView(at, truck, distance, viewCos) {
+  const dx = at.x - truck.x;
+  const dz = at.z - truck.z;
+  const away = dx * dx + dz * dz;
+  const along = dx * Math.sin(truck.heading) + dz * Math.cos(truck.heading);
+  const across = dx * Math.cos(truck.heading) - dz * Math.sin(truck.heading);
+  return away >= distance ** 2 && along * along < away * viewCos * viewCos && across * across < away * viewCos * viewCos;
 }
 
 // Separating-axis test of two boxes, each given by its four corners in order, at any headings; touching
