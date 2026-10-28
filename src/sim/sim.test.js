@@ -280,7 +280,7 @@ describe('Sim: city', () => {
 
   test('resetToRoad() from off the road puts the truck in the right-hand lane of the nearest road, along it, stopped in first gear', () => {
     const sim = laneSim();
-    timeUntil(sim, { steer: -1, gas: 1, brake: 0 }, () => !onRoad(laneMap, sim), 10); // steer left, towards +x
+    Object.assign(sim.state.truck, { x: 4.5, heading: 0.6 }); // askew on the pavement, off the road
     expect(onRoad(laneMap, sim)).toBe(false);
 
     sim.resetToRoad();
@@ -373,7 +373,7 @@ describe('Sim: distance', () => {
 
     drive(sim, 2, GAS);
     expect(sim.state.collision).toBe(true);
-    expect(sim.state.profile.distance - blocked).toBeLessThan(0.1); // only the creep up to the wall
+    expect(sim.state.profile.distance - blocked).toBeLessThan(0.2); // only the creep up to the wall, under one step at 12 m/s
 
     const before = sim.state.profile.distance;
     sim.resetToRoad();

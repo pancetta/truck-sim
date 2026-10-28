@@ -392,7 +392,7 @@ describe('Sim: docking', () => {
   // fragile cargo.
   function backUpToA(sim, gap) {
     timeUntil(sim, BRAKE, () => rearGap(sim) < gap + 4, 30);
-    while (rearGap(sim) > gap) {
+    while (rearGap(sim) > gap && !sim.state.collision) {
       timeUntil(sim, IDLE, () => sim.state.truck.speed === 0, 10); // releasing the pedal in reverse brakes
       timeUntil(sim, BRAKE, () => sim.state.truck.speed < -0.5 || rearGap(sim) <= gap, 10);
     }
@@ -471,7 +471,7 @@ describe('Sim: docking', () => {
   test('reversing in crooked delivers at normal pay, with no dock line', () => {
     const sim = dockSim();
 
-    reverseIntoA(sim, 1);
+    reverseIntoA(sim, -1); // the rear swings towards the lane's middle, clear of its edge wall
 
     expect(Math.abs(sim.state.truck.heading)).toBeGreaterThan(dockHeading);
     expect(lineOf(sim, 'base').amount).toBe(100);
@@ -483,9 +483,9 @@ describe('Sim: docking', () => {
     acceptFrom(sim, 'B');
     parkAt(sim, 'B');
     drive(sim, loadTime + 0.1, IDLE);
-    // An S-bend in reverse shifts the truck sideways and leaves it straight again.
-    timeUntil(sim, { ...BRAKE, steer: 1 }, () => sim.state.truck.heading > 0.6, 10);
-    timeUntil(sim, { ...BRAKE, steer: -1 }, () => sim.state.truck.heading <= 0, 10);
+    // An S-bend in reverse shifts the truck sideways, towards the lane's middle, and leaves it straight again.
+    timeUntil(sim, { ...BRAKE, steer: -1 }, () => sim.state.truck.heading < -0.6, 10);
+    timeUntil(sim, { ...BRAKE, steer: 1 }, () => sim.state.truck.heading >= 0, 10);
     backUpToA(sim, 0.5);
     expect(Math.abs(sim.state.truck.heading)).toBeLessThan(dockHeading);
     expect(Math.abs(sim.state.truck.x + laneOffset)).toBeGreaterThan(tables.orders.dockCentre); // the bay's centre line

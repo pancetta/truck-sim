@@ -7,64 +7,12 @@ import { subtract } from './sim/osm.js';
 import { createCells } from './sim/cells.js';
 import { inside } from './sim/sim.js';
 import { quads } from './streets.js';
+import { pavementPieces, pedestrianPieces } from './sim/paved.js';
 
 const { ShapeUtils } = THREE;
-const CORNERS = 12; // per disc
 const xz = (ring) => ring.map(([x, z]) => ({ x, z }));
 const bounds = (ring) => [Math.min(...ring.map((p) => p[0])), Math.min(...ring.map((p) => p[1])), Math.max(...ring.map((p) => p[0])), Math.max(...ring.map((p) => p[1]))];
 const area2 = (ring) => ring.reduce((s, [x, z], i) => s + x * ring[(i + 1) % ring.length][1] - ring[(i + 1) % ring.length][0] * z, 0);
-
-// A disc of radius r round point c, as a ring of [x, z].
-const disc = (c, r) => Array.from({ length: CORNERS }, (_, k) => [c.x + Math.cos((2 * Math.PI * k) / CORNERS) * r, c.z + Math.sin((2 * Math.PI * k) / CORNERS) * r]);
-
-// The strip beside segment a→b from `from` to `to` m left of it, `past` m beyond each end; null for a point.
-function strip(a, b, from, to, past = 0) {
-  const l = Math.hypot(b.x - a.x, b.z - a.z);
-  if (l < 1e-6) return null;
-  const [ux, uz] = [(b.x - a.x) / l, (b.z - a.z) / l];
-  const at = (p, s, across) => [p.x + ux * s + uz * across, p.z + uz * s - ux * across];
-  return [at(a, -past, from), at(b, past, from), at(b, past, to), at(a, -past, to)];
-}
-
-// At the bend in a→p→b, the sector of radius r round p between the ends of the strips on the outside of the bend, where
-// the strip along a→p ends square and the one along p→b starts square; null without a bend.
-function wedge(a, p, b, r) {
-  const unit = (from, to) => {
-    const l = Math.hypot(to.x - from.x, to.z - from.z);
-    return l < 1e-6 ? null : [(to.x - from.x) / l, (to.z - from.z) / l];
-  };
-  const [u, v] = [unit(a, p), unit(p, b)];
-  if (!u || !v) return null;
-  // Outside, the normal turns forwards from one strip's to the next's.
-  const s = (v[1] - u[1]) * u[0] - (v[0] - u[0]) * u[1] > 0 ? 1 : -1;
-  const [from, to] = [Math.atan2(-u[0] * s, u[1] * s), Math.atan2(-v[0] * s, v[1] * s)];
-  const sweep = Math.atan2(Math.sin(to - from), Math.cos(to - from));
-  if (Math.abs(sweep) < 1e-3) return null;
-  const steps = Math.ceil(Math.abs(sweep) / (Math.PI / 6));
-  return [[p.x, p.z], ...Array.from({ length: steps + 1 }, (_, k) => [p.x + Math.cos(from + (sweep * k) / steps) * r, p.z + Math.sin(from + (sweep * k) / steps) * r])];
-}
-
-// Pieces along each of a polyline's segments and round each of its points, `half` m either side.
-const ribbon = (points, half) => [
-  ...points.slice(1).map((p, k) => strip(points[k], p, -half, half)).filter(Boolean),
-  ...points.map((p) => disc(p, half)),
-];
-
-// The road as convex pieces ({ ring, points, round }, `points` the ring as { x, z }): a box per edge segment, a
-// centimetre past its ends so the pieces of a bend overlap, a disc on each of its points, and a disc on each node as
-// wide as its widest arm, which closes the junction and rounds its corners.
-export function roadPieces(graph) {
-  const pieces = [];
-  for (const e of graph.edges) {
-    e.points.slice(1).forEach((p, k) => {
-      const ring = strip(e.points[k], p, -e.width / 2, e.width / 2, 0.01);
-      if (ring) pieces.push({ ring, round: false });
-    });
-    for (const p of e.points.slice(1, -1)) pieces.push({ ring: disc(p, e.width / 2), round: true });
-  }
-  for (const n of graph.nodes) pieces.push({ ring: disc(n, Math.max(...n.arms.map((id) => graph.edges[id].width / 2))), round: true });
-  return pieces.map((piece) => ({ points: xz(piece.ring), ...piece }));
-}
 
 // The road surface at height y, facing up; no UVs.
 export function roadSurface(pieces, y) {
@@ -90,15 +38,8 @@ export function roadSurface(pieces, y) {
 export function osmPavements(map, pieces, tables) {
   const { pavement: width, pedestrian } = tables.osm;
   const { cell } = tables.city;
-  const sources = [];
-  for (const e of map.graph.edges) {
-    const [half, points] = [e.width / 2, e.points];
-    points.slice(1).forEach((p, k) => sources.push(strip(points[k], p, half, half + width), strip(points[k], p, -half - width, -half)));
-    // A disc round each end, for the junction's corners or a dead end; at a bend, the wedge its strips leave open.
-    sources.push(disc(points[0], half + width), disc(points.at(-1), half + width));
-    for (let k = 1; k < points.length - 1; k++) sources.push(wedge(points[k - 1], points[k], points[k + 1], half + width));
-  }
-  const squares = [...map.pedestrian.lines.flatMap((line) => ribbon(line, pedestrian / 2)), ...map.pedestrian.squares.map((square) => square.map(({ x, z }) => [x, z]))];
+  const sources = pavementPieces(map.graph, width);
+  const squares = pedestrianPieces(map.pedestrian, pedestrian);
 
   const roads = createCells(cell);
   for (const piece of pieces) roads.add(piece, ...bounds(piece.ring));

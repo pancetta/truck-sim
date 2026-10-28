@@ -8,6 +8,7 @@
 //   Pedestrian ways and squares: not drivable, closed by bollards where the road and its pavements meet them; the map
 //     keeps them as `pedestrian` { lines, squares } for the renderer to pave.
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
+//   Edge walls: along the paved area's open edges (paved.js), solid (kind 'wall'), so the truck keeps to the paving.
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
 //   Speed limit signs: where the limit changes along the way, and on the way in from an edge exit. Give-way signs: on
 //     the approaches to a junction without lights where another arm ranks higher; stop signs on those where it ranks
@@ -27,6 +28,7 @@ import { createCells } from './cells.js';
 import { poseAt } from './lanes.js';
 import { pavementLines } from './pavements.js';
 import { inside } from './sim.js';
+import { roadPieces, pavementPieces, pedestrianPieces, openEdges } from './paved.js';
 
 // The furniture's props by OSM tag: [tag, value, collider kind].
 const PROPS = [['natural', 'tree', 'tree'], ['barrier', 'bollard', 'bollard'], ['amenity', 'drinking_water', 'fountain'], ['amenity', 'waste_basket', 'bin']];
@@ -237,6 +239,17 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     }
   }
 
+  // Edge walls on the open edges of the paved area (paved.js), `tables.osm.wall` m thick on the open ground's side, so
+  // the truck keeps to the paving and meets nothing it can't see.
+  const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
+  const pedestrianWays = { lines: lines.map(toXZ), squares };
+  const paved = [...roadPieces(graph).map((p) => p.ring), ...pavementPieces(graph, o.pavement), ...pedestrianPieces(pedestrianWays, o.pedestrian)];
+  const closers = colliders.filter((c) => c.kind === 'building' || c.kind === 'barrier');
+  for (const { a, b, out } of openEdges(paved, closers, bounds, o.closed, cell)) {
+    const [ox, oz] = [out[0] * o.wall, out[1] * o.wall];
+    colliders.push({ kind: 'wall', ...outline([a, b, [b[0] + ox, b[1] + oz], [a[0] + ox, a[1] + oz]]) });
+  }
+
   // The spots (tables.osm.spots), placed before the parked cars, which keep clear of their zones. A spot whose way the
   // data doesn't have is left out (an inline fixture has none of the extract's ways).
   const spots = [];
@@ -286,9 +299,8 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   }
   colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.
-  const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
   const pavements = pavementLines(graph, colliders.filter((c) => ['building', 'barrier', 'dock'].includes(c.kind)), bounds, tables);
-  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: { lines: lines.map(toXZ), squares } };
+  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays };
 }
 
 // The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.

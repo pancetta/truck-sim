@@ -379,6 +379,7 @@ export const city = {
   props: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
   barrierHeight: 1.1, // m, across the map's edge exits
+  wallHeight: 0.8, // m, the edge walls along the paved area's open edges
 };
 
 // The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js. The files are under public/, made by
@@ -403,6 +404,10 @@ export const osm = {
   pedestrian: 6, // m, width of a pedestrian way (not a square), for its bollards
   bollardSpacing: 1.5, // m between the bollards closing a pedestrian way or square, under the truck's width
   barrier: 0.6, // m thick, the truck-only barrier across each edge exit, in from the map's edge by as much
+  // The paved area's open edges (sim/paved.js) get a low edge wall `wall` m thick; none where a building stands within
+  // `closed` m beyond the paving, under the truck's width, or along the map's edge behind an edge exit's barrier.
+  wall: 0.3,
+  closed: 1,
   floors: [3, 5], // storeys of a building with no height or levels in OSM, seeded per building
   minArea: 2, // m²; smaller pieces left of a cut-back building are dropped
   // Parked cars (osm.js parkedCars) along one kerb of these classes where the width leaves room beside the lane: a

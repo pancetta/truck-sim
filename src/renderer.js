@@ -13,7 +13,8 @@ import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets, glowMaterial } from './streets.js';
 import { createPeople } from './people.js';
 import { ringMeshes, paintSkylineWindows } from './skyline.js';
-import { roadPieces, roadSurface, osmPavements, pavementGeometry } from './roads.js';
+import { roadSurface, osmPavements, pavementGeometry } from './roads.js';
+import { roadPieces } from './sim/paved.js';
 import { createCells } from './sim/cells.js';
 import { inside, isNight } from './sim/sim.js';
 import assetInfo from './assetInfo.json';
@@ -320,20 +321,23 @@ export function createRenderer(canvas, tables, map, onProgress) {
       scene.add(mesh);
     }
   }));
-  // The barriers at the edge exits, plain boxes on their colliders (each a box turned any way).
-  const barriers = map.colliders.filter((c) => c.kind === 'barrier');
-  const height = city.barrierHeight;
-  if (barriers.length) { // WebGPU rejects an instanced mesh without instances
-    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: palette.red }), barriers.length);
+  // The barriers at the edge exits and the edge walls along the paved area's open edges, plain boxes on their colliders
+  // (each a box turned any way).
+  const boxesOn = (kind, height, color) => {
+    const list = map.colliders.filter((c) => c.kind === kind);
+    if (!list.length) return; // WebGPU rejects an instanced mesh without instances
+    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), list.length);
     mesh.castShadow = mesh.receiveShadow = true;
     const m = new THREE.Matrix4();
-    barriers.forEach(({ points: [a, b, c] }, i) => {
+    list.forEach(({ points: [a, b, c] }, i) => {
       const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-(b.z - a.z), b.x - a.x)); // local x along a→b
       const size = new THREE.Vector3(Math.hypot(b.x - a.x, b.z - a.z), height, Math.hypot(c.x - b.x, c.z - b.z));
       mesh.setMatrixAt(i, m.compose(new THREE.Vector3((a.x + c.x) / 2, height / 2, (a.z + c.z) / 2), turn, size));
     });
     scene.add(mesh);
-  }
+  };
+  boxesOn('barrier', city.barrierHeight, palette.red);
+  boxesOn('wall', city.wallHeight, tables.streets.pavement.kerbColour);
 
   // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
   // covered car. Drawn with the AI cars (drawCars).

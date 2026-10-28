@@ -47,8 +47,9 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   // Sim's state directly.
   function place(i = 0) {
     const [x, z] = point(i);
-    const a = at(i);
-    const b = at(i + 1);
+    const k = loop ? i : Math.min(index(i), path.length - 2); // at the end, along the last stretch, as point() has it
+    const a = at(k);
+    const b = at(k + 1);
     Object.assign(sim.state.truck, { x, z, heading: Math.atan2(b.x - a.x, b.z - a.z), speed: 0 });
     idx = i;
   }

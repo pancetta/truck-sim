@@ -3,11 +3,20 @@ import { readFileSync } from 'node:fs';
 import * as tables from '../tables.js';
 import { buildOsmMap, parkedCars } from './osm.js';
 import { createSim, freshProfile, inside } from './sim.js';
+import { createCells } from './cells.js';
+import { roadPieces, pavementPieces, pedestrianPieces } from './paved.js';
 import { seeded, way, building, bounds, monti } from './fixtures.js';
 
 const build = (...ways) => buildOsmMap({ bounds, ways }, tables);
 const { classes, pavement } = tables.osm;
 const GAS = { steer: 0, gas: 1, brake: 0 };
+
+// m from (x, z) to the segment from a to b.
+const segment = (x, z, a, b) => {
+  const [dx, dz] = [b.x - a.x, b.z - a.z];
+  const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
+};
 
 // Full gas from (x, z) on `heading` until the truck stops against something (or 20 s pass); returns the truck.
 function driveFrom(map, x, z, heading) {
@@ -306,6 +315,102 @@ describe('OSM map: spots', () => {
   });
 });
 
+describe('OSM map: the paved area (#94)', () => {
+  const kerb = classes.residential.width / 2 + pavement;
+  const walls = (map) => map.colliders.filter((c) => c.kind === 'wall');
+  const length = (list) => list.reduce((s, { points: [a, b] }) => s + Math.hypot(b.x - a.x, b.z - a.z), 0);
+
+  test('walls line the pavements where open ground lies beyond, none before a building, and stop the truck', () => {
+    const map = build(way('residential', [[-50, 0], [50, 0]]), building([[-20, -30], [20, -30], [20, -kerb], [-20, -kerb]]));
+    const south = walls(map).filter((c) => c.minZ > kerb - 1e-6);
+    const north = walls(map).filter((c) => c.maxZ < -kerb + 1e-6);
+    expect(length(south)).toBeCloseTo(100 + 2 * kerb, 1); // the pavement runs on round each dead end
+    expect(length(north)).toBeCloseTo(60 + 2 * kerb, 1); // all but the building's 40 m
+    expect(north.filter((c) => c.maxX > -19.9 && c.minX < 19.9)).toEqual([]);
+    // Heading 0 faces +z: off the road south, stopped at the wall on the pavement's edge; north likewise.
+    for (const [heading, edge] of [[0, kerb], [Math.PI, -kerb]]) {
+      const state = driveFrom(map, -35, 0, heading);
+      expect(state.collision).toBe(true);
+      expect(state.truck.z + Math.cos(heading) * (tables.vehicle.length / 2)).toBeCloseTo(edge, 0);
+    }
+  });
+
+  test('at an edge exit the walls run on to the map edge beside the barrier, so there is no way round it', () => {
+    const map = build(way('residential', [[0, 0], [150, 0]]));
+    const toEdge = walls(map).filter((c) => c.maxX > bounds.maxX - 0.02);
+    expect(toEdge.map((c) => Math.sign(c.minZ + c.maxZ)).sort()).toEqual([-1, 1]); // one each side, none across the road
+    // Full gas south-east from the lane, for the open ground beside the barrier: stopped at the wall.
+    const heading = Math.PI / 4;
+    const state = driveFrom(map, 80, 0, heading);
+    expect(state.collision).toBe(true);
+    const reach = state.truck.z + (Math.cos(heading) * tables.vehicle.length + Math.sin(heading) * tables.vehicle.width) / 2;
+    expect(reach).toBeCloseTo(kerb, 0);
+  });
+
+  test('pedestrian ways and squares are part of it, and where it runs over the map edge a wall stands on the edge', () => {
+    const map = build(
+      way('residential', [[-50, 0], [50, 0]]),
+      way('pedestrian', [[0, 0], [0, 50]]),
+      way('pedestrian', [[60, -20], [120, -20], [120, 20], [60, 20], [60, -20]], { area: 'yes' }),
+    );
+    // No wall across the pedestrian way's mouth (bollards close it), but along its sides.
+    expect(walls(map).filter((c) => c.maxX > -2 && c.minX < 2 && c.minZ > 0 && c.minZ < 20)).toEqual([]);
+    expect(length(walls(map).filter((c) => c.minX > tables.osm.pedestrian / 2 - 1e-6 && c.maxX < 4 && c.minZ > kerb - 0.05))).toBeGreaterThan(40);
+    expect(length(walls(map).filter((c) => c.minX > bounds.maxX - 1e-6))).toBeCloseTo(40, 1);
+  });
+
+  test("on the real extract the truck can't leave the paving, and reaches every spot zone and dock bay", () => {
+    const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
+    const map = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
+    // A flood of probes from the start: grid points every `step` m with nothing solid within `r` m, 8-connected. A gap
+    // the truck fits through leaves a band of such points over 1 m wide, so the probes find every way it could take.
+    // shortcut: it also passes gaps from 2 r wide, which the truck can't, so a find needs a look before a fix.
+    const [step, r] = [0.5, 0.75];
+    const solids = createCells(tables.city.cell);
+    for (const c of map.colliders) solids.add(c, c.minX, c.minZ, c.maxX, c.maxZ);
+    const near = (x, z, { points }) => inside(x, z, points) || points.some((a, i) => segment(x, z, a, points[(i + 1) % points.length]) < r);
+    const { minX, minZ, maxX, maxZ } = map.bounds;
+    const free = (x, z) => x - r > minX && x + r < maxX && z - r > minZ && z + r < maxZ && !solids.some(x - r, z - r, x + r, z + r, (c) => near(x, z, c));
+    const key = (i, j) => `${i},${j}`;
+    const [i0, j0] = [Math.round(map.start.x / step), Math.round(map.start.z / step)];
+    const reached = new Set([key(i0, j0)]);
+    const queue = [[i0, j0]];
+    while (queue.length) {
+      const [i, j] = queue.pop();
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const k = key(i + di, j + dj);
+        if (reached.has(k) || !free((i + di) * step, (j + dj) * step)) continue;
+        reached.add(k);
+        queue.push([i + di, j + dj]);
+      }
+    }
+    expect(reached.size).toBeGreaterThan(100000);
+
+    const rings = [...roadPieces(map.graph).map((p) => p.ring), ...pavementPieces(map.graph, pavement), ...pedestrianPieces(map.pedestrian, tables.osm.pedestrian)];
+    const paving = createCells(tables.city.cell);
+    for (const ring of rings) {
+      const [xs, zs] = [ring.map((p) => p[0]), ring.map((p) => p[1])];
+      paving.add({ points: ring.map(([x, z]) => ({ x, z })) }, Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs));
+    }
+    // A probe may stand a little off the paving before a building no wall needs, closed m beyond it, as far as r allows.
+    const d = tables.osm.closed - r + 0.01;
+    const onPaving = (x, z, { points }) => inside(x, z, points) || points.some((a, i) => segment(x, z, a, points[(i + 1) % points.length]) < d);
+    const offPaving = [];
+    for (const k of reached) {
+      const [x, z] = k.split(',').map((n) => n * step);
+      if (!paving.some(x - d, z - d, x + d, z + d, (ring) => onPaving(x, z, ring))) offPaving.push({ x, z });
+    }
+    expect(offPaving).toEqual([]);
+
+    const at = ({ x, z }) => reached.has(key(Math.round(x / step), Math.round(z / step)));
+    for (const s of map.spots) expect(at(s.lane), s.id).toBe(true);
+    for (const { id, bay } of map.spots.filter((s) => s.bay)) {
+      const docked = { x: bay.x + (Math.sin(bay.heading) * tables.vehicle.length) / 2, z: bay.z + (Math.cos(bay.heading) * tables.vehicle.length) / 2 };
+      expect(at(docked), id).toBe(true);
+    }
+  });
+});
+
 describe('OSM map: reset to road', () => {
   test('puts the truck on the nearest lane, facing along it: on a two-way the right-hand one, on a one-way its own way', () => {
     const map = build(way('residential', [[-50, 0], [50, 0]]), way('residential', [[-50, 40], [50, 40]], { oneway: 'yes' }));
@@ -515,7 +620,7 @@ describe('OSM map: traffic (#63)', () => {
 
     test('are solid: the truck driving along the kerb stops at one', () => {
       const first = parked.map(centre).sort((a, b) => a.x - b.x)[0];
-      const state = driveFrom(map, first.x - 20, first.z, Math.PI / 2);
+      const state = driveFrom(map, first.x - 10, first.z, Math.PI / 2); // on the paving round the street's dead end
       expect(state.collision).toBe(true);
       expect(state.truck.x + tables.vehicle.length / 2).toBeCloseTo(first.x - car.length / 2, 0);
     });
@@ -533,13 +638,6 @@ describe('OSM map: the real Monti extract', () => {
     // Only Via Cavour and Via di Santa Maria Maggiore cross as two main streets in the extract (spec #59's rule).
     expect(new Set(map.lights.map((l) => l.junction)).size).toBe(1);
   });
-
-  // m from (x, z) to the segment from a to b.
-  const segment = (x, z, a, b) => {
-    const [dx, dz] = [b.x - a.x, b.z - a.z];
-    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)));
-    return Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
-  };
 
   test('no building reaches into a road or its pavement, nor stands on a road', () => {
     const into = [];

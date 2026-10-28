@@ -4,7 +4,8 @@ import * as tables from './tables.js';
 import { buildOsmMap } from './sim/osm.js';
 import { inside } from './sim/sim.js';
 import { createCells } from './sim/cells.js';
-import { roadPieces, roadSurface, osmPavements, pavementGeometry } from './roads.js';
+import { roadSurface, osmPavements, pavementGeometry } from './roads.js';
+import { roadPieces } from './sim/paved.js';
 
 // The normal of each triangle of a non-indexed geometry, by its winding (three draws only the front face).
 function normals(geometry) {

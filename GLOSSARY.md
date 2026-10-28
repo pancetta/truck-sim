@@ -266,6 +266,16 @@ A street leaving the map, where **AI cars** come and go and the truck meets a ba
 The line along the middle of the pavement where **Pedestrians** walk, derived by the map builder on both sides of every **Edge**. At a **Junction** it turns the corner onto the next **Edge**'s pavement, so most lines run round a block; one ends at an **Edge exit** or where the pavement comes too near another road.
 _Avoid_: sidewalk, footpath, walkway
 
+**Paved area**:
+The ground the truck may drive on: the roads, their pavements and the pedestrian ways and squares, from the map's own
+data. Everything else is solid.
+_Avoid_: drivable area, bounds (the map's edge is only where the **Paved area** runs off it)
+
+**Edge wall**:
+The low wall along the **Paved area** where it meets open ground that no building closes off, or runs over the map's
+edge away from an **Edge exit**; solid and drawn, so no stop is invisible.
+_Avoid_: fence, hedge, invisible wall
+
 **Spot table**:
 The hand-picked list of **Spots** on **Monti**, each with a made-up business name on a real street; a **Dock**'s
 **Dock bay** is at the end of a dead-end street or lane, which the truck backs down.

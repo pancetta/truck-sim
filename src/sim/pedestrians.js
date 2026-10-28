@@ -31,7 +31,8 @@ export function createPedestrians(tables, map, random) {
   const walkOf = (points) => ({ points, ...measure(points) });
   const walks = map.pavements.flatMap(({ points, closed }) => {
     const [right, left] = [offset(points, k), offset(points, -k).toReversed()];
-    if (closed) return [walkOf(right), walkOf(left)];
+    // A ring's offset ends a rounding error off its start, a jump for whoever walks round it: closed exactly.
+    if (closed) return [walkOf([...right.slice(0, -1), right[0]]), walkOf([...left.slice(0, -1), left[0]])];
     const [first, last] = [unit(points[1], points[0]), unit(points.at(-2), points.at(-1))]; // out of each end
     return [walkOf([...right, ...cap(points.at(-1), last), ...left, ...cap(points[0], first), right[0]])];
   });
