@@ -417,7 +417,7 @@ describe('OSM map: the paved area (#94)', () => {
       const docked = { x: bay.x + (Math.sin(bay.heading) * tables.vehicle.length) / 2, z: bay.z + (Math.cos(bay.heading) * tables.vehicle.length) / 2 };
       expect(at(docked), id).toBe(true);
     }
-  });
+  }, 30_000); // builds Monti and floods it: over 5 s on a loaded CI runner
 });
 
 describe('OSM map: reset to road', () => {
