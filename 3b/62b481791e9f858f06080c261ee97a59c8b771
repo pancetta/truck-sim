@@ -1,0 +1,26 @@
+scripts/economy.js
+  s_7bcbd13030dfc3::t_a0209d247da5fe 7,43,101,123,196-197,211-218
+  s_7bcbd13030dfc3::t_739db744fed67d 210
+docs/economy.md
+  s_7bcbd13030dfc3::t_a0209d247da5fe 15,19
+src/tables.js
+  s_7bcbd13030dfc3::t_a0209d247da5fe 80
+scripts/economy.test.js
+  s_7bcbd13030dfc3::t_a0209d247da5fe 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b62b481791e9f858f06080c261ee97a59c8b771",
+  "prompts": {},
+  "sessions": {
+    "s_7bcbd13030dfc3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9f835dd-e14d-4335-b8fd-9b59d2c2a5b3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
