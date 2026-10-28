@@ -145,7 +145,7 @@ _Avoid_: cop, patrol
 A car standing still at the kerb as an obstacle; it never moves.
 
 **Pedestrian**:
-A person walking a **Pavement line**, driven by the **Sim**. Pedestrians never step onto the road, and they appear and leave out of the truck's view, like the **AI cars**.
+A person walking a **Pavement line**, driven by the **Sim**. Pedestrians step onto the road only to cross at a **Zebra crossing**, and they appear and leave out of the truck's view, like the **AI cars**.
 _Avoid_: NPC, walker, passer-by
 
 **Junction**:
@@ -157,7 +157,14 @@ A **Junction** controlled by traffic lights.
 
 **Crossing**:
 A **Junction** without traffic lights, where **Priority** applies (**Right before left** between equal **Road classes**).
-_Avoid_: using "crossing" for any junction
+_Avoid_: using "crossing" for any junction, or for a **Zebra crossing**
+
+**Zebra crossing** ("Zebrastreifen"):
+A striped strip across one **Edge** a little back from a **Junction**, placed by the map builder's rule: on every arm of
+a **Light junction**, and on the arm of a lower **Road class** where it meets a higher one (never a service lane).
+**Pedestrians** wait at its kerb and cross once no vehicle is on it or can't stop before it; **AI cars** treat it like
+a **Stop line** while one waits or crosses. Not letting them cross is driving onto it while one waits or crosses.
+_Avoid_: crosswalk, pedestrian crossing, "crossing" alone (a **Crossing** is a junction); "zebra" is the code's name
 
 **Approach**:
 One road leading into a **Junction**, with its own light or sign.
@@ -203,12 +210,13 @@ Money taken for breaking a rule or for a **Contact** the truck made.
 _Avoid_: penalty, ticket
 
 **Rule fine**:
-A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are four:
+A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are five:
 the red light (entering a **Light junction** on red, having crossed its **Stop line** on red too, after a short grace
 at the start of red), speeding (over the **Speed limit** by more than a tolerance; at most one
 **Fine** per cooldown) and give way (driving into a **Crossing** from a **Give way** **Approach** so that an **AI car**
 with **Priority** brakes hard; once per **Junction**) and stop (driving into a **Crossing** from a **Stop**
-**Approach** without having stood still just before it; once per pass).
+**Approach** without having stood still just before it; once per pass) and zebra (driving onto a **Zebra crossing**
+while a **Pedestrian** waits at it or crosses; once per pass).
 
 **Witness**:
 A **Police car** within range of the truck with a clear line of sight at the moment of a rule break.
@@ -293,3 +301,4 @@ The **Spot** where a new game puts the truck, in its lane.
 - A **Rule fine** needs a **Witness**; a **Fine** for a **Contact** the truck made does not.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.
 - A **Pedestrian** walks one **Pavement line**; each side of an **Edge** belongs to at most one **Pavement line**.
+- A **Zebra crossing** joins the **Pavement lines** on its two kerbs; a **Pedestrian** on it is solid to the truck, and one the truck comes at steps back to a kerb, so it is never hurt and makes no **Contact**.

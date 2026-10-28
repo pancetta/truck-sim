@@ -167,6 +167,24 @@ export function createTraffic(tables, map, random) {
   // Turns off a stop approach (osm.js): a car comes to a full stop before one, once, before it gives way (see targetSpeed).
   const stopAt = new Uint8Array(paths.length); // path id → 1 for such a turn
   for (const n of nodes) for (const { in: run, stop } of n.slots) if (stop) for (const turn of run?.next ?? []) stopAt[turn.id] = 1;
+  // Zebra crossings (#79) on each run: { k (index in map.zebras), at (m along the run to the strip's near side) }, by
+  // the run's point nearest the strip's middle.
+  const depth = tables.zebras.depth;
+  const zebrasAt = paths.map(() => null); // path id → its zebras, or null
+  const sample = { x: 0, z: 0, heading: 0 };
+  let zebras = []; // the step's crossings
+  map.zebras?.forEach((zebra, k) => {
+    for (const p of paths) {
+      if (p.kind !== 'run' || p.edge.id !== zebra.edge) continue;
+      let best = { d: Infinity, s: 0 };
+      for (let s = 0; s <= p.length; s += 0.25) {
+        poseAt(p, s, sample);
+        const d = Math.hypot(sample.x - zebra.x, sample.z - zebra.z);
+        if (d < best.d) best = { d, s };
+      }
+      (zebrasAt[p.id] ??= []).push({ k, at: best.s - depth / 2 });
+    }
+  });
   // The box a path is in, if any: its crossing's group (touching crossings share one) or its light junction.
   const boxOf = (p) => groupAt[p.id] ?? junctionAt[p.id];
 
@@ -913,6 +931,7 @@ export function createTraffic(tables, map, random) {
       dist += p.length;
     }
     targets[ci] = speed;
+    if (zebras.length) atZebras(ci);
     // Looking ahead along the heading; on a curve also from its end, so a queue just round the corner is seen
     // before the car is half way round.
     behind(ci, car, 0);
@@ -948,6 +967,24 @@ export function createTraffic(tables, map, random) {
       const p = car.route[i];
       targets[ci] = Math.min(targets[ci], limit(dist - size.length / 2, pace * cruise[p.id]));
       dist += p.length;
+    }
+  }
+
+  // A zebra crossing on the car's way with a pedestrian waiting at it or on it (`people`) is a stop line to the car while
+  // it can stop before it. One it is on, or can't stop before any more, it marks `passing`, so no pedestrian sets out.
+  function atZebras(ci) {
+    const car = cars[ci];
+    let dist = -car.s; // centre to the start of route path i
+    for (let i = 0; i < car.route.length && dist < PLAN; i++) {
+      const list = zebrasAt[car.route[i].id];
+      for (let j = 0; list && j < list.length; j++) {
+        const zebra = zebras[list[j].k];
+        const short = dist + list[j].at - size.length / 2; // front bumper to the strip
+        if (short + depth + size.length < 0) continue; // past it
+        if (!stoppable(car, short)) zebra.passing = true;
+        else if (zebra.people) targets[ci] = Math.min(targets[ci], limit(short - t.stopGap));
+      }
+      dist += car.route[i].length;
     }
   }
 
@@ -988,9 +1025,12 @@ export function createTraffic(tables, map, random) {
 
   // Drops cars that left the road or (police aside) the truck's surroundings, spawns one while fewer than `count`
   // and a police car while fewer than tables.police.count, then drives each car at `share` of their cruise and turn
-  // speeds; the ones in `held` (ids, a Set or Map) stand still.
-  function step(dt, truck, lights, count, held = new Set(), share = 1) {
+  // speeds; the ones in `held` (ids, a Set or Map) stand still. `crossings` are the Sim's zebra crossings, map.zebras
+  // with their `people` (see atZebras), whose `passing` it sets.
+  function step(dt, truck, lights, count, held = new Set(), share = 1, crossings = []) {
     pace = share;
+    zebras = crossings;
+    for (let k = 0; k < zebras.length; k++) zebras[k].passing = false;
     let police = 0;
     for (let i = cars.length - 1; i >= 0; i--) {
       if (cars[i].gone || (!cars[i].police && hidden(cars[i], truck, t.despawnDistance))) cars.splice(i, 1);
@@ -1061,7 +1101,7 @@ export function outOfView(at, truck, distance, viewCos) {
 
 // Separating-axis test of two boxes, each given by its four corners in order, at any headings; touching
 // isn't overlapping (within a µm, so vehicles exactly side by side in their lanes don't count).
-function boxesOverlap(a, b) {
+export function boxesOverlap(a, b) {
   return !separates(a, 2, a, b) && !separates(b, 2, a, b);
 }
 

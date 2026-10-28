@@ -10,9 +10,9 @@ import { coloured } from './streets.js';
 
 const TROUSERS = 0x555555; // times the outfit's colour
 
-export function createPeople(scene, tables) {
+export function createPeople(scene, tables, road) {
   const p = tables.pedestrians;
-  const ground = tables.streets.pavement.height;
+  const ground = tables.streets.pavement.height; // on the road (at `road` m) only off the kerb at a zebra
   const k = p.height / 1.75; // the sizes below are for a 1.75 m figure
   // A box `w` wide, `h` tall and `d` deep, its middle `x` m to the side, from `y` m up.
   const box = (w, h, d, x, y) => new THREE.BoxGeometry(w * k, h * k, d * k).translate(x * k, (y + h / 2) * k, 0);
@@ -51,10 +51,11 @@ export function createPeople(scene, tables) {
   function update(pedestrians, truck, inView) {
     for (const mesh of all) mesh.count = 0;
     for (const q of pedestrians) {
-      bounds.center.set(q.x, ground + p.height / 2, q.z);
+      const y = q.onRoad ? road : ground;
+      bounds.center.set(q.x, y + p.height / 2, q.z);
       if (!inView(bounds)) continue;
       const level = meshes[Math.hypot(q.x - truck.x, q.z - truck.z) < p.near ? 0 : 1];
-      matrix.compose(position.set(q.x, ground, q.z), turn.setFromAxisAngle(up, q.heading), one);
+      matrix.compose(position.set(q.x, y, q.z), turn.setFromAxisAngle(up, q.heading), one);
       for (let i = 0; i < level.length; i++) {
         const { mesh, colour } = level[i];
         mesh.setMatrixAt(mesh.count, matrix);

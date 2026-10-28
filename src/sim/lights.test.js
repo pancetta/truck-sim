@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { freshProfile } from './sim.js';
-import * as tables from '../tables.js';
+import * as base from '../tables.js';
 import { poseAt } from './lanes.js';
 import { way, building, build, createSim, mapOf, drive, timeUntil, seeded, GAS, BRAKE, IDLE } from './fixtures.js';
 
+// No pedestrian crosses at the light junctions' zebra crossings, so the light rules play out alone (zebras.test.js).
+const tables = { ...base, zebras: { ...base.zebras, use: 0 } };
 // Tables without AI cars or police cars of their own: a test adds the police cars it needs.
 const quiet = {
   ...tables,

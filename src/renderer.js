@@ -512,12 +512,25 @@ export function createRenderer(canvas, tables, map, onProgress) {
   });
   if (map.lights.length) scene.add(signals, lamps); // a map may have no light junction
   addBoxes(palette.stopLine, stopLines, 0.045);
+
+  // Zebra crossings (#79): white stripes along the road, tables.zebras.stripe wide with as much gap, across the strip
+  // from kerb to kerb.
+  const { stripe, depth } = tables.zebras;
+  const zebraStripes = map.zebras.flatMap(({ x, z, dx, dz, half }) => {
+    const n = Math.floor((2 * half) / (2 * stripe));
+    return Array.from({ length: n }, (_, i) => {
+      const r = (i - (n - 1) / 2) * 2 * stripe; // right of the middle
+      const [cx, cz] = [x - dz * r, z + dx * r];
+      return { minX: cx - stripe / 2, maxX: cx + stripe / 2, minZ: cz - depth / 2, maxZ: cz + depth / 2, angle: Math.atan2(dx, dz) };
+    });
+  });
+  addBoxes(palette.stopLine, zebraStripes, 0.045);
   let shownLights = null;
 
   // Lanterns and plants on the walls, and OSM's street furniture (streets.js).
   const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
   laterLoads.push(streets.load);
-  const people = createPeople(scene, tables);
+  const people = createPeople(scene, tables, roadHeight / 2);
 
   // The road signs as one batched mesh with one shader: three tests each placement against the view, so only what's
   // on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is

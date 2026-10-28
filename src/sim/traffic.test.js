@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import { freshProfile } from './sim.js';
-import * as tables from '../tables.js';
+import * as base from '../tables.js';
 import { poseAt } from './lanes.js';
 import { way, build, withSpots, createSim, mapOf, drive, timeUntil, vehiclesOverlap, offRoad, seeded, DT, GAS, BRAKE, IDLE } from './fixtures.js';
 
+// No pedestrian crosses at the zebra crossings the fixtures' junctions get, so these rules play out alone (zebras.test.js).
+const tables = { ...base, zebras: { ...base.zebras, use: 0 } };
 const { classes } = tables.osm;
 const CAR = tables.city.obstacles.car;
 // Headings of travel: 0 faces +z (south on the map), as in the Sim.

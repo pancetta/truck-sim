@@ -157,6 +157,7 @@ export const fines = {
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
   giveWay: 150, // only while a police car sees the truck (see giveWay)
   stopSign: 150, // only while a police car sees the truck (see stopSign)
+  zebra: 150, // the truck entering a zebra crossing a pedestrian waits at or walks on, only while a police car sees it
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
@@ -355,6 +356,7 @@ export const pedestrians = {
   speed: 1.3,
   keepRight: 0.3,
   clear: 0.2,
+  radius: 0.3, // m round one on a zebra crossing's strip, where they are solid to the truck
   spawnDistance: [30, 120],
   despawnDistance: 140,
   seed: 78,
@@ -362,6 +364,26 @@ export const pedestrians = {
   near: 25,
   outfits: [0x2f4f7f, 0x8a2f2f, 0x3d5a3a, 0xd8cfb8, 0x2b2d31, 0x9a7a4a, 0x6b4f7a, 0xc9ccce, 0xb8602e, 0x406a8a],
   skins: [0xf1c9a5, 0xd9a47e, 0xb07a52, 0x7d5236, 0x4f3324],
+};
+
+// Zebra crossings (#79). The map builder (osm.js) puts one across each arm of a light junction, and across the arm of
+// a lower road class where it meets a higher one, of the `classes` here (none on one-lane service edges): `back` m out
+// from the junction's mouth to the strip's middle, `depth` m deep along the road, where the arm is long enough and a
+// pavement line passes both kerbs. A pedestrian walking past a kerb crosses with chance `use`, waits there until no
+// vehicle is on the strip or can't stop before it, and the truck isn't moving within `look` m; after `patience` s it
+// walks on. One on the strip as the truck comes within `reach` m of it steps back, away from the truck, at
+// `stepBack` m/s; on the strip they are solid to the truck. Its stripes (renderer.js) are `stripe` m wide with as
+// much gap.
+export const zebras = {
+  classes: ['secondary', 'tertiary', 'residential', 'unclassified'],
+  back: 3,
+  depth: 4,
+  use: 0.5,
+  look: 20,
+  patience: 20,
+  reach: 2,
+  stepBack: 3,
+  stripe: 0.5,
 };
 
 export const city = {

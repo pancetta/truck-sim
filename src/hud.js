@@ -1,10 +1,15 @@
 // Dashboard overlay, the truck's own: speed (red above the limit), the speed limit, gear, RPM, the fuel gauge, total
 // distance and the game clock, and above it the name of the street the truck is on, the next junction's rule while one
-// is near, a police sign while a police car sees the truck, the low-fuel warning and the tired or exhausted warning.
+// is near and a zebra crossing sign while one is, a police sign while a police car sees the truck, the low-fuel warning
+// and the tired or exhausted warning.
 // A status strip at the top shows the player's and driver's: rank and its progress, the driver's energy and the time
 // played. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond,
-// the give-way triangle and the stop octagon.
+// the give-way triangle and the stop octagon; and the zebra crossing's, a pedestrian on stripes in a blue square.
+const ZEBRA_ICON =
+  '<rect x="1" y="1" width="22" height="22" rx="2" fill="#1d63c4" stroke="#fff" stroke-width="1"/><path d="M12 3.5 21 19H3z" fill="#fff"/>' +
+  '<path d="M6 17.5h2.4M10.8 17.5h2.4M15.6 17.5h2.4" stroke="#2b2d33" stroke-width="1.2"/><circle cx="12.6" cy="9" r="1.1" fill="#2b2d33"/>' +
+  '<path d="M12.4 10.5 11.6 13.4 10 15.6M11.6 13.4 13.4 15.6M10.6 11.8 13.8 12.2" stroke="#2b2d33" stroke-width="1" fill="none" stroke-linecap="round"/>';
 const RULE_ICONS = {
   priority: '<path d="M12 1 23 12 12 23 1 12z" fill="#fff" stroke="#2b2d33" stroke-width="1"/><path d="M12 5.5 18.5 12 12 18.5 5.5 12z" fill="#e8c547"/>',
   giveWay: '<path d="M1.5 3h21L12 22z" fill="#fff" stroke="#d1495b" stroke-width="2.5" stroke-linejoin="round"/>',
@@ -34,6 +39,7 @@ export function createHud(root, tables, strings) {
     <div class="dash-signs">
       <div class="dash-street" aria-label="${strings.street}" hidden></div>
       <div class="dash-rule" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"></svg><span></span></div>
+      <div class="dash-rule dash-zebra" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true">${ZEBRA_ICON}</svg>${strings.zebraAhead}</div>
       <div class="dash-police" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5"/></svg>${strings.policeSees}</div>
       <div class="dash-fuel-low" role="status" hidden>${strings.fuelLow}</div>
       <div class="dash-tired" role="status" hidden></div>
@@ -57,6 +63,7 @@ export function createHud(root, tables, strings) {
   const police = root.querySelector('.dash-police');
   const limit = root.querySelector('.dash-limit');
   const rule = root.querySelector('.dash-rule');
+  const zebra = root.querySelector('.dash-zebra');
   const street = root.querySelector('.dash-street');
   const fuelBar = root.querySelector('.dash-fuel i');
   const fuelLow = root.querySelector('.dash-fuel-low');
@@ -78,7 +85,7 @@ export function createHud(root, tables, strings) {
 
   // In the cab view the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the overlay hides but for the
   // limit and the signs (style.css).
-  function update({ truck, rank, profile, tank, policeSees, junctionRule, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
+  function update({ truck, rank, profile, tank, policeSees, junctionRule, zebraAhead, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
     root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
@@ -99,6 +106,7 @@ export function createHud(root, tables, strings) {
     if (playedMinute !== shownPlayed) played.textContent = playedText((shownPlayed = playedMinute) * 60, strings);
     if (rank.progress !== shownRank) rankBar.style.transform = `scaleX(${(shownRank = rank.progress)})`;
     if (police.hidden === policeSees) police.hidden = !policeSees;
+    if (zebra.hidden === zebraAhead) zebra.hidden = !zebraAhead;
     const fuel = (profile.fuel / tank).toFixed(2);
     if (fuel !== shownFuel) {
       fuelBar.style.transform = `scaleX(${(shownFuel = fuel)})`;

@@ -2,7 +2,7 @@
 // Heading 0 faces +z; forward is (sin heading, cos heading) in the x/z plane.
 
 import { createCells } from './cells.js';
-import { createTraffic } from './traffic.js';
+import { boxesOverlap, createTraffic } from './traffic.js';
 import { createPedestrians } from './pedestrians.js';
 import { clock as dayClock, fuel } from '../tables.js';
 
@@ -55,6 +55,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `pedestrians` are the people on the pavements: { id, x, z, heading } and more (see pedestrians.js).
+  // `zebras` are map.zebras with `people` (waiting at it or on it) and `passing` (a car on it or committed to it);
+  // `zebraAhead` is whether one lies ahead on the truck's edge within tables.signs.hint (see zebraAhead()).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
   // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
@@ -86,6 +88,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lightsVersion: 0,
     traffic: [],
     pedestrians: [],
+    zebras: (map?.zebras ?? []).map((zebra) => ({ ...zebra, people: 0, passing: false })),
+    zebraAhead: false,
     policeSees: false,
     junctionRule: null,
     speedLimit: tables.speedLimit,
@@ -257,20 +261,22 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const before = met.length ? traffic.touching(corners({ x, z, heading })) : [];
     const closer = (c) => outside(c, truck) < outside(c, { x, z, heading }) - 1e-6;
     const pushed = before.filter((c) => met.includes(c) && closer(c));
-    const blocked = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0;
+    const blocked = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0 || onZebra();
     const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
     checkRedLight(frontBefore, front()); // before touchCars, which may stop the truck
     if (traffic) touchCars(met, before, pushed);
+    checkZebras();
     damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
     const moved = Math.hypot(truck.x - x, truck.z - z);
     p.distance += moved;
     burn(moved, reversing ? input.brake : input.gas);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
-    pedestrians?.step(dt, truck, tables.pedestrians.count);
+    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, corners(truck, tables.zebras.reach));
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
+    if (map) state.zebraAhead = zebraAhead();
     if (map) checkGiveWay(dt);
     if (map) checkStop();
 
@@ -407,7 +413,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // truck's surroundings.
   function updateTraffic(dt, pace) {
     const count = tables.rank.tiers[state.rank.tier].traffic;
-    traffic?.step(dt, truck, state.lights, isNight(state.timeOfDay, tables.clock) ? Math.round(count * tables.traffic.night) : count, contacts, pace);
+    traffic?.step(dt, truck, state.lights, isNight(state.timeOfDay, tables.clock) ? Math.round(count * tables.traffic.night) : count, contacts, pace, state.zebras);
   }
 
   // A new contact with an AI car (`met`: the cars the truck touches after its move) costs a fine when the
@@ -455,6 +461,45 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (redLine === l && l.phase === 'red' && !graced && state.policeSees) fine('redLight');
       redLine = null;
     }
+  }
+
+  // Whether a pedestrian on a zebra crossing's strip stands in the truck's footprint: there they are solid to it.
+  function onZebra() {
+    if (!state.zebras.some((zebra) => zebra.people)) return false;
+    const box = corners(truck, tables.pedestrians.radius);
+    return state.pedestrians.some((q) => q.zebra >= 0 && !q.waiting && inside(q.x, q.z, box));
+  }
+
+  // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs a fine if the
+  // police see it, once per pass: the pass lasts while the truck's footprint is on the strip.
+  let onZebras = new Set(); // the zebras whose strip the truck's footprint is on
+  function checkZebras() {
+    if (!state.zebras.length) return;
+    const box = corners(truck);
+    const reach = v.length + 2 * tables.zebras.depth; // m between centres within which the strip and the truck may meet
+    const next = new Set();
+    for (const zebra of state.zebras) {
+      if ((zebra.x - truck.x) ** 2 + (zebra.z - truck.z) ** 2 > reach ** 2 || !boxesOverlap(box, zebra.strip)) continue;
+      if (!onZebras.has(zebra) && zebra.people && state.policeSees) fine('zebra');
+      next.add(zebra);
+    }
+    onZebras = next;
+  }
+
+  // Whether a zebra crossing lies ahead along the edge the truck's leading bumper is on (backwards when reversing),
+  // its strip within tables.signs.hint m of the bumper or under it.
+  const zebrasOn = new Map(); // edge id → its zebras
+  for (const zebra of state.zebras) zebrasOn.set(zebra.edge, [...(zebrasOn.get(zebra.edge) ?? []), zebra]);
+  function zebraAhead() {
+    const back = truck.speed < -v.stopSpeed ? -1 : 1;
+    const [fx, fz] = [Math.sin(truck.heading) * back, Math.cos(truck.heading) * back];
+    const on = map.graph.along(truck.x + (fx * v.length) / 2, truck.z + (fz * v.length) / 2, fx, fz);
+    if (!on) return false;
+    const at = on.forward ? on.edge.length - on.ahead : on.ahead; // the bumper, m along the edge
+    return (zebrasOn.get(on.edge.id) ?? []).some((zebra) => {
+      const ahead = (on.forward ? zebra.s - at : at - zebra.s) - tables.zebras.depth / 2; // bumper to the strip
+      return ahead > -tables.zebras.depth && ahead <= tables.signs.hint;
+    });
   }
 
   // Whether a police car is within tables.police.radius of the truck with no building on the line from it to the
@@ -947,6 +992,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateTraffic(0);
     state.policeSees = policeSees();
     state.junctionRule = junctionAhead();
+    state.zebraAhead = zebraAhead();
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 

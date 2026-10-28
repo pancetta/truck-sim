@@ -106,7 +106,7 @@ describe('pedestrians', () => {
     return sim;
   }
 
-  test('they walk the pavements at walking pace, never on the road, as many as the tables say', () => {
+  test('they walk the pavements at walking pace, on the road only over zebra crossings, as many as the tables say', () => {
     // Long enough for people to turn back at the ends of open lines (about 50 times), which they walk round too.
     const last = new Map(); // id → its pose the step before
     let [turned, steps, offRoad] = [0, 0, null];
@@ -114,10 +114,12 @@ describe('pedestrians', () => {
       offRoad ??= roadOf(graph);
       const checked = steps++ % 30 === 0; // every half second: the road check is brute force
       for (const q of state.pedestrians) {
-        if (checked) expect(offRoad(q.x, q.z)).toBeGreaterThan(p.clear - 0.01);
+        const crossing = q.zebra >= 0 && !q.waiting; // on the road only on its zebra crossing's strip
+        if (checked && crossing) expect(inside(q.x, q.z, state.zebras[q.zebra].strip) || offRoad(q.x, q.z) >= 0).toBe(true);
+        else if (checked) expect(offRoad(q.x, q.z)).toBeGreaterThan(p.clear - 0.01);
         const before = last.get(q.id);
         if (before) {
-          expect(Math.hypot(q.x - before.x, q.z - before.z)).toBeLessThanOrEqual(p.speed * dt * 1.001); // no jumps, to rounding
+          expect(Math.hypot(q.x - before.x, q.z - before.z)).toBeLessThanOrEqual((q.hurry ? tables.zebras.stepBack : p.speed) * dt * 1.001); // no jumps, to rounding
           if (Math.abs(Math.sin(q.heading - before.heading)) > 0.01) turned++;
         }
         last.set(q.id, { x: q.x, z: q.z, heading: q.heading });

@@ -1,16 +1,21 @@
 // Pedestrians (#78), part of the headless Sim: people walking the map's pavement lines (pavements.js), round the
 // corners with them, and turning back round a small half circle where an open line ends. Each keeps
 // tables.pedestrians.keepRight m right of its line, so people meeting pass, and all walk at one pace, so none walks
-// through another going the same way. They never set foot on the road and nothing collides with them yet. Like the AI
-// cars they appear and leave out of the truck's view, keeping the count the Sim asks for.
-// A pedestrian is { id, x, z, heading, walk, s (m along it) }. Walks are closed polylines { points, at, length } walked
-// forwards: a ring line's two (along it and against it, each keeping right), an open line's one (along its right side,
-// round its end, back along the other side and round its start).
+// through another going the same way. Like the AI cars they appear and leave out of the truck's view, keeping the
+// count the Sim asks for.
+// They set foot on the road only at a zebra crossing (#79, map.zebras, tables.zebras): one walking past a kerb may
+// cross. It waits there until no vehicle is on the strip or can't stop before it any more and the truck isn't moving
+// near, then walks straight over to a walk passing the other kerb. One on the strip as the truck comes near steps
+// back quickly, away from the truck. On the strip they are solid to the truck (sim.js); nothing else collides with them.
+// A pedestrian is { id, x, z, heading, walk, s (m along it), zebra (index, -1 for none), waiting, onRoad (off the
+// kerb, crossing) } and its crossing's state. Walks are closed polylines { points, at, length } walked forwards: a
+// ring line's two (along it and against it, each keeping right), an open line's one (along its right side, round its
+// end, back along the other side and round its start).
 // The step allocates nothing but a new pedestrian.
 
 import { offset } from './graph.js';
 import { measure } from './pavements.js';
-import { outOfView } from './traffic.js';
+import { boxesOverlap, outOfView } from './traffic.js';
 
 const PLACES = 5; // m between the places along the walks where a pedestrian may appear
 const SPAWN_TRIES = 16; // random places tried per step while pedestrians are missing
@@ -52,28 +57,120 @@ export function createPedestrians(tables, map, random) {
     out.heading = Math.atan2(b.x - a.x, b.z - a.z);
   }
 
+  // Each walk's `stops`, where it passes a zebra's kerb ({ s, k (the zebra), side (of its kerbs) }, by s), and each
+  // zebra's `ends` per side, where a pedestrian crossing to that side joins a walk ({ walk, s }). A zebra needs both.
+  const zt = tables.zebras;
+  const zebras = map.zebras ?? [];
+  const ends = zebras.map(({ kerbs }) => kerbs.map((kerb) => walks.flatMap((walk) => {
+    const near = nearest(walk, kerb);
+    return near.d < k + 0.5 ? [{ walk, s: near.s }] : [];
+  })));
+  for (const walk of walks) walk.stops = [];
+  ends.forEach((sides, kz) => {
+    if (sides.some((list) => !list.length)) return;
+    sides.forEach((list, side) => list.forEach(({ walk, s }) => walk.stops.push({ s, k: kz, side })));
+  });
+  for (const walk of walks) walk.stops.sort((a, b) => a.s - b.s);
+
   const places = []; // { walk, s (m along it) }
   for (const walk of walks) for (let s = 0; s < walk.length; s += PLACES) places.push({ walk, s });
 
   // Drops the pedestrians out of view past `despawnDistance`, adds one while fewer than `count`, and walks them.
-  function step(dt, truck, count) {
+  // `crossings` are the Sim's zebras, map.zebras with `passing` (traffic.js) and `people` (waiting at or on it, which
+  // this sets); `near` is the truck's footprint grown by tables.zebras.reach (corners in order).
+  function step(dt, truck, count, crossings = [], near = null) {
     for (let i = people.length - 1; i >= 0; i--) {
       if (!outOfView(people[i], truck, p.despawnDistance, viewCos)) continue;
       people[i] = people[people.length - 1]; // order doesn't matter, and splice would allocate
       people.pop();
     }
     if (people.length < count) spawn(truck);
+    for (let i = 0; i < crossings.length; i++) crossings[i].people = 0;
     const d = p.speed * dt;
     for (let i = 0; i < people.length; i++) {
       const person = people[i];
-      person.s = (person.s + d) % person.walk.length;
-      pose(person.walk, person.s, person);
+      if (person.zebra < 0) walkOn(person, d);
+      else if (person.waiting) wait(person, dt, truck, crossings[person.zebra], near);
+      else cross(person, dt, truck, crossings[person.zebra], near);
+      if (person.zebra >= 0) crossings[person.zebra].people++;
     }
+  }
+
+  // Along its walk; passing a zebra's kerb it stops there to cross, with chance tables.zebras.use.
+  function walkOn(person, d) {
+    const { walk } = person;
+    const from = person.s;
+    person.s += d;
+    for (let j = 0; j < walk.stops.length; j++) {
+      const stop = walk.stops[j];
+      const s = stop.s < from ? stop.s + walk.length : stop.s; // passed round the end of the walk
+      if (s <= from || s > person.s || random() >= zt.use) continue;
+      person.s = stop.s;
+      person.zebra = stop.k;
+      person.side = stop.side;
+      person.waiting = true;
+      person.waited = 0;
+      break;
+    }
+    person.s %= walk.length;
+    pose(walk, person.s, person);
+  }
+
+  // At the kerb until the way is clear, then out over the strip to a walk past the other kerb; after
+  // tables.zebras.patience s, on along its walk.
+  function wait(person, dt, truck, zebra, near) {
+    person.waited += dt;
+    if (person.waited > zt.patience) return void (person.zebra = -1);
+    const moving = Math.abs(truck.speed) > tables.vehicle.stopSpeed && (truck.x - zebra.x) ** 2 + (truck.z - zebra.z) ** 2 < zt.look ** 2;
+    if (zebra.passing || moving || (near && boxesOverlap(near, zebra.strip))) return;
+    const list = ends[person.zebra][1 - person.side];
+    person.end = list[Math.floor(random() * list.length)];
+    pose(person.end.walk, person.end.s, to);
+    person.fromX = person.x;
+    person.fromZ = person.z;
+    person.toX = to.x;
+    person.toZ = to.z;
+    person.span = Math.hypot(to.x - person.x, to.z - person.z);
+    person.heading = Math.atan2(to.x - person.x, to.z - person.z);
+    person.waiting = false;
+    person.t = 0;
+    person.dir = 1;
+    person.hurry = false;
+  }
+  const to = { x: 0, z: 0, heading: 0 }; // where a pedestrian setting out walks to
+
+  // Over the strip. As the truck comes near, quickly back to the kerb it set out from or on to the other, whichever
+  // is away from the truck.
+  function cross(person, dt, truck, zebra, near) {
+    if (!person.hurry && near && boxesOverlap(near, zebra.strip)) {
+      // the truck's centre and the pedestrian along the crossing, both times its span
+      const ahead = (truck.x - person.fromX) * (person.toX - person.fromX) + (truck.z - person.fromZ) * (person.toZ - person.fromZ);
+      person.dir = ahead > person.t * person.span ? -1 : 1;
+      person.hurry = true;
+    }
+    person.t += person.dir * (person.hurry ? zt.stepBack : p.speed) * dt;
+    person.onRoad = false;
+    if (person.t <= 0) {
+      person.waiting = true;
+      person.waited = 0;
+      return pose(person.walk, person.s, person);
+    }
+    if (person.t >= person.span) {
+      person.walk = person.end.walk;
+      person.s = person.end.s;
+      person.zebra = -1;
+      return pose(person.walk, person.s, person);
+    }
+    const f = person.t / person.span;
+    person.x = person.fromX + f * (person.toX - person.fromX);
+    person.z = person.fromZ + f * (person.toZ - person.fromZ);
+    person.onRoad = Math.abs((person.x - zebra.x) * zebra.dz - (person.z - zebra.z) * zebra.dx) < zebra.half;
+    person.heading = Math.atan2(person.dir * (person.toX - person.fromX), person.dir * (person.toZ - person.fromZ));
   }
 
   // One new pedestrian at a random place out of view in the spawn ring with no one else within ROOM m; with none found
   // in SPAWN_TRIES draws, the next step tries again. Each draw is tried on `probe`, so only the one that fits allocates.
-  const probe = { id: 0, x: 0, z: 0, heading: 0, walk: null, s: 0 };
+  const probe = { id: 0, x: 0, z: 0, heading: 0, walk: null, s: 0, zebra: -1, waiting: false, onRoad: false, side: 0, waited: 0, end: null, fromX: 0, fromZ: 0, toX: 0, toZ: 0, span: 0, t: 0, dir: 1, hurry: false };
   const crowded = () => {
     for (let i = 0; i < people.length; i++) if ((people[i].x - probe.x) ** 2 + (people[i].z - probe.z) ** 2 < ROOM ** 2) return true;
     return false;
@@ -92,4 +189,17 @@ export function createPedestrians(tables, map, random) {
   }
 
   return { people, step };
+}
+
+// The point of `walk` nearest `q`: { s (m along the walk), d (m from q) }.
+function nearest({ points, at }, q) {
+  const best = { s: 0, d: Infinity };
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    const l2 = (b.x - a.x) ** 2 + (b.z - a.z) ** 2;
+    const t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.z - a.z) * (b.z - a.z)) / l2)) : 0;
+    const d = Math.hypot(a.x + t * (b.x - a.x) - q.x, a.z + t * (b.z - a.z) - q.z);
+    if (d < best.d) [best.s, best.d] = [at[i - 1] + t * (at[i] - at[i - 1]), d];
+  }
+  return best;
 }

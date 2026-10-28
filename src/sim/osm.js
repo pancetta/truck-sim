@@ -300,7 +300,40 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   colliders.push(...parkedCars(graph, spots, tables));
   // The pedestrian ways and squares, which the renderer paves.
   const pavements = pavementLines(graph, colliders.filter((c) => ['building', 'barrier', 'dock'].includes(c.kind)), bounds, tables);
-  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays };
+
+  // Zebra crossings (tables.zebras) across the arms of light junctions, and across an arm of a lower road class than
+  // another at its junction: the strip's middle `back` m out from the mouth, where the strip ends short of the edge's
+  // other junction box, keeps `depth` m from any other strip and a pavement line passes both its kerbs. Each is
+  // { edge (id), s (m along it), x, z (the middle), dx, dz (along the edge, away from the junction), half (the road's
+  // half width), kerbs: [right of (dx, dz), left] (the middles of the pavements beside the strip), strip (its corners,
+  // in order) }.
+  const zt = tables.zebras;
+  const zebras = [];
+  const nearLines = (p) => pavements.some((l) => l.points.some((q, k) => k > 0 && segmentDistance(p.x, p.z, [l.points[k - 1].x, l.points[k - 1].z], [q.x, q.z]) < 0.5));
+  nodes.forEach((_, n) => {
+    if (arms[n].length < 3) return;
+    const top = Math.max(...arms[n].map(rank));
+    for (const a of arms[n]) {
+      const { e } = a;
+      if (e.from === e.to || !zt.classes.includes(e.class) || !(lit.has(n) || rank(a) < top)) continue;
+      const along = mouth(a, arms[n].filter((b) => b !== a)) + zt.back;
+      const s = e.from === n ? along : e.length - along;
+      const far = graph.nodes[e.from === n ? e.to : e.from];
+      if (along + zt.depth / 2 > e.length - far.radius || zebras.some((q) => q.edge === e.id && Math.abs(q.s - s) < 2 * zt.depth)) continue;
+      const [p, q] = [graph.pointAt(e, Math.max(0, s - 0.5)), graph.pointAt(e, Math.min(e.length, s + 0.5))];
+      const l = Math.hypot(q.x - p.x, q.z - p.z);
+      const sign = e.from === n ? 1 : -1; // away from the junction
+      const [dx, dz] = [(sign * (q.x - p.x)) / l, (sign * (q.z - p.z)) / l];
+      const mid = graph.pointAt(e, s);
+      const out = e.width / 2 + o.pavement / 2;
+      const kerbs = [{ x: mid.x - dz * out, z: mid.z + dx * out }, { x: mid.x + dz * out, z: mid.z - dx * out }];
+      if (!kerbs.every(nearLines)) continue;
+      const [ax, az, rx, rz] = [(dx * zt.depth) / 2, (dz * zt.depth) / 2, -dz * (e.width / 2), dx * (e.width / 2)];
+      const strip = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([f, r]) => ({ x: mid.x + f * ax + r * rx, z: mid.z + f * az + r * rz }));
+      zebras.push({ edge: e.id, s, x: mid.x, z: mid.z, dx, dz, half: e.width / 2, kerbs, strip });
+    }
+  });
+  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras };
 }
 
 // The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.
