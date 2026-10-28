@@ -1,0 +1,70 @@
+scratch_zebras.test.js
+  s_3b623a7c3d2175::t_16abc0c516640b 1-11
+src/people.js
+  s_3b623a7c3d2175::t_ffcbbefdf91712 13,55,58
+  s_3b623a7c3d2175::t_4ac5f077dfac49 15,54
+src/renderer.js
+  s_3b623a7c3d2175::t_ffcbbefdf91712 515-527,533
+GLOSSARY.md
+  s_3b623a7c3d2175::t_7d5fedaaadf03d 148,160-167,218-219,304
+  s_3b623a7c3d2175::t_2490a872769148 213
+src/sim/sim.js
+  s_3b623a7c3d2175::t_e3c142e916d929 5,58-59,91-92,264,270,276,279,416,466-504,995
+src/tables.js
+  s_3b623a7c3d2175::t_e3c142e916d929 359
+  s_3b623a7c3d2175::t_1c1d26eaca3443 160
+  s_3b623a7c3d2175::t_fc9a577a326944 369-388
+src/sim/osm.js
+  s_3b623a7c3d2175::t_a3ee52d05c19ae 310,318-320,322
+  s_3b623a7c3d2175::t_e732406dcd0e20 308-309
+  s_3b623a7c3d2175::t_54c3aeed70f0fb 312
+  s_3b623a7c3d2175::t_0001efabbc2d89 331-333
+  s_3b623a7c3d2175::t_a62d47aec28798 325
+  s_3b623a7c3d2175::t_0a5abb92d52c3d 303-307,311,313-317,321,323-324,326-330,334-336
+src/sim/pedestrians.js
+  s_3b623a7c3d2175::t_8101b7bf752c30 129-132,135-138,146-148,154-155,159-161
+  s_3b623a7c3d2175::t_4ac5f077dfac49 10,152,167,173
+  s_3b623a7c3d2175::t_a11888ee297825 18,60-74,79-81,88,92-113,115-128,133-134,139-145,149-151,153,156-158,162-166,168,193-204
+  s_3b623a7c3d2175::t_6efe48b7c8dc2e 4-9,11-13
+  s_3b623a7c3d2175::t_e91d17fe83c9f7 205
+src/sim/traffic.test.js
+  s_3b623a7c3d2175::t_7ad844228cfb9c 3,7-8
+src/hud.js
+  s_3b623a7c3d2175::t_bfbd2da153e662 3-4,8-12,66,88,109
+  s_3b623a7c3d2175::t_1e90a7c2ba36db 42
+src/sim/traffic.js
+  s_3b623a7c3d2175::t_eb390d6b6a0d06 170-174,176-187
+  s_3b623a7c3d2175::t_9b70ee31224bc5 175,1028-1030,1032-1033,1104
+  s_3b623a7c3d2175::t_49cb3014081faa 934
+  s_3b623a7c3d2175::t_7a7d843ad65ff2 973-990
+src/strings.js
+  s_3b623a7c3d2175::t_1e90a7c2ba36db 93-94
+src/sim/lights.test.js
+  s_3b623a7c3d2175::t_9888acab752144 3,7-8
+src/sim/zebras.test.js
+  s_3b623a7c3d2175::t_d4032a7ac839f9 1-2,4-11,13-102,108-111,114,116-121,123,125-127,129-132,134-136,138-139,141-157
+  s_3b623a7c3d2175::t_4c4623117067ca 133
+  s_3b623a7c3d2175::t_43b9e10fed99c3 104-105,115,122,124,128
+  s_3b623a7c3d2175::t_d1de291c0ac5fe 3,12,103,106-107,112-113,137,140
+src/sim/pedestrians.test.js
+  s_3b623a7c3d2175::t_04b110b5684b65 117-118
+  s_3b623a7c3d2175::t_7ad844228cfb9c 109,119,122
+src/sim/pedestrians.bench.test.js
+  s_3b623a7c3d2175::t_06aca1308728fd 34-35,40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4743d0a29dc9446aa8848bd35380c57438e5a671",
+  "prompts": {},
+  "sessions": {
+    "s_3b623a7c3d2175": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72145cca-60dd-490a-bacb-34ccdc6cda0e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
