@@ -364,7 +364,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 }
 
 /* Small phones: just the rank, the energy bar and the time played; and with no room for a second row at the top, the
-   strip gives the top row to the goal banner and the reversing camera while they show. */
+   strip gives the top row to the goal banner and the reversing camera while they show. The Stars banner shows just the
+   Stars, and none while the goal banner shows. */
 @media (max-width: 700px) {
   :root {
     --status: 0px;
@@ -376,6 +377,11 @@ body:has(.rear-inset:not([hidden])) .goal {
   }
 
   body:has(.goal:not([hidden]), .rear-inset:not([hidden])) .status {
+    display: none;
+  }
+
+  .stars-banner span,
+  body:has(.goal:not([hidden])) .stars-banner {
     display: none;
   }
 }
@@ -826,13 +832,22 @@ body:has(.rear-inset:not([hidden])) .goal {
   color: #ff6b5e;
 }
 
-/* The Stars banner: the delivery's Stars large, then each missed one with why. */
-.stars-banner {
+/* The Stars banner, above the notices so they stay where they were, clear of the dashboard: the delivery's Stars large,
+   then each missed one with why. */
+.notices .stars-banner {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
   color: #fff;
   font-weight: 600;
+  text-align: center;
+  width: max-content;
+  max-width: min(640px, 100vw - 32px); /* the reasons wrap rather than run off the screen */
 }
 
-.stars-banner::first-line {
+.stars-banner b {
+  display: block;
   color: #e8c547;
   font-size: 32px;
   letter-spacing: 4px;

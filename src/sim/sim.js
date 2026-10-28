@@ -69,8 +69,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // 'light', 'giveWay', 'stop', 'priority', 'rightBeforeLeft' or null; `speedLimit` the km/h limit of the edge the truck was last on the road of, and
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, stars (profile.stars), next (the Stars the next tier needs, null at the top), progress 0..1
-  // to it }; `garageAvailable` is whether the Werkstatt may sell: at
-  // home (see atHome()), standing, with no active order.
+  // to it }; `garageAvailable` is whether the Werkstatt may sell: at home (see atHome()), standing, with no active order.
   // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres) and
   // `tank` the litres it holds (tankOf());
   // `energy` profile.energy (0..1), `tired` and `exhausted` whether it is below tables.energy's thresholds.
@@ -484,9 +483,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs the order's clean
-  // Star, and a fine if the police see it, once per pass: the pass lasts while the truck's footprint is on the strip (`truckOn`). Only if the
-  // truck could still have stopped once they were there (`owed`, see truckAtZebras): one who came to the kerb as it
-  // was already too close doesn't count.
+  // Star, and a fine if the police see it, once per pass: the pass lasts while the truck's footprint is on the strip
+  // (`truckOn`). Only if the truck could still have stopped once they were there (`owed`, see truckAtZebras): one who
+  // came to the kerb as it was already too close doesn't count.
   function checkZebras() {
     if (!state.zebras.length) return;
     const box = corners(truck);

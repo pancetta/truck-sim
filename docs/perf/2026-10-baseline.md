@@ -957,6 +957,17 @@ Scooters (15 %) and cyclists (5 %) are AI cars of their own kinds, each with its
 | main, cab (2 runs) | 16.7 / 16.8 | 2.6–2.7 / 2.64–3.08 | 0.12 | 2.4–2.6 / 2.48–2.93 | 114 / 357–358k | 325–336 ms |
 | #77, cab (2 runs) | 16.7 / 16.7 | 2.7 / 3.07–3.11 | 0.13–0.14 | 2.6 / 2.90–2.94 | 112–115 / 344–360k | 327–377 ms |
 
+## Stars (#81)
+
+Stars draw nothing in the 3D view: a Stars banner in the DOM after each delivery, and the status strip's Stars, which the HUD now writes only when the rank changes (on a delivery) instead of every frame. The Sim counts the order's faults on a fine and at a zebra crossing.
+
+**How measured:** production builds of main (`529f83d`) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames after 55 s, cab view, alternating main, this change, main, this change, load average 2.1–4.9. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.7 | 2.5–2.9 / 2.66–3.01 | 0.12 | 2.4–2.8 / 2.50–2.85 | 111 / 387–388k | 318–323 ms |
+| #81, cab (2 runs) | 16.7 / 16.8 | 2.5–2.8 / 2.57–2.77 | 0.11–0.12 | 2.3–2.7 / 2.41–2.62 | 109 / 385k | 300–319 ms |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

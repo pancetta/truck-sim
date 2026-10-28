@@ -1,6 +1,6 @@
 // Money counter, orders button and panel, goal banner, load/unload and service progress bar, a service spot's service
-// buttons, the Stars banner, payment, fine and tow notices. Reads Sim state each frame; changes it only through the Sim's order and
-// service commands.
+// buttons, the Stars banner, payment, fine and tow notices. Reads Sim state each frame; changes it only through the
+// Sim's order and service commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
     <div class="money" aria-label="${strings.money}"></div>
@@ -8,11 +8,12 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div></div>`;
+    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
   const starsBanner = root.querySelector('.stars-banner');
+  const [starsLine, missedLines] = starsBanner.children;
   const paid = root.querySelector('.paid:not(.stars-banner)');
   const fined = root.querySelector('.fined');
   const towed = root.querySelector('.towed');
@@ -51,6 +52,9 @@ export function createOrders(root, sim, map, tables, strings) {
   // Shows a notice for a few seconds; a new one restarts its time.
   function notify(el, text) {
     el.textContent = text;
+    show(el);
+  }
+  function show(el) {
     el.hidden = false;
     clearTimeout(timers.get(el));
     timers.set(el, setTimeout(() => (el.hidden = true), tables.orders.paidNoticeTime * 1000));
@@ -107,7 +111,9 @@ export function createOrders(root, sim, map, tables, strings) {
       // Earned Stars filled, missed ones hollow, then each missed one with why.
       const missed = payment.stars.filter((s) => s.reasons.length);
       const why = (reason) => strings.starReasons[reason] ?? strings[reason];
-      notify(starsBanner, [payment.stars.map((s) => (s.reasons.length ? '☆' : '★')).join(' '), ...missed.map((s) => `☆ ${strings.stars[s.star]}: ${s.reasons.map(why).join(', ')}`)].join('\n'));
+      starsLine.textContent = payment.stars.map((s) => (s.reasons.length ? '☆' : '★')).join(' ');
+      missedLines.textContent = missed.map((s) => `☆ ${strings.stars[s.star]}: ${s.reasons.map(why).join(', ')}`).join('\n');
+      show(starsBanner);
     }
 
     if (fine !== lastFine) {

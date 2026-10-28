@@ -30,7 +30,7 @@ export const strings = {
   rank: 'Rang',
   // The Stars of a delivery (state.lastPayment.stars) and why one was missed: these reasons, else a fine reason's text.
   stars: { delivered: 'Geliefert', onTime: 'Pünktlich', clean: 'Sauber gefahren', dock: 'Rampe' },
-  starReasons: { late: 'zu spät', damage: 'Ladung beschädigt', notDocked: 'nicht an der Rampe' },
+  starReasons: { late: 'Zu spät', damage: 'Ladung beschädigt', notDocked: 'Nicht an der Rampe' },
   km: 'km',
   distance: 'Gesamtstrecke',
   clock: 'Uhrzeit',
