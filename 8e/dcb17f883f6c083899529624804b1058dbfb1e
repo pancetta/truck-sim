@@ -1,0 +1,65 @@
+src/sim/pedestrians.js
+  s_a9bf5e7757c75d::t_46bf54c1a6b141 6,19-26,29,31-33,37-38,58,60-62,64-65,67,71
+  s_a9bf5e7757c75d::t_d014d928831c30 36,44-45
+  s_a9bf5e7757c75d::t_52c02b999206b6 1-5,7-18,27-28,30,34-35,39-43,46-48,54-57,59,63,66,68-70,79-81,89-94
+  s_a9bf5e7757c75d::t_9bb0382559fb49 49-53,72-78,82-88
+src/sim/osm.js
+  s_a9bf5e7757c75d::t_d5721ae54991a4 23,28,290-291
+src/sim/traffic.js
+  s_a9bf5e7757c75d::t_86c4093b90d355 1050-1061
+  s_a9bf5e7757c75d::t_a60cc35c0d1cee 341
+src/sim/graph.js
+  s_a9bf5e7757c75d::t_e93e47ea524460 171
+src/sim/pedestrians.test.js
+  s_a9bf5e7757c75d::t_b718228695fdb8 33
+  s_a9bf5e7757c75d::t_bc17764a6edf87 1-12,29-32,34-38,40-60,62,64-67,69-94,96,99,101-121,123-134
+  s_a9bf5e7757c75d::t_d014d928831c30 122
+  s_a9bf5e7757c75d::t_f78ffe46b5f7e3 13-28,39,61,63,68,95,97-98,100
+src/sim/sim.js
+  s_a9bf5e7757c75d::t_225ff665d0ba86 6,57,88,135-136,271
+src/tables.js
+  s_a9bf5e7757c75d::t_6050949c936f57 347-366
+GLOSSARY.md
+  s_a9bf5e7757c75d::t_e962b70feaf8c5 147-150,265-268,285
+src/sim/pedestrians.bench.test.js
+  s_a9bf5e7757c75d::t_86c82984d5d32e 11,36,38,40,42
+  s_a9bf5e7757c75d::t_3d9c71373c3e67 44
+  s_a9bf5e7757c75d::t_95e36ff744594e 1-10,15-35,37,39,41,43,45
+  s_a9bf5e7757c75d::t_5692945b23739c 12-14
+src/streets.js
+  s_a9bf5e7757c75d::t_b0d0d435252f0c 319
+src/people.js
+  s_a9bf5e7757c75d::t_7e25713f9bbe30 1-28,30-36,38,40-57,60-79
+  s_a9bf5e7757c75d::t_8ff47745b542a5 29,37,39,58-59
+src/sim/pavements.js
+  s_a9bf5e7757c75d::t_cf457b5915d8ab 144-156
+  s_a9bf5e7757c75d::t_59bee671a5083f 68
+  s_a9bf5e7757c75d::t_9782af4a1a6705 78,80-84
+  s_a9bf5e7757c75d::t_3d8bb89a14777a 172
+  s_a9bf5e7757c75d::t_f64602c5faf52d 85-86,89-101,103-108
+  s_a9bf5e7757c75d::t_9498ced1eee334 176
+  s_a9bf5e7757c75d::t_bb6d6398b942f0 123-125
+  s_a9bf5e7757c75d::t_b03c37acdea667 157-164
+  s_a9bf5e7757c75d::t_92dd3a1fbd9ffe 1-39,46-67,69-77,79,87-88,102,109-122,126-143,165-171,173-175,177-196
+  s_a9bf5e7757c75d::t_406a0a28de1000 40-45
+src/renderer.js
+  s_a9bf5e7757c75d::t_8ff47745b542a5 14,516,1005
+docs/perf/2026-10-baseline.md
+  s_a9bf5e7757c75d::t_e962b70feaf8c5 927-937
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8edcb17f883f6c083899529624804b1058dbfb1e",
+  "prompts": {},
+  "sessions": {
+    "s_a9bf5e7757c75d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ca891f7-d2ff-465d-b326-40c8dcf5efa9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
