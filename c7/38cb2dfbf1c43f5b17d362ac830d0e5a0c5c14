@@ -1,0 +1,29 @@
+src/sim/pedestrians.js
+  s_a9bf5e7757c75d::t_5a416e66cd8878 2-8,12,15,18,22,24-37,41-42,44-48,51,54-55,68-69,73-75,84-86
+src/people.js
+  s_a9bf5e7757c75d::t_678f1b06d78320 37
+src/sim/osm.js
+  s_a9bf5e7757c75d::t_678f1b06d78320 290
+src/sim/pavements.js
+  s_a9bf5e7757c75d::t_678f1b06d78320 2-6,10,17,56-60,76,81-84,144-146,151-152,168
+src/sim/pedestrians.test.js
+  s_a9bf5e7757c75d::t_8f65e39141a7ed 7,31-41,67-73,77,79,82,84-85,110,113
+  s_a9bf5e7757c75d::t_118eefafdfdb80 120
+  s_a9bf5e7757c75d::t_e6c80cdd32f58f 128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c738cb2dfbf1c43f5b17d362ac830d0e5a0c5c14",
+  "prompts": {},
+  "sessions": {
+    "s_a9bf5e7757c75d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ca891f7-d2ff-465d-b326-40c8dcf5efa9",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
