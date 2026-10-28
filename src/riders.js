@@ -1,7 +1,8 @@
 // The two-wheelers' look (#77, tables.traffic.twoWheelers), our own: a scooter with its rider seated upright, and a
 // bicycle with its rider leaning over the bars, built from boxes, cylinders and rings with the front towards +z, standing
 // on y = 0. A scooter is drawn in one of the cars' paints (its rider's helmet too), a bicycle and its rider's shirt in one
-// of the pedestrians' outfits; an AI car's id picks it, as for the cars. Per kind, a near level within vehicles.near of
+// of the pedestrians' outfits; an AI car's id picks it, as for the cars. That instance colour tints the whole model, so
+// the parts that should keep their own colour are dark (tyres, seat, jacket, trousers), where it hardly shows. Per kind, a near level within vehicles.near of
 // the truck (casting shadows) and a far one of a few boxes; each one instanced mesh coloured per instance. Only the
 // ones in view are drawn.
 // shortcut: the wheels and the riders' legs don't turn; animate them if players notice up close.
@@ -13,9 +14,8 @@ const PAINTED = 0xffffff; // times the instance's colour
 const TYRE = 0x1c1c1c;
 const METAL = 0x6a6d72;
 const SEAT = 0x2b2522;
-const JACKET = 0x3a3d45; // the scooter rider's, under the painted helmet
+const JACKET = 0x3a3d45; // the scooter rider's
 const TROUSERS = 0x555555; // times the cyclist's shirt colour
-const SKIN = 0xd9a47e;
 
 // A box `w` wide, `h` tall and `d` deep, its bottom middle at (x, y, z), tilted forward by `tilt` rad about its bottom.
 const box = (w, h, d, x, y, z, tilt = 0) => new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0).rotateX(tilt).translate(x, y, z);
@@ -62,7 +62,7 @@ const MODELS = {
       // The rider: legs down to the pedals, torso leaning forward, arms to the bars, a helmet over the face.
       [box(0.13, 0.62, 0.13, -0.1, 0.3, -0.05, -0.35), TROUSERS], [box(0.13, 0.62, 0.13, 0.1, 0.3, -0.05, -0.1), TROUSERS],
       [box(0.38, 0.6, 0.22, 0, 0.9, -0.3, 0.75), PAINTED],
-      [box(0.08, 0.55, 0.08, -0.22, 0.95, 0.4, -0.55), SKIN], [box(0.08, 0.55, 0.08, 0.22, 0.95, 0.4, -0.55), SKIN],
+      [box(0.08, 0.55, 0.08, -0.22, 0.95, 0.4, -0.55), PAINTED], [box(0.08, 0.55, 0.08, 0.22, 0.95, 0.4, -0.55), PAINTED], // sleeves
       [ball(0.12, 1.38, 0.18), PAINTED],
     ]),
     merged([
@@ -101,7 +101,7 @@ export function createRiders(scene, tables) {
   const turn = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const one = new THREE.Vector3(1, 1, 1);
-  const bounds = new THREE.Sphere(new THREE.Vector3(), 1.1);
+  const bounds = new THREE.Sphere(new THREE.Vector3(), 1.2);
 
   // Draws the two-wheelers among the Sim's AI `cars` that pass `inView` (a test on a bounding sphere), in detail within
   // vehicles.near of `truck`.
@@ -113,6 +113,7 @@ export function createRiders(scene, tables) {
       bounds.center.set(car.x, 0.8, car.z);
       if (!inView(bounds)) continue;
       const mesh = pair[Math.hypot(car.x - truck.x, car.z - truck.z) < tables.vehicles.near ? 0 : 1];
+      if (mesh.count === room) continue; // cars leaving through a gate don't count against the tier
       const list = colours[car.kind];
       mesh.setMatrixAt(mesh.count, matrix.compose(position.set(car.x, 0, car.z), turn.setFromAxisAngle(up, car.heading), one));
       mesh.setColorAt(mesh.count, list[(car.id * 7) % list.length]);

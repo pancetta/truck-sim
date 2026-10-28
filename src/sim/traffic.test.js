@@ -1009,7 +1009,7 @@ describe('Sim: two-wheelers (#77)', () => {
     }
     const all = [...kinds.values()];
     expect(all.length).toBeGreaterThan(60);
-    for (const kind of ['scooter', 'bicycle']) expect(all.filter((k) => k === kind).length / all.length).toBeCloseTo(twoWheelers[kind].share, 1);
+    for (const kind of ['scooter', 'bicycle']) expect(Math.abs(all.filter((k) => k === kind).length / all.length - twoWheelers[kind].share)).toBeLessThan(0.02);
     expect(fastest.car).toBeCloseTo(classes.residential.limit / 3.6, 5);
     expect(fastest.scooter).toBeCloseTo(classes.residential.limit / 3.6, 5);
     expect(fastest.bicycle).toBeCloseTo(twoWheelers.bicycle.top / 3.6, 5);

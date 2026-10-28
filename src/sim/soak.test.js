@@ -214,10 +214,11 @@ describe('Sim: traffic gridlock soak', () => {
     if (!ok) {
       let ahead = null;
       const pose = { x: 0, z: 0, heading: 0 };
-      for (let i = 0, s = car.s + 0.5, d = 0.5; d <= 12 && !ahead && i < car.route.length; s += 0.5, d += 0.5) {
+      for (let i = 0, s = car.s + 0.5, d = 0.5; d <= 12 && !ahead; s += 0.5, d += 0.5) {
         while (i < car.route.length && s > car.route[i].length) s -= car.route[i++].length;
-        if (i < car.route.length) poseAt(car.route[i], s, pose);
-        if (i < car.route.length) ahead = [...traffic, truck].find((o) => o !== car && Math.hypot(o.x - pose.x, o.z - pose.z) < 1.5) ?? null;
+        if (i === car.route.length) break;
+        poseAt(car.route[i], s, pose);
+        ahead = [...traffic, truck].find((o) => o !== car && Math.hypot(o.x - pose.x, o.z - pose.z) < 1.5) ?? null;
       }
       ok = ahead === truck || (ahead !== null && waiting(ahead, sim, excused));
     }
