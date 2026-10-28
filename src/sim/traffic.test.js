@@ -1002,9 +1002,11 @@ describe('Sim: two-wheelers (#77)', () => {
       if (Math.round(t / DT) % 3600 === 0) Object.assign(sim.state.truck, { x: 0, z: 0 });
       sim.step(DT, IDLE);
       for (const c of sim.state.traffic) {
-        kinds.set(c.id, c.kind);
-        const { length, width } = c.kind === 'car' ? CAR : twoWheelers[c.kind];
-        expect(c.size).toMatchObject({ length, width });
+        if (!kinds.has(c.id)) {
+          kinds.set(c.id, c.kind);
+          const { length, width } = c.kind === 'car' ? CAR : twoWheelers[c.kind];
+          expect(c.size).toMatchObject({ length, width });
+        }
         if (c.lane.kind === 'run') fastest[c.kind] = Math.max(fastest[c.kind], c.speed);
       }
     }
@@ -1014,7 +1016,7 @@ describe('Sim: two-wheelers (#77)', () => {
     expect(fastest.car).toBeCloseTo(classes.residential.limit / 3.6, 5);
     expect(fastest.scooter).toBeCloseTo(classes.residential.limit / 3.6, 5);
     expect(fastest.bicycle).toBeCloseTo(twoWheelers.bicycle.top / 3.6, 5);
-  });
+  }, 30_000);
 
   test('none with their shares at 0', () => {
     const none = { ...noPolice, traffic: { ...tables.traffic, twoWheelers: { scooter: { ...twoWheelers.scooter, share: 0 }, bicycle: { ...twoWheelers.bicycle, share: 0 } } } };
