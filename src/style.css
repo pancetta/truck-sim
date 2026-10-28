@@ -24,7 +24,7 @@ body {
    windscreen, clear of the wheel, pedals and dashboard. The goal banner, there too, hides while it shows. */
 .rear-inset {
   position: fixed;
-  top: max(24px, env(safe-area-inset-top));
+  top: calc(max(24px, env(safe-area-inset-top)) + var(--status));
   left: 50%;
   transform: translateX(-50%);
   width: max(200px, 30vw);
@@ -285,9 +285,95 @@ body:has(.rear-inset:not([hidden])) .goal {
   background: #d1495b;
 }
 
-/* Energy gauge (profile.energy), the same bar in blue, red below tables.energy.tired. */
-.dash-energy i {
+/* Total distance and the game clock, as on the cab's cluster, under the fuel gauge. */
+.dash-trip {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Status strip, top centre: rank and progress to the next tier, the driver's energy (blue, amber when tired, red when
+   exhausted) and the time played. The goal banner, orders panel and reversing camera sit below it (--status). */
+:root {
+  --status: 48px;
+}
+
+.status {
+  position: fixed;
+  top: max(24px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+  height: 36px;
+  max-width: calc(100% - 2 * 150px); /* clear of the money and the camera button */
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.85);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-rank,
+.status-energy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status small {
+  opacity: 0.7;
+}
+
+.status > div > div {
+  width: 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.15);
+}
+
+.status i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #6cc551;
+  transform-origin: left;
+}
+
+.status-energy i {
   background: #6fa8dc;
+}
+
+.status-energy i.tired {
+  background: #e8c547;
+}
+
+.status-energy i.low {
+  background: #d1495b;
+}
+
+/* Small phones: just the rank, the energy bar and the time played; and with no room for a second row at the top, the
+   strip gives the top row to the goal banner and the reversing camera while they show. */
+@media (max-width: 700px) {
+  :root {
+    --status: 0px;
+  }
+
+  .status-rank > div,
+  .status-energy small {
+    display: none;
+  }
+
+  body:has(.goal:not([hidden]), .rear-inset:not([hidden])) .status {
+    display: none;
+  }
 }
 
 /* Orders: money and the orders button top left, panel top centre, notices centred below it. */
@@ -334,7 +420,7 @@ body:has(.rear-inset:not([hidden])) .goal {
 /* Centred between the orders button (about 160 px from the left edge) and the reset button (about 240 px
    from the right), so it covers neither. */
 .orders-panel {
-  top: max(24px, env(safe-area-inset-top));
+  top: calc(max(24px, env(safe-area-inset-top)) + var(--status));
   left: calc(50% - 40px);
   transform: translateX(-50%);
   z-index: 1;
@@ -403,7 +489,7 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 /* Goal banner: where the active order goes next. The open orders panel covers it. */
 .goal {
-  top: max(24px, env(safe-area-inset-top));
+  top: calc(max(24px, env(safe-area-inset-top)) + var(--status));
   left: 50%;
   transform: translateX(-50%);
   display: grid;
@@ -493,36 +579,6 @@ body:has(.rear-inset:not([hidden])) .goal {
   color: #e8c547;
   font-weight: 700;
   white-space: pre-line; /* one payment line per line */
-}
-
-/* Rank title and total distance, with progress to the next tier, and the clock and time played under it, under the
-   RPM bar. */
-.dash-rank {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 4px 8px;
-  font-size: 12px;
-}
-
-.dash-rank small {
-  opacity: 0.7;
-  font-variant-numeric: tabular-nums;
-}
-
-.dash-rank div {
-  grid-column: 1 / -1;
-  height: 4px;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 0.15);
-}
-
-.dash-rank i {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: #6cc551;
-  transform-origin: left;
 }
 
 /* Above the dashboard: the next junction's rule while one is near, and the police sign while a police car sees the
@@ -807,10 +863,9 @@ body:has(.rear-inset:not([hidden])) .goal {
   }
 }
 
-/* Cab view: the 3D instruments show speed, gear and RPM, so the overlay keeps only the speed limit and the signs, on
-   the windscreen just above the dashboard (the cab camera's field of view is vertical, so vh holds at any width), and
-   the rank panel. Untransformed and full width (centred 13 px left, as above), so the rank panel can be fixed to
-   the screen. */
+/* Cab view: the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the overlay keeps only the speed
+   limit and the signs, on the windscreen just above the dashboard (the cab camera's field of view is vertical, so vh
+   holds at any width); full width, centred 13 px left as above. */
 .dash.cab {
   left: 0;
   right: 26px;
@@ -823,28 +878,6 @@ body:has(.rear-inset:not([hidden])) .goal {
   background: none;
 }
 
-.dash.cab > :not(.dash-limit, .dash-signs, .dash-rank) {
+.dash.cab > :not(.dash-limit, .dash-signs) {
   display: none;
-}
-
-/* On the left under the buttons, over the pillar and the pavement rather than the road ahead. */
-.dash.cab .dash-rank {
-  position: fixed;
-  top: calc(max(24px, env(safe-area-inset-top)) + 180px);
-  left: max(24px, env(safe-area-inset-left));
-  width: 200px;
-  box-sizing: border-box;
-  padding: 10px 14px 12px;
-  border-radius: 14px;
-  background: rgb(40 40 48 / 0.85);
-}
-
-/* Too short for it there (it would cover the wheel): on the right under the buttons, where the minimap was, clear of
-   the pedals. */
-@media (max-height: 480px) {
-  .dash.cab .dash-rank {
-    top: calc(max(24px, env(safe-area-inset-top)) + 120px);
-    right: max(24px, env(safe-area-inset-right));
-    left: auto;
-  }
 }

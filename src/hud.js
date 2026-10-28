@@ -1,7 +1,8 @@
-// Dashboard overlay: speed (red above the limit), the speed limit, gear, RPM, the fuel and energy gauges, rank, total
-// distance, the game clock and the time played, and above it
-// the name of the street the truck is on, the next junction's rule while one is near, a police sign while a police
-// car sees the truck, the low-fuel warning and the tired or exhausted warning. Reads Sim state; never writes to it.
+// Dashboard overlay, the truck's own: speed (red above the limit), the speed limit, gear, RPM, the fuel gauge, total
+// distance and the game clock, and above it the name of the street the truck is on, the next junction's rule while one
+// is near, a police sign while a police car sees the truck, the low-fuel warning and the tired or exhausted warning.
+// A status strip at the top shows the player's and driver's: rank and its progress, the driver's energy and the time
+// played. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond,
 // the give-way triangle and the stop octagon.
 const RULE_ICONS = {
@@ -29,8 +30,7 @@ export function createHud(root, tables, strings) {
     <div class="dash-gear" aria-label="${strings.gear}"></div>
     <div class="dash-rpm" aria-label="${strings.rpm}"><i></i><small></small></div>
     <div class="dash-fuel" aria-label="${strings.fuel}"><small>${strings.fuel}</small><div><i></i></div></div>
-    <div class="dash-fuel dash-energy" aria-label="${strings.energy}"><small>${strings.energy}</small><div><i></i></div></div>
-    <div class="dash-rank" aria-label="${strings.rank}"><span></span><small aria-label="${strings.distance}"></small><div><i></i></div><span aria-label="${strings.clock}"></span><small></small></div>
+    <div class="dash-trip"><small aria-label="${strings.distance}"></small><small aria-label="${strings.clock}"></small></div>
     <div class="dash-signs">
       <div class="dash-street" aria-label="${strings.street}" hidden></div>
       <div class="dash-rule" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"></svg><span></span></div>
@@ -42,17 +42,24 @@ export function createHud(root, tables, strings) {
   const gear = root.querySelector('.dash-gear');
   const bar = root.querySelector('.dash-rpm i');
   const rpm = root.querySelector('.dash-rpm small');
-  const rankTitle = root.querySelector('.dash-rank span');
-  const rankBar = root.querySelector('.dash-rank i');
-  const [distance, played] = root.querySelectorAll('.dash-rank small');
-  const clock = root.querySelectorAll('.dash-rank span')[1];
+  const [distance, clock] = root.querySelectorAll('.dash-trip small');
+  const status = document.createElement('div');
+  status.className = 'status';
+  status.innerHTML = `
+    <div class="status-rank" aria-label="${strings.rank}"><span></span><div><i></i></div></div>
+    <div class="status-energy" aria-label="${strings.energy}"><small>${strings.energy}</small><div><i></i></div></div>
+    <small></small>`;
+  root.after(status);
+  const rankTitle = status.querySelector('.status-rank span');
+  const rankBar = status.querySelector('.status-rank i');
+  const energyBar = status.querySelector('.status-energy i');
+  const played = status.querySelector(':scope > small');
   const police = root.querySelector('.dash-police');
   const limit = root.querySelector('.dash-limit');
   const rule = root.querySelector('.dash-rule');
   const street = root.querySelector('.dash-street');
   const fuelBar = root.querySelector('.dash-fuel i');
   const fuelLow = root.querySelector('.dash-fuel-low');
-  const energyBar = root.querySelector('.dash-energy i');
   const tired = root.querySelector('.dash-tired');
 
   // Writes to the DOM only when a shown value changes, not every frame.
@@ -69,8 +76,8 @@ export function createHud(root, tables, strings) {
   let shownEnergy;
   let shownTired = 0; // 0 rested, 1 tired, 2 exhausted
 
-  // In the cab view the 3D instruments show speed, gear and RPM, so the overlay hides but for the limit, the signs and
-  // the rank panel (style.css).
+  // In the cab view the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the overlay hides but for the
+  // limit and the signs (style.css).
   function update({ truck, rank, profile, tank, policeSees, junctionRule, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
     root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
@@ -104,7 +111,8 @@ export function createHud(root, tables, strings) {
     const level = exhausted ? 2 : isTired ? 1 : 0;
     if (level !== shownTired) {
       shownTired = level;
-      energyBar.classList.toggle('low', level > 0);
+      energyBar.classList.toggle('tired', level === 1);
+      energyBar.classList.toggle('low', level === 2);
       tired.hidden = level === 0;
       tired.classList.toggle('exhausted', level === 2);
       tired.textContent = level === 2 ? strings.exhausted : strings.tired;

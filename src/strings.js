@@ -96,7 +96,7 @@ export const strings = {
   street: 'Straße', // HUD, the name of the street the truck is on (state.street)
   fuel: 'Tank', // the fuel gauge, in the HUD and the cab
   fuelLow: 'Tank fast leer', // HUD, below tables.fuel.low
-  energy: 'Energie', // the driver's energy gauge, in the HUD and the cab
+  energy: 'Energie', // the driver's energy gauge, in the HUD's status strip
   tired: 'Müde: Zeit für eine Pause', // HUD, below tables.energy.tired
   exhausted: 'Erschöpft: Lenken und Bremsen träge', // HUD, below tables.energy.exhausted
   services: { fuel: 'Tanken', snack: 'Snack', meal: 'Essen', sleep: 'Schlafen' }, // what a service spot sells (state.serviceOffer), on its buttons
