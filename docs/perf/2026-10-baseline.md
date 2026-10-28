@@ -906,6 +906,24 @@ Frames held 16.7 ms throughout. At night the city has 5 AI cars rather than 8 (`
 
 After these numbers, QA made the night lighter (moon 0.6, sky key `0x2a3450`), added a reversing-light glow in gear R, and lit the Werkstatt showroom as at noon. These change uniform values and add one glow mesh that is drawn only in reverse, so the table still holds.
 
+## Weather (#53)
+
+Rain and fog fade in and out over 30 s on a schedule (`tables.weather`). Both shorten the fog range and with it the camera's far plane, thicken the haze, dim the sun and turn the sky an even grey. Rain also darkens the roads and pavements and makes them glossier (their materials' own colour and roughness, so no new shaders), and draws 1,500 streaks as one mesh whose vertex shader wraps them round the camera (12k triangles, one draw call, drawn only in rain and in the first frame so its shader is ready). `?perf&weather=rain` (or `fog`) brings only that weather, ramping in from clear over the first 30 s.
+
+**How measured:** as for #52: production builds of main (`4cad4b5`) and this change with WebGPU timestamp queries, Chrome headless on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), 900 frames after 35 s of driving (the rain at full strength). Main and this change were run back to back, twice each, as the machine drifted by up to 0.3 ms between batches. Relative numbers; the iPad numbers are the owner's `?perf&auto&weather=rain` run (`&hour=22` for night).
+
+| | GPU ms median / p95 | render ms median / p95 | draw calls / triangles |
+|---|---|---|---|
+| main at night (22:00), cab | 7.8 / 8.4 | 2.6 / 3.2 | 96 / 258k |
+| #53 clear at night, cab | 8.1 / 8.6 | 2.7 / 3.3 | 96 / 258k |
+| #53 rain at night, cab | 8.1 / 8.7 | 2.7 / 3.3 | 97 / 270k |
+| #53 rain by day (12:00), cab | 7.7 / 8.1 | 2.8 / 4.4 | 89 / 253k |
+| #53 fog by day, cab | 7.5 / 8.0 | 2.7 / 3.2 | 83 / 241k |
+| main at night, chase | 9.1 / 9.6 | 3.1 / 4.4 | 85 / 266k |
+| #53 rain at night, chase | 9.5 / 10.1 | 2.7 / 3.2 | 87 / 279k |
+
+Frames held 16.7 ms throughout. The weather costs about 0.3 ms of GPU in every frame, clear weather too: the sky and haze now read uniforms (fog range, haze, grey) where they had constants, and mix in the grey, in every fogged fragment. A build without the grey horizon sample measured the same, so the sample itself is not the cost. In rain the streaks cost no more on top, as the shorter far plane draws less of the city; fog's far plane at 110 m draws fewer still.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

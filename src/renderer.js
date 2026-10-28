@@ -783,7 +783,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   rainMaterial.positionNode = offset.add(cameraPosition).add(positionLocal);
   rainMaterial.colorNode = vec3(...new THREE.Color(streaks.colour)).mul(skyTint).add(streaks.floor);
   const across = offset.xz.length();
-  rainMaterial.opacityNode = rainShare.mul(streaks.opacity).mul(smoothstep(...streaks.near, offset.length())).mul(smoothstep(streaks.box[0] / 2, streaks.box[0] / 3, across));
+  rainMaterial.opacityNode = rainShare.mul(streaks.opacity).mul(smoothstep(...streaks.near, offset.length())).mul(smoothstep(streaks.box[0] / 3, streaks.box[0] / 2, across).oneMinus());
   const rain = new THREE.Mesh(rainGeometry, rainMaterial);
   rain.frustumCulled = false; // its shader places it round the camera
   scene.add(rain);
@@ -952,24 +952,24 @@ export function createRenderer(canvas, tables, map, onProgress) {
     light.y.crossVectors(light.z, light.x);
     // The weather's look, blended in from clear's by its intensity; the Werkstatt is dry.
     const { kind, intensity } = showroom ? CLEAR : state.weather;
-    const wet = weather.look[kind] ?? dry;
+    const weatherLook = weather.look[kind] ?? dry;
     const blend = (from, to) => from + (to - from) * intensity;
-    daytime.sky.multiplyScalar(blend(1, wet.sky));
-    fogRange.value.set(blend(dry.fog[0], wet.fog[0]), blend(dry.fog[1], wet.fog[1]));
+    daytime.sky.multiplyScalar(blend(1, weatherLook.sky));
+    fogRange.value.set(blend(dry.fog[0], weatherLook.fog[0]), blend(dry.fog[1], weatherLook.fog[1]));
     if (camera.far !== fogRange.value.y) {
       camera.far = fogRange.value.y;
       camera.updateProjectionMatrix();
     }
-    haze.value = blend(dry.haze, wet.haze);
-    grey.value = blend(0, wet.grey);
-    const wetness = blend(0, wet.wet);
+    haze.value = blend(dry.haze, weatherLook.haze);
+    grey.value = blend(0, weatherLook.grey);
+    const wetness = blend(0, weatherLook.wet);
     for (const { material, colour, roughness } of wetMaterials) {
       material.color.copy(colour).multiplyScalar(1 - wetness * weather.wet.darken);
       material.roughness = roughness * (1 - wetness * weather.wet.gloss);
     }
     rainShare.value = kind === 'rain' ? intensity : 0;
     rain.visible = rainShare.value > 0 || warmNight;
-    sun.intensity = daytime.sun * blend(1, wet.sun);
+    sun.intensity = daytime.sun * blend(1, weatherLook.sun);
     sun.color.copy(daytime.colour);
     scene.environmentIntensity = (skyLight * (daytime.sky.r + daytime.sky.g + daytime.sky.b)) / 3;
     const night = isNight(clock, tables.clock);

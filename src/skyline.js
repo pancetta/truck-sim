@@ -2,7 +2,7 @@
 // instead of stopping. Numbers in tables.skyline. ringMeshes draws the real buildings round the map (#66) as two
 // meshes, walls and roofs.
 import * as THREE from 'three/webgpu';
-import { seeded } from './autopilot.js';
+import { seeded } from './sim/sim.js';
 import { newData, quad, toGeometry, vertex } from './buildings.js';
 
 // The real ring round the map (#66): the buildings in public/maps/monti-ring.json, OSM outlines in m, as the

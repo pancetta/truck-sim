@@ -3,7 +3,8 @@ import { getHeapStatistics } from 'node:v8';
 import * as base from '../tables.js';
 import { createSim } from './sim.js';
 import { createTraffic } from './traffic.js';
-import { createAutopilot, seeded } from '../autopilot.js';
+import { createAutopilot } from '../autopilot.js';
+import { seeded } from './sim.js';
 import { monti, undrained } from './fixtures.js';
 
 // Bench (#31): the traffic step at 100 cars, on the ?perf&auto drive round Monti. The spawn ring is widened to 400 m, as

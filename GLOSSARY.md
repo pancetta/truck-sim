@@ -69,7 +69,7 @@ _Avoid_: source/target, from/to
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
 **Pay lines**:
-The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie"), **Dock bonus** ("Rampenbonus") and the night bonus ("Nachtzuschlag") and the rain bonus ("Regenzuschlag") for a delivery completed at **Night** or in rain (**Weather**).
+The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie"), **Dock bonus** ("Rampenbonus"), the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
 _Avoid_: reward, payout
 
 **Damage** ("Schaden"):

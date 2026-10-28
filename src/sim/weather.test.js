@@ -50,6 +50,20 @@ describe('Sim: weather (#53)', () => {
     expect(wet).toBeGreaterThan(dry * 1.2);
   });
 
+  // rad the truck turns in `seconds` at full right lock from 50 km/h, coasting, once the weather has ramped in.
+  function turned(t, seconds = 1) {
+    const sim = createSim(t);
+    drive(sim, t.weather.ramp, IDLE);
+    timeUntil(sim, GAS, () => sim.state.truck.speed >= 50 / 3.6);
+    const heading = sim.state.truck.heading;
+    drive(sim, seconds, { steer: 1, gas: 0, brake: 0 });
+    return Math.abs(sim.state.truck.heading - heading);
+  }
+
+  test('rain lowers the grip: at speed the same lock turns the truck less', () => {
+    expect(turned(only('rain'))).toBeLessThan(turned(only('clear')) * 0.8);
+  });
+
   test('in rain the AI cars drive at rain.traffic of their speeds', () => {
     const top = (t) => {
       const t0 = { ...t, police: { ...t.police, count: 0 } };
@@ -82,5 +96,8 @@ describe('Sim: weather (#53)', () => {
   test('a delivery completed in rain adds the rain line; one in clear weather does not', () => {
     expect(nookSim(only('rain')).lines).toContainEqual({ label: 'rain', amount: tables.orders.rainBonus * 100 });
     expect(nookSim(only('clear')).lines.map((l) => l.label)).not.toContain('rain');
+    // Still coming in, below rain.bonus, after the minute of loading and unloading: no rain line yet.
+    const slow = only('rain');
+    expect(nookSim({ ...slow, weather: { ...slow.weather, ramp: 600 } }).lines.map((l) => l.label)).not.toContain('rain');
   });
 });

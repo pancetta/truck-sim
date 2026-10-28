@@ -6,7 +6,7 @@ import * as tables from '../tables.js';
 import { buildOsmMap } from './osm.js';
 import { createSim as newSim } from './sim.js';
 
-export { seeded } from '../autopilot.js';
+export { seeded } from './sim.js';
 
 // A way is its highway class, points [[x, z]] in metres and extra tags. Node ids come from the points, so ways sharing a
 // point share a node, as in OSM.

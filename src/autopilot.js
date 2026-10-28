@@ -180,5 +180,3 @@ function resample(points, spacing) {
   }
   return out;
 }
-
-export { seeded } from './sim/sim.js';

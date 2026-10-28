@@ -132,11 +132,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // The weather's spells (tables.weather): clear and rain or fog by turns, drawn from its own seeded random and timed on
   // profile.timePlayed, so the same seed brings the same weather and it goes on across loads without being saved.
   const w = tables.weather;
-  const sky = seeded(w.seed);
-  const lasting = ([least, most]) => least + (most - least) * sky();
+  const draw = seeded(w.seed);
+  const lasting = ([least, most]) => least + (most - least) * draw();
   let spell = { kind: 'clear', until: lasting(w.clear) };
   const nextSpell = () => {
-    const kind = spell.kind === 'clear' ? (sky() < w.fog ? 'fog' : 'rain') : 'clear';
+    const kind = spell.kind === 'clear' ? (draw() < w.fog ? 'fog' : 'rain') : 'clear';
     spell = { kind, until: spell.until + lasting(kind === 'clear' ? w.clear : w.spell) };
   };
   // map.colliders in a spatial cell index by their bounds, so fits() and inSight() test only those near.
@@ -680,7 +680,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const docked = to.dock && reversedInto(to.bay);
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
       if (isNight(state.timeOfDay, tables.clock)) lines.push({ label: 'night', amount: Math.round(o.nightBonus * order.pay) });
-      if (state.weather.kind === 'rain') lines.push({ label: 'rain', amount: Math.round(o.rainBonus * order.pay) });
+      if (state.weather.kind === 'rain' && state.weather.intensity >= w.rain.bonus) lines.push({ label: 'rain', amount: Math.round(o.rainBonus * order.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
       const { pointsPerDelivery, timeBonusPoints, fragilePoints, dockPoints } = tables.rank;

@@ -2,7 +2,7 @@
 // numbers in tables.buildings. planBuildings and facadeParts decide what stands where; buildingMeshes turns that into
 // meshes.
 import * as THREE from 'three/webgpu';
-import { seeded } from './autopilot.js';
+import { seeded } from './sim/sim.js';
 import { ATLAS } from './facadePictures.js';
 import { createCells } from './sim/cells.js';
 import { inside } from './sim/sim.js';

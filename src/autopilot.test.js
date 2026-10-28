@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 import * as tables from './tables.js';
 import { createSim } from './sim/sim.js';
 import { monti, undrained } from './sim/fixtures.js';
-import { createAutopilot, seeded } from './autopilot.js';
+import { createAutopilot } from './autopilot.js';
+import { seeded } from './sim/sim.js';
 
 const map = monti(tables);
 const { step } = tables.loop;

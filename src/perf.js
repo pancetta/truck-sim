@@ -3,7 +3,7 @@
 // Works with WebGLRenderer and WebGPURenderer (either backend).
 import { createAutopilot } from './autopilot.js';
 
-export { seeded } from './autopilot.js';
+export { seeded } from './sim/sim.js';
 
 // `mapBuild`: ms main.js took to build the map.
 export function installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto, mapBuild) {
