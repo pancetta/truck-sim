@@ -268,7 +268,17 @@ A street's importance from OpenStreetMap (secondary, tertiary, residential, serv
 Which traffic goes first at a **Junction** without lights: the higher **Road class**, and **Right before left** between equal classes. An **AI car** that has given way for long goes next all the same, so a steady stream can't hold it up for good.
 
 **Edge exit**:
-A street leaving the map, where **AI cars** come and go and the truck meets a barrier.
+A street leaving the map, where **AI cars** come and go and the truck meets a **Gate**.
+
+**Gate**:
+The barrier across an **Edge exit**, just inside the map's edge, with a no-lorries sign: it lifts for **AI cars** and
+stays shut to the truck.
+_Avoid_: barrier (in player-facing words), border, checkpoint
+
+**Exit road**:
+An **Edge exit**'s road on past the map's edge: along the real street, then straight on into the haze. Only drawn,
+never driven by the truck; an **AI car** that leaves drives on along it and goes once out of view or past the haze,
+so none vanishes in view.
 
 **Pavement line**:
 The line along the middle of the pavement where **Pedestrians** walk, derived by the map builder on both sides of every **Edge**. At a **Junction** it turns the corner onto the next **Edge**'s pavement, so most lines run round a block; one ends at an **Edge exit** or where the pavement comes too near another road.

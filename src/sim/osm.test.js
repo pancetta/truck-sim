@@ -5,6 +5,8 @@ import { buildOsmMap, parkedCars } from './osm.js';
 import { createSim, freshProfile, inside } from './sim.js';
 import { createCells } from './cells.js';
 import { roadPieces, pavementPieces, pedestrianPieces } from './paved.js';
+import { lanePath, poseAt } from './lanes.js';
+import { offset } from './graph.js';
 import { seeded, way, building, bounds, monti } from './fixtures.js';
 
 const build = (...ways) => buildOsmMap({ bounds, ways }, tables);
@@ -59,6 +61,13 @@ describe('OSM map: drivable network', () => {
     const state = driveFrom(map, 50, -classes.residential.lane, Math.PI / 2); // east, in the right-hand lane
     expect(state.collision).toBe(true);
     expect(state.truck.x + tables.vehicle.length / 2).toBeLessThan(bounds.maxX - tables.osm.barrier / 2);
+  });
+
+  test("an edge exit's road runs on along the way past the map's edge, then straight out from that side into the haze", () => {
+    const map = build(way('residential', [[0, 0], [150, 0], [150, 40], [90, 60]])); // back in at the end
+    const far = tables.camera.fog[1] + tables.camera.chaseDistance + tables.city.obstacles.car.length;
+    const exit = map.exits.find((x) => x.road[0].z === 0); // the other is where the way comes back in
+    expect(exit.road).toEqual([{ x: bounds.maxX, z: 0 }, { x: 150, z: 0 }, { x: 150, z: 40 }, { x: bounds.maxX + far, z: 40 }]);
   });
 
   test('ways split into edges at the nodes they share, and a way that only passes by stays whole', () => {
@@ -457,26 +466,58 @@ describe('OSM map: traffic (#63)', () => {
   const IDLE = { steer: 0, gas: 0, brake: 0 };
   const car = tables.city.obstacles.car;
 
-  test('AI cars come in at an edge exit, half a m past its barrier, and leave at the other half a m before reaching it', () => {
+  test('AI cars come in at an edge exit, half a m past its barrier', () => {
     const t = withCars(1, { exitSpawn: 1, spawnDistance: [0, 500], despawnDistance: 600 });
     const map = buildOsmMap({ bounds, ways: [way('residential', [[-150, 0], [150, 0]])] }, t);
     const sim = createSim(t, map, seeded(1));
     Object.assign(sim.state.truck, { x: 0, z: 60, heading: 0, speed: 0 }); // off the road
     sim.step(1 / 60, IDLE);
     const [first] = sim.state.traffic;
-    const start = first.x;
     const inner = bounds.maxX - 1.5 * tables.osm.barrier; // the barriers' map-side faces
-    expect(inner - Math.abs(start) - car.length / 2).toBeGreaterThanOrEqual(0.5 - 1e-9);
-    expect(inner - Math.abs(start) - car.length / 2).toBeLessThan(0.75); // found in 0.25 m steps
-    let last = start;
-    for (let s = 0; s < 60 && sim.state.traffic.includes(first); s += 1 / 60) {
-      last = first.x;
+    expect(inner - Math.abs(first.x) - car.length / 2).toBeGreaterThanOrEqual(0.5 - 1e-9);
+    expect(inner - Math.abs(first.x) - car.length / 2).toBeLessThan(0.75); // found in 0.25 m steps
+  });
+
+  // The eastbound run of a road across the fixture's map, out at its east exit.
+  const eastbound = (map) => map.graph.paths.find((p) => p.kind === 'run' && map.graph.nodes[p.to].exit && map.graph.nodes[p.to].x > 0);
+  const haze = tables.camera.fog[1] + tables.camera.chaseDistance;
+
+  test('a car leaving drives on through the gate along the exit road, and goes only past the haze while the truck watches', () => {
+    const t = withCars(0);
+    const map = buildOsmMap({ bounds, ways: [way('residential', [[-150, 0], [150, 0]])] }, t);
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 40, z: 8, heading: Math.PI / 2, speed: 0 }); // beside the road, looking east at the exit
+    const run = eastbound(map);
+    sim.state.traffic.push({ id: 1, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s: 60, police: false });
+    const [ai] = sim.state.traffic;
+    let last = null;
+    for (let s = 0; s < 60 && sim.state.traffic.includes(ai); s += 1 / 60) {
+      last = { x: ai.x, z: ai.z };
       sim.step(1 / 60, IDLE);
     }
-    expect(sim.state.traffic.includes(first)).toBe(false);
-    expect(Math.sign(last)).toBe(-Math.sign(start)); // gone at the far end
-    expect(inner - Math.abs(last) - car.length / 2).toBeGreaterThanOrEqual(0.5 - 1e-9);
-    expect(inner - Math.abs(last) - car.length / 2).toBeLessThan(1); // 0.25 m steps, and a step's driving
+    expect(sim.state.traffic.includes(ai)).toBe(false);
+    expect(last.x).toBeGreaterThan(bounds.maxX); // through the gate
+    const d = Math.hypot(last.x - 40, last.z - 8);
+    expect(d).toBeGreaterThan(haze);
+    expect(d).toBeLessThan(haze + 0.5); // a step's driving past it at most
+  });
+
+  test('a car through the gate no longer counts against the traffic, so another comes', () => {
+    const t = withCars(1);
+    const map = buildOsmMap({ bounds, ways: [way('residential', [[-150, 0], [150, 0]])] }, t);
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 0, z: 60, heading: 0, speed: 0 }); // off the road
+    const run = eastbound(map);
+    sim.state.traffic.push({ id: 1, x: 0, z: 0, heading: 0, speed: 10, lane: run, route: [run], s: run.length - 10, police: false });
+    const [ai] = sim.state.traffic;
+    const counts = [];
+    for (let s = 0; s < 3; s += 1 / 60) {
+      sim.step(1 / 60, IDLE);
+      counts.push([ai.x > bounds.maxX, sim.state.traffic.length]);
+    }
+    expect(sim.state.traffic.includes(ai)).toBe(true);
+    for (const [past, n] of counts) if (!past) expect(n).toBe(1);
+    expect(counts.at(-1)).toEqual([true, 2]);
   });
 
   test("AI cars cruise at the limit of the edge they are on and are down to the next edge's by the time they reach it", () => {
@@ -637,6 +678,26 @@ describe('OSM map: the real Monti extract', () => {
     expect(exits.length).toBe(map.colliders.filter((c) => c.kind === 'barrier').length);
     // Only Via Cavour and Via di Santa Maria Maggiore cross as two main streets in the extract (spec #59's rule).
     expect(new Set(map.lights.map((l) => l.junction)).size).toBe(1);
+  });
+
+  test('a car leaving by any exit drives through no edge wall over its first 15 m past the map edge', () => {
+    const walls = map.colliders.filter((c) => c.kind === 'wall');
+    const { length, width } = tables.city.obstacles.car;
+    const hits = [];
+    for (const x of map.exits.filter((x) => map.graph.paths.some((p) => p.kind === 'run' && p.to === x.node))) {
+      const side = x.edge.oneWay ? 0 : x.edge.laneOffset;
+      const lane = lanePath(offset(x.road, side), x.edge.width, side);
+      const pose = { x: 0, z: 0, heading: 0 };
+      for (let s = 0; s <= 15; s += 0.5) {
+        poseAt(lane, s, pose);
+        const [fx, fz] = [Math.sin(pose.heading), Math.cos(pose.heading)];
+        for (const [a, b] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const [px, pz] = [pose.x + (fx * a * length) / 2 - (fz * b * width) / 2, pose.z + (fz * a * length) / 2 + (fx * b * width) / 2];
+          if (walls.some((w) => inside(px, pz, w.points))) hits.push({ exit: x.node, s });
+        }
+      }
+    }
+    expect(hits).toEqual([]);
   });
 
   test('no building reaches into a road or its pavement, nor stands on a road', () => {

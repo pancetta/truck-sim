@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Vector3 } from 'three/webgpu';
 import * as tables from './tables.js';
-import { ringMeshes } from './skyline.js';
+import { ringMeshes, cutRing } from './skyline.js';
 
 describe('ringMeshes', () => {
   // Each triangle of a mesh as its three corners.
@@ -45,5 +45,19 @@ describe('ringMeshes', () => {
     const meshes = ringMeshes(items, tables, { walls: null, roof: null });
     expect(meshes).toHaveLength(2);
     expect(meshes.reduce((n, { geometry }) => n + geometry.index.count / 3, 0)).toBeLessThan(100000);
+  });
+});
+
+describe('cutRing', () => {
+  it('cuts the exit roads out of the buildings they cross, which lose their courtyards and domes, and keeps the rest', () => {
+    const square = { r: [[0, 0], [20, 0], [20, 20], [0, 20]], h: [[[2, 2], [4, 2], [4, 4], [2, 4]]], top: 15, base: 0, dome: true };
+    const away = { r: [[50, 0], [60, 0], [60, 10], [50, 10]], top: 12, base: 0 };
+    const road = [[8, -5], [12, -5], [12, 25], [8, 25]];
+    const [left, right, kept] = cutRing([square, away], [road]).sort((a, b) => a.r[0][0] - b.r[0][0]);
+    const xs = (b) => b.r.map(([x]) => Math.round(x * 100) / 100); // subtract leaves a 0.1 mm margin
+    expect([Math.min(...xs(left)), Math.max(...xs(left))]).toEqual([0, 8]);
+    expect([Math.min(...xs(right)), Math.max(...xs(right))]).toEqual([12, 20]);
+    for (const b of [left, right]) expect([b.h, b.dome, b.top]).toEqual([undefined, undefined, 15]);
+    expect(kept).toBe(away);
   });
 });

@@ -401,6 +401,9 @@ export const city = {
   props: { tree: 0.5, bin: 0.6, bollard: 0.25, fountain: 0.45 },
   markerHeight: 32, // m, active zone column; above the tallest building so it shows over the roofs
   barrierHeight: 1.1, // m, across the map's edge exits
+  // An edge exit's gate (renderer.js): its boom, `boom` m thick at the barrier's height, lifts while an AI car is within
+  // `reach` m of the gate, taking `swing` s to go up or down.
+  gate: { boom: 0.12, reach: 12, swing: 0.8 },
   wallHeight: 0.8, // m, the edge walls along the paved area's open edges
 };
 
@@ -426,6 +429,7 @@ export const osm = {
   pedestrian: 6, // m, width of a pedestrian way (not a square), for its bollards
   bollardSpacing: 1.5, // m between the bollards closing a pedestrian way or square, under the truck's width
   barrier: 0.6, // m thick, the truck-only barrier across each edge exit, in from the map's edge by as much
+  exitStep: 10, // m at least between the points an exit road takes from its way past the map's edge (osm.js exitRoad)
   // The paved area's open edges (sim/paved.js) get a low edge wall `wall` m thick; none where a building stands within
   // `closed` m beyond the paving, under the truck's width, or along the map's edge behind an edge exit's barrier.
   wall: 0.3,

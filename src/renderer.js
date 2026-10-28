@@ -12,7 +12,7 @@ import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets, glowMaterial } from './streets.js';
 import { createPeople } from './people.js';
-import { ringMeshes, paintSkylineWindows } from './skyline.js';
+import { ringMeshes, paintSkylineWindows, cutRing } from './skyline.js';
 import { roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { roadPieces } from './sim/paved.js';
 import { createCells } from './sim/cells.js';
@@ -265,10 +265,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const centre = (b) => ({ x: (b.minX + b.maxX) / 2, z: (b.minZ + b.maxZ) / 2 });
 
   // The asphalt, pushed back a few depth steps, so the markings at the same height always win; an offset by depth
-  // slope sank it under the ground at grazing angles.
+  // slope sank it under the ground at grazing angles. It runs on past each edge exit along its exit road (#95).
   const pieces = roadPieces(map.graph);
+  const exitPieces = roadPieces({ nodes: [], edges: map.exits.map((x) => ({ points: x.road, width: x.edge.width })) });
   const asphalt = new THREE.Mesh(
-    worldUVs(roadSurface(pieces, roadHeight / 2), tables.ground.road.repeat),
+    worldUVs(roadSurface([...pieces, ...exitPieces], roadHeight / 2), tables.ground.road.repeat),
     Object.assign(groundMaterial(tables.ground.road), { polygonOffset: true, polygonOffsetUnits: 4 }),
   );
   asphalt.receiveShadow = true;
@@ -305,24 +306,23 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.add(...buildingParts.meshes);
     streets.dress(plan);
   }));
-  // The skyline ring outside the map (skyline.js): the real buildings round it, two meshes, its roofs in the buildings'
-  // roof material. Far off in the haze, so the first frame doesn't wait for it.
+  // The skyline ring outside the map (skyline.js): the real buildings round it less the exit roads, two meshes, its
+  // roofs in the buildings' roof material. Far off in the haze, so the first frame doesn't wait for it.
   const skylineMaterials = { walls: new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 }), roof: buildingMaterials.roof };
-  laterLoads.push(() => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(items, tables, skylineMaterials))));
+  laterLoads.push(() => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials))));
   // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
   // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
   const { pavement } = tables.streets;
   const pavers = groundMaterial(pavement, {}, true);
   const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
-    const { top, stones } = pavementGeometry(osmPavements(map, pieces, tables), pavement, roadHeight / 2);
+    const { top, stones } = pavementGeometry(osmPavements(map, [...pieces, ...exitPieces], tables), pavement, roadHeight / 2);
     for (const mesh of [new THREE.Mesh(top, pavers), new THREE.Mesh(stones, kerbs)]) {
       mesh.receiveShadow = true;
       scene.add(mesh);
     }
   }));
-  // The barriers at the edge exits and the edge walls along the paved area's open edges, plain boxes on their colliders
-  // (each a box turned any way).
+  // The edge walls along the paved area's open edges, plain boxes on their colliders (each a box turned any way).
   const boxesOn = (kind, height, color) => {
     const list = map.colliders.filter((c) => c.kind === kind);
     if (!list.length) return; // WebGPU rejects an instanced mesh without instances
@@ -336,7 +336,6 @@ export function createRenderer(canvas, tables, map, onProgress) {
     });
     scene.add(mesh);
   };
-  boxesOn('barrier', city.barrierHeight, palette.red);
   boxesOn('wall', city.wallHeight, tables.streets.pavement.kerbColour);
 
   // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
@@ -368,10 +367,53 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return { minX: x - width / 2, maxX: x + width / 2, minZ: z - length / 2, maxZ: z + length / 2, angle: p.heading, y, height };
   };
 
+  // The edge exits' gates (#95), on their barriers: a red block across each pavement, and across the road a boom from
+  // the block on the truck's right as it comes, which lifts while an AI car is near (tables.city.gate; the truck meets
+  // the barrier whether it is up or not), and a no-lorries sign before that block, facing the truck. `u` points into
+  // the map; the truck's right as it comes is (u.z, -u.x).
+  const gates = map.exits.map(({ gate, u, edge }) => {
+    const half = edge.width / 2;
+    const right = (along, out) => ({ x: gate.x + u[0] * along + u[1] * out, z: gate.z + u[1] * along - u[0] * out });
+    const pivot = right(0, half);
+    return { ...gate, heading: Math.atan2(u[0], u[1]), half, right, pivot: new THREE.Vector3(pivot.x, city.barrierHeight - city.gate.boom / 2, pivot.z), lift: -1 };
+  });
+  const { pavement: walk, barrier } = tables.osm;
+  // No block or sign on a road: two exits 2.8 m apart share their ground, and cars leaving by one would drive through the
+  // other's.
+  const gateBlocks = gates.flatMap((g) => [-1, 1].map((side) => partOf(g)(0, side * (g.half + walk / 2), barrier, walk, 0, city.barrierHeight)));
+  addBoxes(palette.red, gateBlocks.filter((b) => !map.graph.onRoad((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2)), 0);
+  const gateSigns = gates.map((g) => ({ ...g.right(barrier, g.half + walk * 0.8), angle: g.heading, size: [1, 1, 1] }));
+  addSigns([[noLorriesSign(), gateSigns.filter((p) => !map.graph.onRoad(p.x, p.z))]]);
+  // At least one instance, as WebGPU rejects an instanced mesh without any; a map without exits draws none.
+  const booms = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: palette.stopLine }), Math.max(1, gates.length));
+  booms.count = gates.length;
+  booms.castShadow = booms.receiveShadow = true;
+  scene.add(booms);
+  const boomMatrix = new THREE.Matrix4();
+  const boomPart = new THREE.Matrix4();
+  // Lifts each gate's boom towards up while an AI car is within reach, else down; `lift` 0 is down, 1 up.
+  function updateGates(cars, dt) {
+    const { reach, swing, boom } = city.gate;
+    for (let i = 0; i < gates.length; i++) {
+      const g = gates[i];
+      let near = false;
+      for (const c of cars) if ((c.x - g.x) ** 2 + (c.z - g.z) ** 2 < reach ** 2) near = true;
+      const lift = Math.min(1, Math.max(0, g.lift + (near ? dt : -dt) / swing));
+      if (lift === g.lift) continue;
+      g.lift = lift;
+      // From the pivot across the road to the truck's left, turned up by up to 85° (eased).
+      const up = (85 * Math.PI) / 180 * lift * lift * (3 - 2 * lift);
+      boomMatrix.makeTranslation(g.pivot.x, g.pivot.y, g.pivot.z).multiply(boomPart.makeRotationY(g.heading)).multiply(boomPart.makeRotationZ(Math.PI - up));
+      boomMatrix.multiply(boomPart.makeTranslation(g.half, 0, 0)).multiply(boomPart.makeScale(2 * g.half, boom, boom));
+      booms.setMatrixAt(i, boomMatrix);
+      booms.instanceMatrix.needsUpdate = true;
+    }
+  }
+  updateGates([], 0);
+
   // Petrol stations (tables.station), our own boxes, on each one's pump island (spot.pumps): the island, its pumps, and
   // a canopy over the pavement on two posts, white underneath with a coloured fascia.
   const st = tables.station;
-  const { pavement: walk } = tables.osm;
   const [isle, posts, coloured, parasols] = [[], [], [], []];
   for (const { pumps } of map.spots.filter((s) => s.station)) {
     const part = partOf(pumps);
@@ -631,6 +673,21 @@ export function createRenderer(canvas, tables, map, onProgress) {
       add(plate(20, radius, face + 0.015), palette.red);
       add(plate(20, radius - ring, face + 0.03), palette.stopLine);
       characters(add, String(limit), face, [0.16, 0.32, 0.045, 0.08], palette.trim);
+    });
+  }
+
+  // A no-lorries sign, our own drawing: a round plate, grey at the back, its face a red ring round a white disc with a
+  // dark lorry seen from the side.
+  function noLorriesSign() {
+    const { radius, ring, height } = tables.signs;
+    return roadSign((add, face) => {
+      add(plate(20, radius, face), palette.signal);
+      add(plate(20, radius, face + 0.015), palette.red);
+      add(plate(20, radius - ring, face + 0.03), palette.stopLine);
+      // [x, y, w, h], m: the box, the cab and two wheels
+      for (const [x, y, w, h] of [[0.06, 0.03, 0.3, 0.17], [-0.17, 0, 0.12, 0.12], [-0.13, -0.09, 0.07, 0.07], [0.12, -0.09, 0.07, 0.07]]) {
+        add(new THREE.BoxGeometry(w, h, 0.015).translate(x, height + y, face + 0.0375), palette.trim);
+      }
     });
   }
 
@@ -1018,6 +1075,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const { min, max } = mesh.geometry.boundingBox;
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
+    updateGates(state.traffic, dt);
     drawCars(state.traffic, drawingRear);
     people.update(state.pedestrians, truck.position, inView);
     streets.update(camera.position, inView, night);

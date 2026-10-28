@@ -4,7 +4,9 @@
 // metres, x east and z south. The city is flat. `furniture` is public/maps/monti-furniture.json or a fixture's:
 // { nodes: [{ x, z, tags }] }.
 //   Drivable network: ways of a tables.osm.classes highway class, but no tunnels or areas, cut where they leave the
-//     bounds (an edge exit, closed by a truck-only barrier) and split at every node they share into edges.
+//     bounds (an edge exit, closed by a gate) and split at every node they share into edges.
+//   Edge exits (`exits`): each one's gate, a barrier the truck stops at (kind 'barrier') that opens for AI cars, and
+//     its exit road on past the map's edge into the haze, where AI cars that leave drive on (see exitRoad).
 //   Pedestrian ways and squares: not drivable, closed by bollards where the road and its pavements meet them; the map
 //     keeps them as `pedestrian` { lines, squares } for the renderer to pave.
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
@@ -52,7 +54,8 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       const b = { key: w.nodes[k], x, z };
       const clip = clipSegment(a, b, bounds);
       if (!clip) return void (run = null);
-      const at = (t, end) => ({ key: `exit ${w.id}.${k}.${end}`, x: a.x + t * (b.x - a.x), z: a.z + t * (b.z - a.z), exit: true });
+      // An edge exit, with the way's points on past it.
+      const at = (t, end) => ({ key: `exit ${w.id}.${k}.${end}`, x: a.x + t * (b.x - a.x), z: a.z + t * (b.z - a.z), exit: true, outside: end ? w.points.slice(k) : w.points.slice(0, k).reverse() });
       if (clip[0] > 0 || !run) runs.push((run = { way: w, points: [clip[0] > 0 ? at(clip[0], 0) : a] }));
       run.points.push(clip[1] < 1 ? at(clip[1], 1) : b);
       if (clip[1] < 1) run = null;
@@ -64,7 +67,14 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   for (const r of runs) for (const p of r.points) uses.set(p.key, (uses.get(p.key) ?? 0) + 1);
   const nodeOf = new Map(); // key → node index
   const nodes = [];
-  const node = (p) => nodeOf.get(p.key) ?? nodeOf.set(p.key, nodes.push({ x: p.x, z: p.z, exit: !!p.exit }) - 1).get(p.key);
+  const outside = []; // node index → an edge exit's way on past it, as [x, z]
+  const node = (p) => {
+    if (!nodeOf.has(p.key)) {
+      nodeOf.set(p.key, nodes.push({ x: p.x, z: p.z, exit: !!p.exit }) - 1);
+      outside[nodes.length - 1] = p.outside;
+    }
+    return nodeOf.get(p.key);
+  };
   const edges = [];
   for (const { way, points } of runs) {
     const { width, lane, limit } = classOf(way);
@@ -180,11 +190,17 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   }
   const inCorridor = (x, z) => corridorCells.some(x, z, x, z, (box) => insideConvex(box, x, z));
 
-  // Edge exits: a barrier across the road and its pavements, its own thickness in from the map's edge.
+  // Edge exits: a gate across the road and its pavements, its own thickness in from the map's edge, and the exit road
+  // on past the map's edge, a car's length longer than the haze reaches (as traffic.js has it). `u` points into the map,
+  // `edge` is the exit's.
+  const exits = [];
+  const haze = tables.camera.fog[1] + tables.camera.chaseDistance + tables.city.obstacles.car.length;
   for (const [n, nd] of nodes.entries()) {
     if (!nd.exit) continue;
     const [a] = arms[n];
-    colliders.push({ kind: 'barrier', ...outline(rect(beside(n, a, o.barrier, 0), a.u, o.barrier / 2, a.e.width / 2 + o.pavement)) });
+    const gate = beside(n, a, o.barrier, 0);
+    colliders.push({ kind: 'barrier', ...outline(rect(gate, a.u, o.barrier / 2, a.e.width / 2 + o.pavement)) });
+    exits.push({ node: n, gate, u: a.u, edge: a.e, road: exitRoad(nd, outside[n], bounds, haze, o.exitStep) });
   }
 
   // Bollards every tables.osm.bollardSpacing m along the corridors' outer edge where it lies in a pedestrian square or
@@ -245,7 +261,24 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   const pedestrianWays = { lines: lines.map(toXZ), squares };
   const paved = [...roadPieces(graph).map((p) => p.ring), ...pavementPieces(graph, o.pavement), ...pedestrianPieces(pedestrianWays, o.pedestrian)];
   const closers = colliders.filter((c) => c.kind === 'building' || c.kind === 'barrier');
+  // None across an exit road where cars that leave drive on: from half a car in from the barrier's map-side face along
+  // the road's first stretch, as wide as the road. Past the barrier, which is wider, the truck can't get; before it,
+  // within the road, only the walls along the map's edge stand, where the truck can't go either.
+  const pastGates = exits.map(({ gate, u, edge, road }) => {
+    const back = o.barrier / 2 + tables.city.obstacles.car.length / 2;
+    const face = { x: gate.x + u[0] * back, z: gate.z + u[1] * back };
+    return roadPieces({ nodes: [], edges: [{ points: [face, road[0], road[1]], width: edge.width }] }).map((p) => p.ring);
+  }).flat();
+  const gateCells = createCells(cell);
+  for (const r of pastGates) {
+    const { minX, minZ, maxX, maxZ } = outline(r);
+    gateCells.add(r, minX, minZ, maxX, maxZ);
+  }
+  const pastGate = (a, b) =>
+    gateCells.some(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), (r) =>
+      [0, 0.25, 0.5, 0.75, 1].some((t) => insideConvex(r, a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))));
   for (const { a, b, out } of openEdges(paved, closers, bounds, o.closed, cell)) {
+    if (pastGate(a, b)) continue;
     const [ox, oz] = [out[0] * o.wall, out[1] * o.wall];
     colliders.push({ kind: 'wall', ...outline([a, b, [b[0] + ox, b[1] + oz], [a[0] + ox, a[1] + oz]]) });
   }
@@ -333,7 +366,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       zebras.push({ edge: e.id, s, x: mid.x, z: mid.z, dx, dz, half: e.width / 2, kerbs, strip });
     }
   });
-  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras };
+  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras, exits };
 }
 
 // The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.
@@ -423,6 +456,26 @@ function outline(ring) {
   const xs = ring.map((p) => p[0]);
   const zs = ring.map((p) => p[1]);
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), points: ring.map(([x, z]) => ({ x, z })) };
+}
+
+// An edge exit's road on past the map's edge, its centre line as { x, z } from the exit: along the way's points
+// `outside` it (to where the way comes back in), each at least `step` m on from the last so its bends have room to
+// round (a point just past the edge put a 0.4 m bend at a gate, and cars crawled through it), then straight out from
+// the side of the map it leaves by, to `far` m past that side, so a car at its end is out of sight from anywhere in
+// the map.
+function exitRoad(exit, outside, bounds, far, step) {
+  const within = ([x, z]) => x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ;
+  const back = outside.findIndex(within);
+  const points = [{ x: exit.x, z: exit.z }];
+  for (const [x, z] of back < 0 ? outside : outside.slice(0, back)) {
+    if (Math.hypot(x - points.at(-1).x, z - points.at(-1).z) >= step) points.push({ x, z });
+  }
+  const sides = [[-1, 0, exit.x - bounds.minX], [1, 0, bounds.maxX - exit.x], [0, -1, exit.z - bounds.minZ], [0, 1, bounds.maxZ - exit.z]];
+  const [nx, nz] = sides.reduce((a, b) => (b[2] < a[2] ? b : a));
+  const end = points.at(-1);
+  const past = (end.x - exit.x) * nx + (end.z - exit.z) * nz;
+  if (past < far) points.push({ x: end.x + nx * (far - past), z: end.z + nz * (far - past) });
+  return points;
 }
 
 // A stable number in [0, 1) per OSM id.

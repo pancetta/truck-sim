@@ -112,6 +112,10 @@ function trim(points, a, b) {
   };
 }
 
+// A lane path { prims, length } (for poseAt) along a lane's polyline `points`, on a road `width` m wide and `offset` m
+// right of its centre line, its bends rounded as a run's are.
+export const lanePath = (points, width, offset) => fillet(points, roundings(points, width, offset));
+
 // How far before and after each inner point of a lane's polyline its bend is rounded: as if the edge's centre line were
 // rounded half the road's width before and after its bend, so the lane on the inside of a bend turns tighter than the
 // one outside, as round a street corner; no more than the polyline has room for.

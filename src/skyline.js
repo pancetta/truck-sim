@@ -4,6 +4,25 @@
 import * as THREE from 'three/webgpu';
 import { seeded } from './sim/sim.js';
 import { newData, quad, toGeometry, vertex } from './buildings.js';
+import { subtract } from './sim/osm.js';
+import { createCells } from './sim/cells.js';
+
+// The ring's buildings (as ringMeshes takes them) less the convex `pieces` (rings of [x, z]), the exit roads (#95), so
+// a car leaving the map drives on through no wall. A building they cut loses its courtyards and dome.
+export function cutRing(items, pieces) {
+  const box = (r) => [Math.min(...r.map((p) => p[0])), Math.min(...r.map((p) => p[1])), Math.max(...r.map((p) => p[0])), Math.max(...r.map((p) => p[1]))];
+  const area = (r) => Math.abs(r.reduce((s, [x, z], k) => s + x * r[(k + 1) % r.length][1] - r[(k + 1) % r.length][0] * z, 0));
+  const cells = createCells(20);
+  for (const p of pieces) cells.add(p, ...box(p));
+  return items.flatMap((b) => {
+    const near = new Set();
+    cells.some(...box(b.r), (p) => void near.add(p));
+    let rings = [b.r];
+    for (const p of near) rings = rings.flatMap((r) => subtract(r, p));
+    if (rings.length === 1 && Math.abs(area(rings[0]) - area(b.r)) < 1e-6) return [b];
+    return rings.map((r) => ({ ...b, r, h: undefined, dome: undefined }));
+  });
+}
 
 // The real ring round the map (#66): the buildings in public/maps/monti-ring.json, OSM outlines in m, as the
 // prototype made them ([{ r: [[x, z]], h?: courtyards, top, base (m), dome?, stone? }]; see scripts/maps.js). Two

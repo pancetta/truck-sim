@@ -1,6 +1,7 @@
 // AI cars (spec #12, "Traffic"; on the road graph since #61), part of the headless Sim. They drive the graph's lane paths
 // (lanes.js), turn at random at junctions, keep their distance to the car or truck ahead and stop at lights that aren't
-// green. They appear and vanish out of the truck's view, keeping the count the Sim asks for. On top of those,
+// green. They appear and vanish out of the truck's view, keeping the count the Sim asks for; one leaving the map drives
+// on through its edge exit's gate along the exit road until out of view or the haze (#95). On top of those,
 // tables.police.count police cars (`police: true`) drive the same rules anywhere in the city: they appear out of
 // view anywhere and leave only at a dead end, whereupon a new one appears.
 // A car's `route` is its way ahead as lane paths, `lane` the one it is on (route[0]), `s` the m driven along it and
@@ -16,8 +17,9 @@
 // The step allocates next to nothing (#31): footprints, poses and the neighbour grid are scratch that is
 // reused every step, and per-path data is looked up by path id, so the cost grows about linearly with the cars.
 
-import { poseAt } from './lanes.js';
+import { poseAt, lanePath } from './lanes.js';
 import { createCells } from './cells.js';
+import { offset } from './graph.js';
 
 const PLAN = 45; // m of route planned past the path a car is on, more than the longest stopping distance
 const PASSED = 6; // nodes a car remembers going through, so it doesn't drive round in rings (see onward)
@@ -218,11 +220,12 @@ export function createTraffic(tables, map, random) {
   // Monti's one light junction has two crossings (#63: a car waiting at the light from one held that crossing up all
   // through the red, and cars that had come out of the junction waited for it). Between two nodes of a crossing group,
   // no turn straight back to the node the car came from; and none on to a run these leave no way on from.
-  // `exits` are the runs in from an edge exit, where cars come and go on the map side of its barrier (see comeAt).
-  // On a map with edge exits (`through`, Monti), where cars flow through and leave, also none along a run to a dead end
-  // (cars would vanish there in view), nor on a run or turn where a car would touch another exit's barrier, or a run
-  // out of the map too short to leave by before touching its own (#63 QA: cars drove through them, and a 1.6 m run out
-  // put its barrier across a junction: turns there are `barred`); a closed map (a test's) keeps its dead ends.
+  // `exits` are the runs in from an edge exit, where cars come in on the map side of its barrier (see comeAt); they
+  // leave through its gate. On a map with edge exits (`through`, Monti), where cars flow through and leave, also none
+  // along a run to a dead end (cars would vanish there in view), nor on a run or turn where a car would touch another
+  // exit's barrier before reaching its own (two of Monti's leave the map 0.3 m apart, and cars go through both), or a
+  // run out of the map too short to reach its gate (#63 QA: cars drove through them, and a 1.6 m run out put its
+  // barrier across a junction: turns there are `barred`); a closed map (a test's) keeps its dead ends.
   const through = nodes.some((n) => n.exit);
   const barriers = map.colliders.filter((c) => c.kind === 'barrier');
   const ownBarrier = (n) => (n.exit ? barriers.find((b) => Math.hypot((b.minX + b.maxX) / 2 - n.x, (b.minZ + b.maxZ) / 2 - n.z) < 2) : null);
@@ -232,12 +235,17 @@ export function createTraffic(tables, map, random) {
     poseAt(p, s, footPose);
     return boxesOverlap(corners(footPose, size, foot), b.points);
   };
-  // m along each run where a car comes in (a run from an exit) and leaves (one to an exit, `leaveAt`): where its
-  // footprint clears the exit's barrier by half a m, at whatever slant the run meets the edge.
+  // m along each run where a car comes in (a run from an exit) and reaches its gate (one to an exit, `gateAt`): where
+  // its footprint clears the exit's barrier by half a m, at whatever slant the run meets the edge. Past its gate a car
+  // goes on along the exit road (`outLane`, the lane from the map's edge on), whose end is where it leaves (`leaveAt`);
+  // the haze takes it before (see step).
   const comeAt = new Float64Array(paths.length);
+  const gateAt = new Float64Array(paths.length);
   const leaveAt = new Float64Array(paths.length);
+  const outLane = new Array(paths.length).fill(null);
+  const exitAt = new Map(map.exits.map((x) => [x.node, x]));
   for (const p of paths) {
-    leaveAt[p.id] = p.length;
+    leaveAt[p.id] = gateAt[p.id] = p.length;
     if (p.kind !== 'run') continue;
     const [inner, outer] = [ownBarrier(nodes[p.from]), ownBarrier(nodes[p.to])];
     if (inner) {
@@ -245,20 +253,25 @@ export function createTraffic(tables, map, random) {
       comeAt[p.id] += 0.5;
     }
     if (outer) {
-      for (leaveAt[p.id] -= size.length / 2; leaveAt[p.id] >= 0 && touches(p, leaveAt[p.id], outer); ) leaveAt[p.id] -= 0.25;
-      leaveAt[p.id] -= 0.5;
+      for (gateAt[p.id] -= size.length / 2; gateAt[p.id] >= 0 && touches(p, gateAt[p.id], outer); ) gateAt[p.id] -= 0.25;
+      gateAt[p.id] -= 0.5;
     }
+    const exit = exitAt.get(p.to);
+    if (!exit) continue;
+    const side = p.edge.oneWay ? 0 : p.edge.laneOffset;
+    outLane[p.id] = lanePath(offset(exit.road, side), p.edge.width, side);
+    leaveAt[p.id] += outLane[p.id].length;
   }
   const passable = (e) => e.oneWay || 2 * e.laneOffset >= size.width + 2 * t.sideGap;
   const driven = new Uint8Array(paths.length);
-  for (const p of paths) driven[p.id] = p.kind === 'run' && passable(p.edge) && leaveAt[p.id] >= 0 ? 1 : 0;
+  for (const p of paths) driven[p.id] = p.kind === 'run' && passable(p.edge) && gateAt[p.id] >= 0 ? 1 : 0;
   const barred = new Uint8Array(paths.length);
   for (const p of paths) {
     const mine = p.kind === 'run' ? [ownBarrier(nodes[p.from]), ownBarrier(nodes[p.to])] : [];
     poseAt(p, 0, footPose);
     const reach = p.length + size.length + 20; // m, a path's farthest point from its start, plus a car and a barrier
     const others = barriers.filter((b) => !mine.includes(b) && Math.hypot(b.minX - footPose.x, b.minZ - footPose.z) < reach);
-    for (let s = 0; others.length && (p.kind === 'turn' || driven[p.id]) && !barred[p.id] && s <= leaveAt[p.id]; s += 1) {
+    for (let s = 0; others.length && (p.kind === 'turn' || driven[p.id]) && !barred[p.id] && s <= gateAt[p.id]; s += 1) {
       if (!others.some((b) => touches(p, s, b))) continue;
       driven[p.id] = 0;
       barred[p.id] = 1;
@@ -293,16 +306,17 @@ export function createTraffic(tables, map, random) {
       changed = true;
     }
   }
-  const exits = paths.filter((p) => driven[p.id] && nodes[p.from].exit && comeAt[p.id] + size.length < leaveAt[p.id]);
+  const exits = paths.filter((p) => driven[p.id] && nodes[p.from].exit && comeAt[p.id] + size.length < gateAt[p.id]);
 
   // m/s each path is driven at, at most: its edge's limit; a turn takes the limit of the edge it turns onto.
   const cruise = new Float64Array(paths.length);
   for (const p of paths) cruise[p.id] = (p.kind === 'run' ? p.edge : p.out.edge).limit / 3.6;
   const top = Math.max(...cruise);
 
-  // Sets the car's pose from its place on its lane, and the prim it is on.
+  // Sets the car's pose from its place on its lane, or past its end along the exit road, and the prim it is on.
+  const pastGate = (car) => outLane[car.lane.id] !== null && car.s > car.lane.length; // through the gate, off the map
   function place(car) {
-    car.prim = poseAt(car.lane, car.s, car);
+    car.prim = pastGate(car) ? poseAt(outLane[car.lane.id], car.s - car.lane.length, car) : poseAt(car.lane, car.s, car);
   }
 
   // Plans the route of `car` (null for one being made) on to PLAN m past the path it is on, and on out of a crossing
@@ -368,7 +382,7 @@ export function createTraffic(tables, map, random) {
   };
   for (const p of paths) {
     if (!driven[p.id] || groupAt[p.id]) continue;
-    for (let s = Math.max(size.length / 2, comeAt[p.id]); s <= Math.min(p.length - size.length / 2, leaveAt[p.id]); s += 10) slots.push(slotAt(p, s));
+    for (let s = Math.max(size.length / 2, comeAt[p.id]); s <= Math.min(p.length - size.length / 2, gateAt[p.id]); s += 10) slots.push(slotAt(p, s));
   }
   const exitSlots = exits.map((p) => slotAt(p, comeAt[p.id]));
 
@@ -935,7 +949,7 @@ export function createTraffic(tables, map, random) {
     // Looking ahead along the heading; on a curve also from its end, so a queue just round the corner is seen
     // before the car is half way round.
     behind(ci, car, 0);
-    if (car.prim.r) behindCurve(ci, car);
+    if (car.prim.r && !pastGate(car)) behindCurve(ci, car);
     behindTurnedOff(ci, car);
   }
 
@@ -957,6 +971,15 @@ export function createTraffic(tables, map, random) {
       dist += p.length;
     }
     targets[ci] = speed;
+    if (outLane[car.route.at(-1).id] && dist < curveReach) roadCurves(ci, dist);
+  }
+
+  // Caps targets[ci] for the curves of the exit road the route of cars[ci] ends in, `dist` m on from its centre.
+  function roadCurves(ci, dist) {
+    const { prims } = outLane[cars[ci].route.at(-1).id];
+    for (let k = 0; k < prims.length && dist + prims[k].at < curveReach; k++) {
+      if (prims[k].r && dist + prims[k].at > 0) targets[ci] = Math.min(targets[ci], limit(dist + prims[k].at, turnSpeed(prims[k].r)));
+    }
   }
 
   // Caps targets[ci] so cars[ci] slows to the limit of each path ahead by the time its front bumper gets there (#63).
@@ -1023,20 +1046,26 @@ export function createTraffic(tables, map, random) {
     }
   }
 
-  // Drops cars that left the road or (police aside) the truck's surroundings, spawns one while fewer than `count`
-  // and a police car while fewer than tables.police.count, then drives each car at `share` of their cruise and turn
-  // speeds; the ones in `held` (ids, a Set or Map) stand still. `zebrasNow` are the Sim's zebra crossings, map.zebras
-  // with their `people` (see atZebras), whose `passing` it sets.
+  // Drops cars that left the road or (police aside) the truck's surroundings, and the ones through a gate that are
+  // out of view or past the haze (where the camera stops drawing, from the chase camera behind the truck), spawns one
+  // while fewer than `count` and a police car while fewer than tables.police.count, cars through a gate not counted,
+  // then drives each car at `share` of their cruise and turn speeds; the ones in `held` (ids, a Set or Map) stand still.
+  // `zebrasNow` are the Sim's zebra crossings, map.zebras with their `people` (see atZebras), whose `passing` it sets.
+  const haze = tables.camera.fog[1] + tables.camera.chaseDistance;
   function step(dt, truck, lights, count, held = new Set(), share = 1, zebrasNow = []) {
     pace = share;
     zebras = zebrasNow;
     for (let k = 0; k < zebras.length; k++) zebras[k].passing = false;
     let police = 0;
+    let leaving = 0;
     for (let i = cars.length - 1; i >= 0; i--) {
-      if (cars[i].gone || (!cars[i].police && hidden(cars[i], truck, t.despawnDistance))) cars.splice(i, 1);
-      else if (cars[i].police) police++;
+      const c = cars[i];
+      const past = pastGate(c);
+      if (c.gone || ((!c.police || past) && hidden(c, truck, t.despawnDistance)) || (past && (c.x - truck.x) ** 2 + (c.z - truck.z) ** 2 > haze ** 2)) cars.splice(i, 1);
+      else if (past) leaving++;
+      else if (c.police) police++;
     }
-    if (cars.length - police < count) spawn(truck, false);
+    if (cars.length - police - leaving < count) spawn(truck, false);
     if (police < tables.police.count) spawn(truck, true);
 
     now++;
@@ -1058,7 +1087,7 @@ export function createTraffic(tables, map, random) {
       car.s += car.speed * dt;
       while (car.s >= (car.route.length === 1 ? leaveAt[car.lane.id] : car.lane.length)) {
         if (car.route.length === 1) {
-          car.gone = true; // dead end or edge exit
+          car.gone = true; // dead end or the end of an exit road
           break;
         }
         car.s -= car.lane.length;
