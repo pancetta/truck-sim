@@ -372,10 +372,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // AI cars as many as the rank tier brings, reacting to the truck where it now stands; the ones it is in
-  // contact with stand still.
+  // AI cars as many as the rank tier brings (fewer at night), reacting to the truck where it now stands; the ones it
+  // is in contact with stand still. At dusk the extra cars leave as they drive out of the truck's surroundings.
   function updateTraffic(dt) {
-    traffic?.step(dt, truck, state.lights, tables.rank.tiers[state.rank.tier].traffic, contacts);
+    const count = tables.rank.tiers[state.rank.tier].traffic;
+    traffic?.step(dt, truck, state.lights, isNight(state.timeOfDay, tables.clock) ? Math.round(count * tables.traffic.night) : count, contacts);
   }
 
   // A new contact with an AI car (`met`: the cars the truck touches after its move) costs a fine when the
@@ -653,6 +654,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const to = targetOf(order);
       const docked = to.dock && reversedInto(to.bay);
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
+      if (isNight(state.timeOfDay, tables.clock)) lines.push({ label: 'night', amount: Math.round(o.nightBonus * order.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
       const { pointsPerDelivery, timeBonusPoints, fragilePoints, dockPoints } = tables.rank;
@@ -917,6 +919,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns, buyService, sleep };
+}
+
+// Whether `minutes` (the game clock) is at night: from clock.night[0] over midnight to clock.night[1].
+export function isNight(minutes, { night: [from, to] }) {
+  return minutes >= from || minutes < to;
 }
 
 // Whether (x, z) lies inside the polygon `points` (even–odd rule).

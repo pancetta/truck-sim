@@ -58,6 +58,7 @@ export const orders = {
   dockHeading: 0.2, // rad (~11°)
   dockCentre: 1, // m either side of the bay's centre line; the painted bay lines show it
   dockDepth: 1, // m from the middle of the truck's rear to the dock edge (the building face)
+  nightBonus: 0.15, // share of the pay for a delivery completed at night (clock.night)
   // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
   // the drop-off and the cargo: dock or fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, dock: 2, fragileDock: 3 },
@@ -157,8 +158,10 @@ export const fines = {
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
-// starts at `start`; sleeping at home wakes the driver at `wake`.
-export const clock = { minutesPerSecond: 1, start: 8 * 60, wake: 6 * 60 };
+// starts at `start`; sleeping at home wakes the driver at `wake`. Night runs from night[0] over midnight to night[1]
+// (the wake time, so sleeping skips it): the headlights and street lights are on, the city has traffic.night of its AI
+// cars, and a delivery pays orders.nightBonus.
+export const clock = { minutesPerSecond: 1, start: 8 * 60, wake: 6 * 60, night: [20 * 60, 6 * 60] };
 
 // The fuel tank (profile.fuel, litres), `tank` litres before the Werkstatt's tank upgrade; a new profile starts full. A full tank lasts about 4–5 average deliveries (one
 // is about 1.7 km of driving on Monti, to the pickup and on).
@@ -291,6 +294,7 @@ export const traffic = {
   // such a line from 23 m out on)
   spawnView: 0.3,
   despawnDistance: 180, // m from the truck past which a car out of view leaves
+  night: 0.6, // share of the rank tier's AI cars at night (clock.night), rounded
   exitSpawn: 0.25, // share of new cars that come in by an edge exit within the spawn ring (where the map has any)
   // Priority at junctions without lights by road class, higher first; right before left between equal ones
   priority: { secondary: 3, tertiary: 2, residential: 1, unclassified: 1, service: 0 },
@@ -558,9 +562,28 @@ export const lighting = {
   skyFirst: 'kloofendal_48d_partly_cloudy_puresky_1k.ktx2', // smaller, so the first frame waits less; stays the light
   skyLight: 0.35, // intensity of the sky's light
   exposure: 1, // ACES filmic tone mapping
-  sun: 3.2, // directional light intensity
-  sunColour: 0xfff3e0,
-  sunDirection: [0.555, 0.742, 0.377], // towards the sun: 48° up, as in the HDRI
+  sunDirection: [0.555, 0.742, 0.377], // towards the noon sun: 48° up, as in the HDRI
+  // Over the day (#52, the game clock): the sun turns a full circle about the vertical, rising in the morning and
+  // setting in the evening, at least `lowSun` rad up; at night it is the moon, on the other side. At each key's `at`
+  // (game hours) its intensity and colour and the sky's tint (background, haze and the sky's light) are as given, and
+  // in between they blend linearly. Noon is the look of #37.
+  lowSun: 0.18,
+  day: [
+    { at: 0, sun: 0.35, colour: 0x8ea6ff, sky: 0x0b1020 },
+    { at: 5, sun: 0.35, colour: 0x8ea6ff, sky: 0x0b1020 },
+    { at: 6.5, sun: 1.3, colour: 0xffb07a, sky: 0xc4b0a8 },
+    { at: 8.5, sun: 2.9, colour: 0xffeccf, sky: 0xf2f0ec },
+    { at: 12, sun: 3.2, colour: 0xfff3e0, sky: 0xffffff },
+    { at: 17, sun: 2.9, colour: 0xffeccf, sky: 0xf2f0ec },
+    { at: 19.5, sun: 1.3, colour: 0xff9a5c, sky: 0xc8a494 },
+    { at: 21, sun: 0.35, colour: 0x8ea6ff, sky: 0x0b1020 },
+  ],
+  // The headlights and street lights at night (clock.night, #52) are drawn glows added on top of the scene, not lights:
+  // a real light costs every fragment of every frame, all day (switching one on at dusk rebuilt every shader, a stall
+  // of up to 7 s), and one headlight and three street lights took the M2's GPU from 8.0 to 11.5 ms a frame (docs/perf).
+  // The truck's headlights: a glow `width` × `length` m on the road ahead of the front bumper (renderer.js), `glow` times
+  // `colour` in its middle, `height` m up so it also shows on the pavements.
+  headlights: { width: 11, length: 42, height: 0.2, colour: 0xfff1d8, glow: 0.55 },
   lampGlow: 1.5, // traffic light lamps and light bars shine this many times their palette colour
   // Sky-coloured haze, exponential squared, per m; camera.fog fades the rest to the sky at the far plane.
   haze: 0.0022,
@@ -585,6 +608,10 @@ export const streets = {
   // `cull`, then none; the iPad simulator only held 60 fps with these short distances (docs/perf).
   // On walls between two windows, `clear` m clear of a speed sign.
   lantern: { model: 'street_lamp_02', spacing: 24, height: 3.3, near: 8, cull: 70, clear: 3 },
+  // At night (clock.night) a lantern's glass glows `glass` times `colour`, and two glows show its light (see
+  // lighting.headlights): one `wall` m across on the wall, round the glass's middle `up` m above the lantern's foot, and
+  // one `ground` m across on the pavement, `out` m from the wall; each `glow` times `colour` in its middle.
+  lanternLight: { colour: 0xffc27a, glass: 3, up: 1.1, wall: 7, ground: 10, out: 2.5, glow: 0.6 },
   // Crossed-quad trees from pictures (`npm run assets`): species picked per tree, `size` m across, mirrored at random.
   // The Werkstatt and chase cameras keep `canopy` m from a trunk, so they don't end up inside the leaves.
   canopy: 4,

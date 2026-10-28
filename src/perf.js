@@ -40,6 +40,9 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
   time(werkstatt, 'update', 'dom');
   time(minimap, 'update', 'minimap');
 
+  // ?hour=22 sets the game clock, so the autopilot's loop can be measured at night (#52).
+  const hour = new URLSearchParams(location.search).get('hour');
+  if (hour) sim.state.profile.timeOfDay = (Number(hour) * 60) % (24 * 60);
   if (auto) {
     const autopilot = createAutopilot(sim, map, tables);
     sim.requestOffers();
@@ -110,7 +113,7 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       `sim steps per frame ≤ ${Math.max(...rings.steps)}`,
       // WebGPURenderer counts draw calls in drawCalls (its calls is a running total) and programs in memory.
       `calls ${r.drawCalls ?? r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  programs ${renderer.info.programs?.length ?? m.programs}  geometries ${m.geometries}  textures ${m.textures}`,
-      `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}`,
+      `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}  hour ${(sim.state.timeOfDay / 60).toFixed(1)}`,
       `map build ${mapBuild.toFixed(0)} ms`,
       gpu,
     ].join('\n');

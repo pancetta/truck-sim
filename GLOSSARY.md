@@ -18,6 +18,9 @@ _Avoid_: account, player data
 The one stored copy of the **Profile** per browser; an unreadable or outdated one starts a fresh **Profile**.
 _Avoid_: savegame, slot, autosave (as a noun)
 
+**Night** ("Nacht"):
+The part of the game clock's day from 20:00 to 06:30: the headlights and street lights are on, there are fewer **AI cars**, and deliveries earn the night bonus.
+
 **Rank** ("Rang"):
 The player's standing, a **Tier** reached by collecting rank points from deliveries.
 _Avoid_: level (that word belongs to **Upgrades**), XP
@@ -63,7 +66,7 @@ _Avoid_: source/target, from/to
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
 **Pay lines**:
-The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie") and **Dock bonus** ("Rampenbonus").
+The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie"), **Dock bonus** ("Rampenbonus") and the night bonus ("Nachtzuschlag") for a delivery completed at **Night**.
 _Avoid_: reward, payout
 
 **Damage** ("Schaden"):

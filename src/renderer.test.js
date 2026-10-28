@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Vector3 } from 'three/webgpu';
-import { shadowCentre, parkedHeading } from './renderer.js';
+import { Color, Vector3 } from 'three/webgpu';
+import { shadowCentre, parkedHeading, daylight } from './renderer.js';
 import { lighting } from './tables.js';
 
 describe('Renderer: shadow area', () => {
@@ -43,5 +43,35 @@ describe('Renderer: parked cars', () => {
     const turned = [[0, 0], [-uz * 2, ux * 2], [-uz * 2 + ux * 4.5, ux * 2 + uz * 4.5], [ux * 4.5, uz * 4.5]].map(([x, z]) => ({ x, z }));
     const [fx, fz] = front(parkedHeading(turned));
     expect(Math.abs(fx * ux + fz * uz)).toBeCloseTo(1);
+  });
+});
+
+describe('Renderer: day and night (#52)', () => {
+  const at = (minutes) => daylight(minutes, lighting, { sun: 0, colour: new Color(), sky: new Color(), direction: new Vector3() });
+  const bright = (c) => (c.r + c.g + c.b) / 3;
+
+  it('is #37\'s look at noon, and dark at midnight with the moon up', () => {
+    const noon = at(12 * 60);
+    expect(noon.sun).toBe(3.2);
+    expect(noon.colour.getHex()).toBe(0xfff3e0);
+    expect(noon.sky.getHex()).toBe(0xffffff);
+    expect(noon.direction.distanceTo(new Vector3(...lighting.sunDirection).normalize())).toBeLessThan(1e-9);
+    const midnight = at(0);
+    expect(midnight.sun).toBeLessThan(noon.sun / 5);
+    expect(bright(midnight.sky)).toBeLessThan(0.05);
+    expect(midnight.direction.y).toBeGreaterThan(0.5);
+  });
+
+  it('changes smoothly over the whole day, over midnight too, with the light never below lowSun', () => {
+    let last = at(24 * 60 - 1);
+    last = { sun: last.sun, sky: bright(last.sky), direction: last.direction.clone() };
+    for (let m = 0; m < 24 * 60; m++) {
+      const now = at(m);
+      expect(Math.abs(now.sun - last.sun)).toBeLessThan(0.02);
+      expect(Math.abs(bright(now.sky) - last.sky)).toBeLessThan(0.02);
+      expect(now.direction.angleTo(last.direction)).toBeLessThan(0.01);
+      expect(now.direction.y).toBeGreaterThanOrEqual(Math.sin(lighting.lowSun) - 1e-9);
+      last = { sun: now.sun, sky: bright(now.sky), direction: now.direction.clone() };
+    }
   });
 });

@@ -884,6 +884,26 @@ Frames held 16.7 ms throughout; three counts 56 textures in both.
 
 *Verdict:* 0.25 s over the 3 s target, and about 0.45 s over #38's 2.7–2.8 s. The bytes are the same as main's, so the gap is CPU before the renderer can start its downloads. A CPU profile of an unthrottled load puts about 0.25 s of it in the map build: cutting the building outlines back from the roads (`subtract` in `osm.js`), the road graph's `nearest`, and the bollards along pedestrian ways. Creating the renderer before the Sim gained nothing. To get under 3 s, bake the built map (or at least the cut-back outlines) in `npm run maps`, or build it in a worker while the textures download.
 
+## Day and night (#52)
+
+The light follows the game clock: the sun moves and changes colour and strength, the sky, its haze and its light are tinted, and at night the moon lights the city. At night the truck's headlights and the street lights come on. They are drawn glows, not lights: an additive glow on the road ahead of the truck, and for each lantern a glow on its wall and one on the pavement, drawn by distance with the lanterns (`lantern.cull`), plus the lantern glass glowing. `?perf&hour=22` sets the clock, so `?perf&auto&hour=22` measures the loop at night.
+
+*Why not real lights:* three's lights cost every lit fragment of every frame, whatever their intensity, so they cost by day too. Switching them on only at night rebuilt every shader, which stalled a frame for 6.9 s in one run. One spot light for the headlights and three point lights in the nearest lanterns took the cab view's GPU time from 8.0 to 11.5 ms, by day as well as at night. The glows cost 0.4 ms at night and nothing by day. They are drawn by day with no instances (the headlight glow in the first frame), so their shaders are ready at dusk: no frame over 100 ms when the lights switch on at 20:00 or off at 06:30.
+
+**How measured:** production builds of main (`0cd86ce`) and this change, Chrome 155 headless on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), load average 1.5–4. GPU time is from WebGPU timestamp queries (`trackTimestamp` in a patched copy of each build, 900 frames after 6 s of driving), so it is inflated by the GPU's low clocks at vsync and good for comparing only. Relative numbers; the iPad numbers are the owner's `?perf&auto&hour=22` run.
+
+| | GPU ms median / p95 | render ms median / p95 | draw calls / triangles |
+|---|---|---|---|
+| main, cab | 8.0 / 8.3 | 2.7 / 3.3 | 113 / 353k |
+| #52 by day (08:00), cab | 8.1 / 8.4 | 3.0 / 3.6 | 129 / 405k |
+| #52 at night (22:00), cab | 8.4 / 8.7 | 2.7 / 3.3 | 117 / 361k |
+| main, chase | 9.3 / 9.8 | 2.8 / 3.3 | 108 / 359k |
+| #52 by day, chase | 9.5 / 9.9 | 3.0 / 3.5 | 120 / 400k |
+| #52 at night, chase | 9.7 / 10.2 | 2.8 / 3.4 | 111 / 366k |
+| #52 with real lights (1 spot + 3 point), cab, day or night | 11.5 / 12.0 | | |
+
+Frames held 16.7 ms throughout. At night the city has 5 AI cars rather than 8 (`traffic.night`); the overlay counts 7 and 10 with the two police cars. By day at 08:00 the low sun's shadow takes in more buildings than #37's fixed noon sun: 16 more draw calls and 52k more triangles in the shadow pass, at 0.1 ms of GPU and 0.3 ms of render CPU.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

@@ -61,7 +61,7 @@ Vite, plain JavaScript (ES modules), Three.js, no backend.
 - **HUD and orders UI** (`src/hud.js`, `src/orders.js`, `src/minimap.js`): dashboard, orders panel and goal banner, minimap. They read Sim state; orders go through the Sim's commands.
 - **Werkstatt** (`src/werkstatt.js`): the garage button and panel; buys through the Sim's commands, holds the tried-on (unbought) visual items, and resets the save.
 - **App loop** (`src/main.js`): wires the modules, runs the fixed-step Sim from `requestAnimationFrame` (at most `loop.maxSteps` steps per frame), pauses behind the portrait overlay and while the Werkstatt is open, and autosaves whenever the profile changes (the distance every 100 m).
-- **Perf harness** (`src/perf.js`, `src/autopilot.js`, dev only): `?perf` shows frame-time and renderer stats; `?perf&auto` also lets an autopilot drive a fixed loop, unsaved. It's loaded only with `?perf` and wraps the modules' per-frame calls, so the normal loop carries no cost for it. How to measure: [`docs/perf/2026-10-baseline.md`](docs/perf/2026-10-baseline.md).
+- **Perf harness** (`src/perf.js`, `src/autopilot.js`, dev only): `?perf` shows frame-time and renderer stats; `?perf&auto` also lets an autopilot drive a fixed loop, unsaved. `?perf&hour=22` sets the game clock (here 22:00), to measure at night. It's loaded only with `?perf` and wraps the modules' per-frame calls, so the normal loop carries no cost for it. How to measure: [`docs/perf/2026-10-baseline.md`](docs/perf/2026-10-baseline.md).
 
 ## Where decisions live
 

@@ -10,11 +10,11 @@ import { createResolution } from './resolution.js';
 import { DIRS, planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
-import { createStreets } from './streets.js';
+import { createStreets, glowMaterial } from './streets.js';
 import { ringMeshes, paintSkylineWindows } from './skyline.js';
 import { roadPieces, roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { createCells } from './sim/cells.js';
-import { inside } from './sim/sim.js';
+import { inside, isNight } from './sim/sim.js';
 import assetInfo from './assetInfo.json';
 import { strings } from './strings.js';
 
@@ -94,6 +94,25 @@ export function shadowCentre(focus, light, texel, out) {
   return out.set(0, 0, 0).addScaledVector(light.x, snap(light.x)).addScaledVector(light.y, snap(light.y)).addScaledVector(light.z, focus.dot(light.z));
 }
 
+// The light at `minutes` on the game clock (tables.lighting, whose first `day` key is at 0): fills `out`
+// ({ sun, colour, sky, direction }: the sun's intensity, its and the sky's THREE.Colors, and a unit vector towards the
+// sun or moon) and returns it.
+const keyColour = new THREE.Color();
+export function daylight(minutes, { day, sunDirection: [dx, dy, dz], lowSun }, out) {
+  const h = minutes / 60;
+  const i = day.findLastIndex((k) => k.at <= h);
+  const [a, b] = [day[i], day[(i + 1) % day.length]];
+  const t = (h - a.at) / ((b.at - a.at + 24) % 24 || 24); // the last key blends on into the first, over midnight
+  out.sun = a.sun + (b.sun - a.sun) * t;
+  out.colour.setHex(a.colour).lerp(keyColour.setHex(b.colour), t);
+  out.sky.setHex(a.sky).lerp(keyColour.setHex(b.sky), t);
+  // Round from the noon direction by 15° an hour, highest at noon and (as the moon) at midnight, lowest at 6 and 18.
+  const turn = Math.atan2(dx, dz) + ((12 - h) * Math.PI) / 12;
+  const up = Math.max(lowSun, Math.asin(dy / Math.hypot(dx, dy, dz)) * Math.abs(Math.sin(((h - 6) * Math.PI) / 12)));
+  out.direction.set(Math.cos(up) * Math.sin(turn), Math.sin(up), Math.cos(up) * Math.cos(turn));
+  return out;
+}
+
 // UVs from world x and z, `repeat` m per copy of the texture, so a texture runs on across meshes.
 function worldUVs(geometry, repeat) {
   const p = geometry.getAttribute('position');
@@ -162,9 +181,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return sky;
   });
   let showFullSky;
+  const skyTint = uniform(new THREE.Color(1, 1, 1)); // the time of day's (daylight())
+  let skyLight = 0; // the sky's light at noon, once it is in
   loads.push(loadSky(lighting.skyFirst).then((sky) => {
     scene.environment = sky;
-    scene.environmentIntensity = lighting.skyLight * sky.userData.scale;
+    skyLight = lighting.skyLight * sky.userData.scale;
     // Background and haze sample the sky alike, so whatever is fully hazed where the camera stops drawing is exactly
     // the sky behind it, and the far city fades out instead of popping.
     const skyScale = uniform(sky.userData.scale);
@@ -172,7 +193,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const skyAt = (direction) => {
       const map = texture(sky, equirectUV(direction.normalize()));
       skyMaps.push(map);
-      return map.rgb.mul(skyScale);
+      return map.rgb.mul(skyScale).mul(skyTint);
     };
     scene.backgroundNode = skyAt(normalWorldGeometry);
     const clear = densityFogFactor(float(lighting.haze)).oneMinus().mul(rangeFogFactor(float(cam.fog[0]), float(cam.fog[1])).oneMinus());
@@ -182,7 +203,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       for (const map of skyMaps) map.value = full;
     };
   }));
-  const sun = new THREE.DirectionalLight(lighting.sunColour, lighting.sun);
+  const sun = new THREE.DirectionalLight(); // its colour, intensity and direction follow the clock (render())
   const { shadow } = lighting;
   sun.castShadow = true;
   sun.shadow.mapSize.set(shadow.mapSize, shadow.mapSize);
@@ -193,9 +214,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   Object.assign(sun.shadow, { bias: shadow.bias, normalBias: shadow.normalBias });
   scene.add(sun, sun.target);
   // The shadow camera's own axes: it looks along -z, at the ground from the sun, with the world's up as its up.
-  const light = { z: new THREE.Vector3(...lighting.sunDirection).normalize() };
-  light.x = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), light.z).normalize();
-  light.y = new THREE.Vector3().crossVectors(light.z, light.x);
+  const light = { x: new THREE.Vector3(), y: new THREE.Vector3(), z: new THREE.Vector3() };
+  const daytime = { sun: 0, colour: new THREE.Color(), sky: skyTint.value, direction: light.z };
   const shadowTexel = (2 * shadow.extent) / shadow.mapSize; // m
   const focus = new THREE.Vector3();
 
@@ -716,6 +736,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
   truck.add(interior);
   scene.add(truck);
 
+  // The headlights at night (tables.lighting.headlights): a round glow stretched along the road, its middle a third of
+  // its length ahead of the front bumper, so it also fades out under the truck rather than starting at an edge.
+  const beam = lighting.headlights;
+  const beamGeometry = new THREE.PlaneGeometry(beam.width, beam.length).rotateX(-Math.PI / 2).translate(0, beam.height, tables.vehicle.length / 2 + beam.length / 3);
+  const headlights = new THREE.Mesh(beamGeometry, glowMaterial(beam.colour, beam.glow));
+  truck.add(headlights);
+  let warmNight = true; // drawn in the first frame (behind the loading screen) too, so its shader is ready at dusk
+
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
   const eye = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
@@ -867,6 +895,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
       rearCamera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
       rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     }
+    // The time of day: the sun or moon and the sky, and at night the headlights and street lights.
+    daylight(state.timeOfDay, lighting, daytime);
+    light.x.crossVectors(up, light.z).normalize();
+    light.y.crossVectors(light.z, light.x);
+    sun.intensity = daytime.sun;
+    sun.color.copy(daytime.colour);
+    scene.environmentIntensity = (skyLight * (daytime.sky.r + daytime.sky.g + daytime.sky.b)) / 3;
+    const night = isNight(state.timeOfDay, tables.clock);
+    headlights.visible = night || warmNight;
+    warmNight = false;
     // The sun's shadow covers the ground around a point ahead of the camera.
     camera.getWorldDirection(focus).setY(0).normalize().multiplyScalar(lighting.shadow.ahead).add(camera.position);
     shadowCentre(focus, light, shadowTexel, sun.target.position);
@@ -881,7 +919,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
     drawCars(state.traffic, !!rearTime);
-    streets.update(camera.position, inView);
+    streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
     if (rearTime) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.

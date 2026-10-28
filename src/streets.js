@@ -79,14 +79,15 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   const { lantern, propCull } = tables.streets;
 
   // Instanced sets drawn by distance (update()): each { places: [{ x, y, z, angle }], levels: [{ upTo, meshes }],
-  // height }. A place is drawn with the meshes of the first level it is within `upTo` m of the camera of, if it is in
-  // view; past the last level, not at all. A mesh's userData.base goes between the place and its geometry. Places are
-  // kept by `CELL` m square, so a frame looks only at those within reach.
+  // height, atNight }. A place is drawn with the meshes of the first level it is within `upTo` m of the camera of, if it
+  // is in view (as a sphere `height` m across); past the last level, not at all; and an `atNight` set only at night. A
+  // mesh's userData.base goes between the place and its geometry. Places are kept by `CELL` m square, so a frame looks
+  // only at those within reach.
   const CELL = 32;
   const cellKey = (c, r) => c * 4096 + r; // a number, not a string, so update() allocates nothing per cell
   const sets = [];
   const propMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4 });
-  function addSet(places, levels, height) {
+  function addSet(places, levels, height, atNight = false) {
     const cells = new Map(); // cell -> place indices
     places.forEach(({ x, z }, i) => {
       const key = cellKey(Math.floor(x / CELL), Math.floor(z / CELL));
@@ -102,7 +103,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
         scene.add(mesh);
       }
     }
-    sets.push({ places, cells, levels, height });
+    sets.push({ places, cells, levels, height, atNight });
   }
   // A small prop of our own: one mesh of `parts` ([geometry, colour]), culled past `upTo` m.
   const prop = (places, parts, height, upTo = propCull) => {
@@ -131,10 +132,18 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   // Lanterns: the model's parts, one per material (iron, and glass round the bulb), each as a near and a far instanced
   // mesh, set up by load() at the mounts dress() finds. The glass part is the one to light up at night (#52).
   let mounts = [];
+  const glassMaterials = [];
 
   // What stands on the planned buildings (buildings.js): the wall lanterns' mounts, potted plants and flower boxes.
   function dress(plan) {
     mounts = lanternMounts(map, plan, lantern, tables.buildings.bay, tables.streets.roadReach);
+    // Their light at night (tables.streets.lanternLight): a glow on the wall and one on the pavement in front.
+    const { up, wall, ground, out, colour, glow } = tables.streets.lanternLight;
+    const material = glowMaterial(colour, glow);
+    const glowAt = (size, base) => Object.assign(new THREE.InstancedMesh(new THREE.PlaneGeometry(size, size), material, mounts.length), { userData: { base } });
+    const onWall = glowAt(wall, new THREE.Matrix4().makeTranslation(0, lantern.height + up, 0.05));
+    const onGround = glowAt(ground, new THREE.Matrix4().makeTranslation(0, tables.streets.pavement.height + 0.02, out).multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2)));
+    addSet(mounts, [{ upTo: lantern.cull, meshes: [onWall, onGround] }], ground, true);
     const { pots, boxes } = facadeProps(map, plan, tables);
     prop(pots, [
       [new THREE.CylinderGeometry(pot.radius, pot.radius * 0.75, pot.height, 10).translate(0, pot.height / 2, 0), pot.colour],
@@ -166,7 +175,12 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
       parts[0].forEach((part, i) => {
         const glass = part.material.transparent;
         // Premultiplied, as DirectRenderPipeline's output step expects (see the renderer's zone marker).
-        if (glass) part.material.premultipliedAlpha = true;
+        if (glass) {
+          part.material.premultipliedAlpha = true;
+          part.material.emissive.setHex(tables.streets.lanternLight.colour);
+          part.material.emissiveIntensity = 0; // update() lights it at night
+          glassMaterials.push(part.material);
+        }
         [glass ? parts[1][i] : part, parts[1][i]].forEach((o, k) => {
           const mesh = new THREE.InstancedMesh(o.geometry, part.material, mounts.length);
           mesh.userData.base = new THREE.Matrix4().makeTranslation(0, -foot, 0).multiply(o.matrixWorld);
@@ -214,11 +228,14 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     });
   }
 
-  // Fills the sets' meshes with the places in view (`inView`, a test on a bounding sphere), by their distance from `eye`.
+  // Fills the sets' meshes with the places in view (`inView`, a test on a bounding sphere), by their distance from `eye`;
+  // the lanterns' glass glows at `night`.
   const bounds = new THREE.Sphere();
-  function update(eye, inView) {
-    for (const { places, cells, levels, height } of sets) {
+  function update(eye, inView, night) {
+    for (const material of glassMaterials) material.emissiveIntensity = night ? tables.streets.lanternLight.glass : 0;
+    for (const { places, cells, levels, height, atNight } of sets) {
       for (const { meshes } of levels) for (const mesh of meshes) mesh.count = 0;
+      if (atNight && !night) continue; // kept in the scene with none drawn, so their shaders are ready at dusk
       const reach = levels.at(-1).upTo;
       const [c0, c1, r0, r1] = [eye.x - reach, eye.x + reach, eye.z - reach, eye.z + reach].map((v) => Math.floor(v / CELL));
       bounds.radius = height / 2 + 0.6;
@@ -239,6 +256,20 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   }
 
   return { dress, load, update };
+}
+
+// An additive glow material (#52): `colour` times `glow` in the middle of a round glow fading to nothing at its edge.
+export function glowMaterial(colour, glow) {
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const v = Math.round(255 * Math.max(0, 1 - Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2) / (size / 2)) ** 2);
+      data.set([v, v, v, 255], 4 * (y * size + x));
+    }
+  }
+  const map = Object.assign(new THREE.DataTexture(data, size, size), { magFilter: THREE.LinearFilter, minFilter: THREE.LinearFilter, needsUpdate: true });
+  return new THREE.MeshBasicMaterial({ map, color: new THREE.Color(colour).multiplyScalar(glow), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
 }
 
 // Whether a road lies in front of (x, z) on a wall facing (nx, nz). Not all of a planned building's street side
