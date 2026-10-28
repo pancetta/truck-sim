@@ -1,0 +1,33 @@
+GLOSSARY.md
+  s_926855420f51c3::t_18633b10c94d7e 22
+src/perf.js
+  s_926855420f51c3::t_2ffceb3cba7e43 44-46
+src/streets.js
+  s_926855420f51c3::t_2ffceb3cba7e43 146
+src/renderer.js
+  s_926855420f51c3::t_53aa5448c32097 739-741,743-748,914
+  s_926855420f51c3::t_2ffceb3cba7e43 903-905,911
+  s_926855420f51c3::t_c08622ac267d04 913
+docs/perf/2026-10-baseline.md
+  s_926855420f51c3::t_775719de315f28 907-908
+  s_926855420f51c3::t_18633b10c94d7e 891
+src/tables.js
+  s_926855420f51c3::t_2ffceb3cba7e43 572-573,579
+  s_926855420f51c3::t_53aa5448c32097 585-587
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4cad4b5dd2d5be6c858bcb59b6a9d8367f2f377a",
+  "prompts": {},
+  "sessions": {
+    "s_926855420f51c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "917e7a1f-8adc-4776-987f-72334a81bcef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
