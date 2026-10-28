@@ -1,0 +1,56 @@
+docs/perf/2026-10-baseline.md
+  s_926855420f51c3::t_4cf4242f4b1f44 905
+  s_926855420f51c3::t_54b320a4b6f3ac 887-904,906
+src/sim/night.test.js
+  s_926855420f51c3::t_c848ca2a166de1 1-45
+README.md
+  s_926855420f51c3::t_54b320a4b6f3ac 64
+src/sim/sim.js
+  s_926855420f51c3::t_0d9111b7e9efa6 322-323,325-326,604,851-853
+  s_926855420f51c3::t_71a0343460af79 854-855
+src/renderer.js
+  s_926855420f51c3::t_080e1247a92521 17,97-115,184-185,188,196,206,217-218
+  s_926855420f51c3::t_5f4f1319d299b7 866
+  s_926855420f51c3::t_b70509cdb9c955 13,707,709-711,872-873
+  s_926855420f51c3::t_5c9a6efa55e6e3 705-706,708
+  s_926855420f51c3::t_2eb9ad4f1e1f67 864-865,867-871,888
+  s_926855420f51c3::t_268a7b75cf34a1 712
+src/tables.js
+  s_926855420f51c3::t_a6d2153346f274 61,159-160,261
+  s_926855420f51c3::t_38f601e89bf891 523-531,533-535,537-538
+  s_926855420f51c3::t_b70509cdb9c955 539-541,569-572
+  s_926855420f51c3::t_728b010bbe885c 161,532,536
+  s_926855420f51c3::t_5c9a6efa55e6e3 542-544
+src/streets.js
+  s_926855420f51c3::t_d5e6ae936d2bc4 83-85
+  s_926855420f51c3::t_b70509cdb9c955 140-146,180,235-236,238,261-272
+  s_926855420f51c3::t_75ac5069513980 135,178-179,181-183,231-232,234
+  s_926855420f51c3::t_ad7a29b83ba5f5 82,90,106
+  s_926855420f51c3::t_076fc5f7fd6dda 273-274
+src/strings.js
+  s_926855420f51c3::t_a6d2153346f274 25
+src/perf.js
+  s_926855420f51c3::t_ed29535a9daad6 43-45,116
+src/renderer.test.js
+  s_926855420f51c3::t_ed29535a9daad6 2-3,48-76
+  s_926855420f51c3::t_9950995f6a3830 77
+GLOSSARY.md
+  s_926855420f51c3::t_728b010bbe885c 22
+  s_926855420f51c3::t_f4480f9916ad35 21,23,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8532a1f2faaccbb1122e30b01f6a1f3aed54fd78",
+  "prompts": {},
+  "sessions": {
+    "s_926855420f51c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "917e7a1f-8adc-4776-987f-72334a81bcef",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
