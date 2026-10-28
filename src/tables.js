@@ -329,6 +329,13 @@ export const traffic = {
   exitSpawn: 0.25, // share of new cars that come in by an edge exit within the spawn ring (where the map has any)
   // Priority at junctions without lights by road class, higher first; right before left between equal ones
   priority: { secondary: 3, tertiary: 2, residential: 1, unclassified: 1, service: 0 },
+  // Two-wheelers (#77): AI cars of these kinds (never police cars), each a `share` of the new ones, with their own
+  // footprint (`length`, `width` in m) and `accel` (m/s²); one slower than the roads' limits rides at most `top` km/h.
+  // Cars behind follow them (no AI car overtakes), so the slow kinds stay few. Their look: riders.js.
+  twoWheelers: {
+    scooter: { share: 0.15, length: 1.9, width: 0.75, accel: 2.5 },
+    bicycle: { share: 0.05, length: 1.8, width: 0.6, accel: 1, top: 18 },
+  },
 };
 
 // Police cars (#68): AI cars on top of the rank tier's, which patrol the whole city and never leave it. A rule

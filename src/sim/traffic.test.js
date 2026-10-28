@@ -18,8 +18,8 @@ const quiet = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.ma
 
 // Adds a standing AI car (a police car if `police`) that starts on the lane run nearest `points[0]` that heads towards
 // `points[1]` there, and at each node it reaches that is one of `points` turns towards the point after it (points
-// [x, z] in m). Then places it with a step that takes no time.
-function addCar(sim, id, points, police = false) {
+// [x, z] in m), of `kind` ('car' unless given). Then places it with a step that takes no time.
+function addCar(sim, id, points, police = false, kind = 'car') {
   const { paths, nodes } = mapOf(sim).graph;
   const [[x, z], [tx, tz]] = points;
   const [dx, dz] = [tx - x, tz - z].map((d) => d / Math.hypot(tx - x, tz - z));
@@ -42,7 +42,7 @@ function addCar(sim, id, points, police = false) {
     if (!turn) break;
     route.push(turn, turn.out);
   }
-  const car = { id, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: start.s, police };
+  const car = { id, kind, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: start.s, police };
   sim.state.traffic.push(car);
   sim.step(0, IDLE);
   return car;
@@ -984,5 +984,98 @@ describe('Sim: traffic on the road graph', () => {
     drive(sim, 4, GAS);
     expect(sim.state.truck.x).toBeLessThan(35);
     expect(sim.state.lastFine).toBe(null);
+  });
+});
+
+describe('Sim: two-wheelers (#77)', () => {
+  const { twoWheelers, followGap } = tables.traffic;
+
+  test('scooters and cyclists come at their share, each at its own size, scooters at the limit and cyclists at their top speed', () => {
+    const busy = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 30 })) } };
+    const sim = createSim(busy, lattice(), seeded(2));
+    const kinds = new Map(); // id → kind
+    const fastest = { car: 0, scooter: 0, bicycle: 0 };
+    for (let t = 0; t < 240; t += DT) {
+      // The truck to the far corner and back now and then, so cars come and go.
+      if (Math.round(t / DT) % 3600 === 1800) Object.assign(sim.state.truck, { x: -120, z: -120 });
+      if (Math.round(t / DT) % 3600 === 0) Object.assign(sim.state.truck, { x: 0, z: 0 });
+      sim.step(DT, IDLE);
+      for (const c of sim.state.traffic) {
+        kinds.set(c.id, c.kind);
+        const { length, width } = c.kind === 'car' ? CAR : twoWheelers[c.kind];
+        expect(c.size).toMatchObject({ length, width });
+        if (c.lane.kind === 'run') fastest[c.kind] = Math.max(fastest[c.kind], c.speed);
+      }
+    }
+    const all = [...kinds.values()];
+    expect(all.length).toBeGreaterThan(60);
+    for (const kind of ['scooter', 'bicycle']) expect(all.filter((k) => k === kind).length / all.length).toBeCloseTo(twoWheelers[kind].share, 1);
+    expect(fastest.car).toBeCloseTo(classes.residential.limit / 3.6, 5);
+    expect(fastest.scooter).toBeCloseTo(classes.residential.limit / 3.6, 5);
+    expect(fastest.bicycle).toBeCloseTo(twoWheelers.bicycle.top / 3.6, 5);
+  });
+
+  test('none with their shares at 0', () => {
+    const none = { ...noPolice, traffic: { ...tables.traffic, twoWheelers: { scooter: { ...twoWheelers.scooter, share: 0 }, bicycle: { ...twoWheelers.bicycle, share: 0 } } } };
+    const sim = createSim(none, lattice(), seeded(2));
+    drive(sim, 30, IDLE);
+    expect(sim.state.traffic.length).toBeGreaterThan(0);
+    expect(sim.state.traffic.every((c) => c.kind === 'car')).toBe(true);
+  });
+
+  // A ring round a 180 × 80 m block; vehicles come along its north side, eastbound.
+  const ring = () => build([way('residential', [[-90, -40], [90, -40], [90, 40], [-90, 40]]), way('residential', [[-90, 40], [-90, -40]])]);
+
+  test('a car catching up with a cyclist follows it at its speed, never touching it', () => {
+    const sim = createSim(quiet, ring(), seeded(1));
+    Object.assign(sim.state.truck, offRoad(mapOf(sim), 0, 0));
+    const bike = addCar(sim, 1, [[-50, -40], [90, -40]], false, 'bicycle');
+    const car = addCar(sim, 2, [[-85, -40], [90, -40]]);
+    let touches = 0;
+    for (let t = 0; t < 25; t += DT) {
+      sim.step(DT, IDLE);
+      touches += vehiclesOverlap(car, car.size, bike, bike.size);
+    }
+
+    expect(touches).toBe(0);
+    expect(bike.speed).toBeCloseTo(twoWheelers.bicycle.top / 3.6, 5);
+    expect(car.speed).toBeCloseTo(bike.speed, 1);
+    expect(Math.abs(bike.z - car.z)).toBeLessThan(0.01); // both on the straight, in one lane
+    // At speed it keeps the gap and its braking distance at `brake`, as behind any car.
+    expect(bike.x - car.x - (bike.size.length + car.size.length) / 2).toBeCloseTo(followGap + bike.speed ** 2 / (2 * tables.traffic.brake), 1);
+  });
+
+  // The truck stands on the north side facing east, just left of the room a cyclist keeps in the eastbound lane
+  // (its width and the side gap each side, plus 5 cm), and the AI vehicle comes up behind it.
+  function beside(kind) {
+    const sim = createSim(quiet, ring(), seeded(1));
+    const other = addCar(sim, 1, [[-80, -40], [90, -40]], false, kind);
+    const z = other.z - twoWheelers.bicycle.width / 2 - tables.traffic.sideGap - 0.05 - tables.vehicle.width / 2;
+    Object.assign(sim.state.truck, { x: 0, z, heading: EAST, speed: 0 });
+    return { sim, other };
+  }
+
+  test('a cyclist rides past the truck where a car stops behind it; the truck reversing along it meets it at its size', () => {
+    const { sim, other: bike } = beside('bicycle');
+    const { truck } = sim.state;
+    let [slowest, touches, blocked] = [Infinity, 0, 0];
+    timeUntil(sim, IDLE, () => bike.x > -30, 30);
+    // The truck reverses as the cyclist passes it: a car's footprint where the cyclist is would be in its way.
+    for (let t = 0; t < 15 && bike.x < truck.x + 20; t += DT) {
+      sim.step(DT, BRAKE);
+      slowest = Math.min(slowest, bike.speed);
+      touches += vehiclesOverlap(bike, bike.size, truck, tables.vehicle);
+      blocked += sim.state.collision;
+    }
+    expect(bike.x).toBeGreaterThan(truck.x + 20);
+    expect(truck.speed).toBeLessThan(0); // it did reverse
+    expect(slowest).toBeCloseTo(twoWheelers.bicycle.top / 3.6, 5);
+    expect(touches).toBe(0);
+    expect(blocked).toBe(0);
+
+    const { sim: carSim, other: car } = beside('car');
+    timeUntil(carSim, IDLE, () => car.x > -30 && car.speed === 0, 60);
+    expect(car.speed).toBe(0);
+    expect(carSim.state.truck.x - tables.vehicle.length / 2 - (car.x + CAR.length / 2)).toBeCloseTo(followGap, 1);
   });
 });

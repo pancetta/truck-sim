@@ -7,7 +7,6 @@ import { build, way, monti, createSim, seeded, vehiclesOverlap, DT, GAS, BRAKE, 
 
 const { classes } = base.osm;
 const { back, depth } = base.zebras;
-const CAR = base.city.obstacles.car;
 const PERSON = { length: 2 * base.pedestrians.radius, width: 2 * base.pedestrians.radius };
 const withTraffic = (n) => ({ ...base, police: { ...base.police, count: 0, radius: 1000 }, rank: { ...base.rank, tiers: base.rank.tiers.map((t) => ({ ...t, traffic: n })) } });
 // `t` with `count` pedestrians that appear anywhere out of the truck's view and cross at every zebra they pass.
@@ -68,18 +67,18 @@ describe('zebra crossings: pedestrians and AI cars', () => {
       const along = (c.x - zebra.x) * zebra.dx + (c.z - zebra.z) * zebra.dz;
       const across = (c.x - zebra.x) * -zebra.dz + (c.z - zebra.z) * zebra.dx;
       const heading = Math.sin(c.heading) * -Math.sign(along) * zebra.dx + Math.cos(c.heading) * -Math.sign(along) * zebra.dz;
-      return Math.abs(across) < zebra.half && heading > 0.9 ? Math.abs(along) - depth / 2 - CAR.length / 2 : Infinity;
+      return Math.abs(across) < zebra.half && heading > 0.9 ? Math.abs(along) - depth / 2 - c.size.length / 2 : Infinity;
     };
     let [overlaps, setOuts, onCar, inFront] = [0, 0, 0, 0];
     const waiting = new Set();
     for (let s = 0; s < 240; s += DT) {
       sim.step(DT, IDLE);
       for (const q of pedestrians) {
-        if (onStrip(q)) overlaps += traffic.filter((c) => vehiclesOverlap(c, CAR, { ...q, heading: 0 }, PERSON)).length;
+        if (onStrip(q)) overlaps += traffic.filter((c) => vehiclesOverlap(c, c.size, { ...q, heading: 0 }, PERSON)).length;
         if (onStrip(q) && waiting.has(q.id)) {
           setOuts++;
           const zebra = zebras[q.zebra];
-          onCar += traffic.filter((c) => toStrip(c, zebra) <= 0 && toStrip(c, zebra) > -depth - CAR.length).length;
+          onCar += traffic.filter((c) => toStrip(c, zebra) <= 0 && toStrip(c, zebra) > -depth - c.size.length).length;
         }
         if (onStrip(q)) inFront += traffic.some((c) => c.speed === 0 && toStrip(c, zebras[q.zebra]) > 0 && toStrip(c, zebras[q.zebra]) < 3) ? 1 : 0;
         if (q.zebra >= 0 && q.waiting) waiting.add(q.id);

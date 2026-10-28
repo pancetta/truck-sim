@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as tables from '../tables.js';
 import { createAutopilot } from '../autopilot.js';
+import { poseAt } from './lanes.js';
 import { build, way, monti, undrained, createSim, seeded, offRoad, vehiclesOverlap, DT, GAS, BRAKE, IDLE } from './fixtures.js';
 
 // The soaks and the collider broad phase, on the real Monti extract (spec #59).
@@ -99,14 +100,14 @@ describe('Sim: traffic soak', () => {
   // causes clear, then at random poses anywhere on the road; besides, it drives the ?perf&auto loop and reverses back
   // and forth. A car driving into the truck shows as a car's footprint newly overlapping the truck's after a step: the
   // truck's own move into a car is undone, so it never leaves them overlapping. Cars driving into each other show the
-  // same way (#43).
+  // same way (#43). Two-wheelers (#77) are among the cars, at the tables' share.
   const busy = {
     ...undrained(),
     rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 40 })) },
     traffic: { ...tables.traffic, spawnDistance: [45, 120], despawnDistance: 140 }, // the cars kept around the truck
   };
   const map = monti(busy);
-  const CAR = tables.city.obstacles.car;
+  const CAR = tables.city.obstacles.car; // the largest kind
 
   // Steps `seconds` with the truck driven by `drive(sim)` (returns step i → input), or parked at each of `poses`
   // in turn for an equal share of the time. Returns the car-made contacts with the truck and between cars.
@@ -125,10 +126,10 @@ describe('Sim: traffic soak', () => {
       const { truck, traffic } = sim.state;
       const now = new Set();
       for (const [a, car] of traffic.entries()) {
-        if (vehiclesOverlap(car, CAR, truck, tables.vehicle)) now.add(car.id);
+        if (vehiclesOverlap(car, car.size, truck, tables.vehicle)) now.add(car.id);
         for (const other of traffic.slice(a + 1)) {
           const pair = `${Math.min(car.id, other.id)},${Math.max(car.id, other.id)}`;
-          if ((car.x - other.x) ** 2 + (car.z - other.z) ** 2 < CAR.length ** 2 && vehiclesOverlap(car, CAR, other, CAR)) now.add(pair);
+          if ((car.x - other.x) ** 2 + (car.z - other.z) ** 2 < CAR.length ** 2 && vehiclesOverlap(car, car.size, other, other.size)) now.add(pair);
         }
       }
       for (const id of now) {
@@ -195,9 +196,10 @@ describe('Sim: traffic gridlock soak', () => {
   const limit = 40;
   const { stopSpeed } = tables.vehicle;
 
-  // shortcut: "queued" is the nearest vehicle centre up to 12 m ahead within 1.5 m of the car's heading, and a
-  // light is "ahead" within 40 m of route, both judged from straight-line poses; good enough for queues in
-  // lanes, which is all the Sim has. Upgrade if turns or longer cars start to fool it.
+  // shortcut: "queued" is the first vehicle centre within 1.5 m of the car's route, sampled every 0.5 m up to 12 m
+  // ahead (#77: a scooter stopped at the end of a turn, still facing round it, missed the car ahead along its heading),
+  // and a light is "ahead" within 40 m of route; good enough for queues in lanes, which is all the Sim has. Upgrade if
+  // longer vehicles start to fool it.
   function waiting(car, sim, excused) {
     if (excused.has(car)) return excused.get(car);
     excused.set(car, false); // a cycle of cars each queued behind the next is stuck
@@ -210,13 +212,12 @@ describe('Sim: traffic gridlock soak', () => {
       dist += p.length;
     }
     if (!ok) {
-      const [fx, fz] = [Math.sin(car.heading), Math.cos(car.heading)];
       let ahead = null;
-      let best = 12;
-      for (const o of [...traffic, truck]) {
-        const along = (o.x - car.x) * fx + (o.z - car.z) * fz;
-        const side = -(o.x - car.x) * fz + (o.z - car.z) * fx;
-        if (o !== car && along > 0 && along < best && Math.abs(side) < 1.5) [ahead, best] = [o, along];
+      const pose = { x: 0, z: 0, heading: 0 };
+      for (let i = 0, s = car.s + 0.5, d = 0.5; d <= 12 && !ahead && i < car.route.length; s += 0.5, d += 0.5) {
+        while (i < car.route.length && s > car.route[i].length) s -= car.route[i++].length;
+        if (i < car.route.length) poseAt(car.route[i], s, pose);
+        if (i < car.route.length) ahead = [...traffic, truck].find((o) => o !== car && Math.hypot(o.x - pose.x, o.z - pose.z) < 1.5) ?? null;
       }
       ok = ahead === truck || (ahead !== null && waiting(ahead, sim, excused));
     }

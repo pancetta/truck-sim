@@ -946,6 +946,17 @@ The map builder places 23 zebra crossings on Monti; each is a few white boxes in
 | main, cab (2 runs) | 16.7 / 16.8 | 2.5 / 2.63–2.73 | 0.10–0.11 | 2.3–2.4 / 2.48–2.59 | 108–145 / 361–459k (with what was in view at the end) | 362–372 ms |
 | #79, cab (2 runs) | 16.7 / 16.7 | 2.6 / 2.90–2.91 | 0.10–0.11 | 2.5 / 2.75–2.78 | 109 / 361k | 338–367 ms |
 
+## Two-wheelers (#77)
+
+Scooters (15 %) and cyclists (5 %) are AI cars of their own kinds, each with its own footprint, top speed and acceleration. The traffic step reads a car's size from the car instead of a constant, so the traffic bench is unchanged: about 157 µs and 22.6 KB a step at 103 cars, the same as main on the same machine. The look (`src/riders.js`) adds four instanced meshes, a near and a far level per kind, drawn only while one is in view (+0–1 draw call at the default share, +10 programs).
+
+**How measured:** production builds of main (`529f83d`) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames after 50 s, cab view, alternating main, this change, main, this change, load average 2.4–2.9. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.8 | 2.6–2.7 / 2.64–3.08 | 0.12 | 2.4–2.6 / 2.48–2.93 | 114 / 357–358k | 325–336 ms |
+| #77, cab (2 runs) | 16.7 / 16.7 | 2.7 / 3.07–3.11 | 0.13–0.14 | 2.6 / 2.90–2.94 | 112–115 / 344–360k | 327–377 ms |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

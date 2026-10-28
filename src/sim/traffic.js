@@ -8,7 +8,10 @@
 // `prev` the path before; `prim` the line or arc of `lane` it is on (lanes.js); `via` the turn it drove into its
 // crossing by; `at`, `seen` and `since` the crossing it was last the first car of an approach to, the last step it was
 // and the step it became that (`first`: the step it first did, at that crossing; see rightOfWay); `passed` the nodes of its last PASSED turns, `turns` how many it took;
-// `stopped` the turn off a stop approach it last came to a full stop before (see targetSpeed).
+// `stopped` the turn off a stop approach it last came to a full stop before (see targetSpeed). `kind` is 'car' or a
+// two-wheeler's (#77, tables.traffic.twoWheelers), and `size` that kind's footprint, top speed and acceleration
+// (`kinds`): contacts, following and stopping go by each car's own; the lanes, boxes and gates a car may use are
+// worked out for a car, the largest kind.
 // Junctions are graph nodes of three or more arms. At unsignalled crossings the approaches drive in by priority (see
 // rightOfWay): the higher road class, and right before left between equal ones; at a stop sign only after a full stop.
 // Oncoming cars whose ways don't cross go together. At light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No
@@ -34,6 +37,16 @@ export function createTraffic(tables, map, random) {
   const t = tables.traffic;
   const { nodes, paths } = map.graph;
   const size = tables.city.obstacles.car; // AI cars are the size of the parked ones
+  // Per kind: footprint (m), top speed (m/s) and acceleration (m/s²); a car keeps to the road's limit.
+  const kinds = { car: { length: size.length, width: size.width, top: Infinity, accel: t.accel } };
+  for (const [kind, k] of Object.entries(t.twoWheelers)) kinds[kind] = { length: k.length, width: k.width, top: (k.top ?? Infinity) / 3.6, accel: k.accel };
+  // A new car's kind, from its id rather than a draw so the seeds keep their runs: the id times the golden ratio
+  // spreads evenly over [0, 1), and each two-wheeler kind takes its share of it.
+  function kindOf(id) {
+    let u = (id * 0.6180339887498949) % 1;
+    for (const [kind, k] of Object.entries(t.twoWheelers)) if ((u -= k.share) < 0) return kind;
+    return 'car';
+  }
   const room = size.length + t.followGap; // m of lane a car takes up in a queue
   const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
   const truckSize = { length: tables.vehicle.length, width: tables.vehicle.width };
@@ -411,7 +424,9 @@ export function createTraffic(tables, map, random) {
     const { path, s } = at;
     const route = [path];
     extend(route);
-    const car = { id: nextId++, x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null };
+    const id = nextId++;
+    const kind = police ? 'car' : kindOf(id);
+    const car = { id, kind, size: kinds[kind], x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null };
     place(car);
     cars.push(car);
   }
@@ -430,13 +445,13 @@ export function createTraffic(tables, map, random) {
   }
 
   // How far ahead of the car's centre the nearest part of `box` (corners, in order) lies within the car's
-  // path, as wide as the car plus `sideGap` each side. Infinity when it isn't in the path or lies behind.
+  // path, `width` (the car's) plus `sideGap` each side. Infinity when it isn't in the path or lies behind.
   const along = new Float64Array(4); // scratch: the corners along the car's heading and to its right
   const right = new Float64Array(4);
-  function aheadOf(car, box) {
+  function aheadOf(car, box, width) {
     const fx = Math.sin(car.heading);
     const fz = Math.cos(car.heading);
-    const w = size.width / 2 + t.sideGap;
+    const w = width / 2 + t.sideGap;
     for (let i = 0; i < 4; i++) {
       along[i] = (box[i].x - car.x) * fx + (box[i].z - car.z) * fz;
       right[i] = -(box[i].x - car.x) * fz + (box[i].z - car.z) * fx;
@@ -571,12 +586,13 @@ export function createTraffic(tables, map, random) {
       const car = cars[ci];
       const lg = groupAt[car.lane.id];
       if (lg) holdFor(lg, car, 0);
-      const pg = car.prev && car.s < size.length / 2 ? groupAt[car.prev.id] : null; // its rear still in one
+      const half = car.size.length / 2;
+      const pg = car.prev && car.s < half ? groupAt[car.prev.id] : null; // its rear still in one
       if (pg && pg !== lg) holdFor(pg, car, -1);
       let dist = car.lane.length - car.s; // centre to the start of the next path
       for (let i = 1; i < car.route.length; i++) {
         const p = car.route[i];
-        const short = dist - size.length / 2; // front bumper to the crossing
+        const short = dist - half; // front bumper to the crossing
         const g = groupAt[p.id];
         const entering = g && g !== groupAt[car.route[i - 1].id];
         dist += p.length;
@@ -585,7 +601,7 @@ export function createTraffic(tables, map, random) {
         if (!stoppable(car, short)) {
           hold(g, approachAt[p.id], moveAt[p.id]);
           if (g.occupied) mark(g, car, i, g.occupied);
-        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOf(car, truckBox) - size.length / 2 >= short) {
+        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOf(car, truckBox, car.size.width) - half >= short) {
           arrive(g, approachAt[p.id], car, short, moveAt[p.id], i);
         }
       }
@@ -834,7 +850,7 @@ export function createTraffic(tables, map, random) {
       let dist = -car.s; // centre to the start of the path
       for (let i = 0; i < car.route.length; i++) {
         const p = car.route[i];
-        const short = dist - size.length / 2;
+        const short = dist - car.size.length / 2;
         const j = short <= t.giveWay ? junction(junctionAt[p.id]) : null;
         if (j) j.first[p.slot] = Math.min(j.first[p.slot], short);
         dist += p.length;
@@ -842,14 +858,14 @@ export function createTraffic(tables, map, random) {
     }
     for (let ci = 0; ci < cars.length; ci++) {
       const car = cars[ci];
-      const rear = car.prev && car.s < size.length / 2 ? junction(junctionAt[car.prev.id]) : null;
+      const rear = car.prev && car.s < car.size.length / 2 ? junction(junctionAt[car.prev.id]) : null;
       if (rear) rear.inside |= bit(car.prev.slot);
       const j = junction(junctionAt[car.lane.id]);
       if (j) j.inside |= bit(car.lane.slot);
       let dist = -car.s; // centre to the start of the path
       for (let i = 0; i < car.route.length; i++) {
         const p = car.route[i];
-        const short = dist - size.length / 2;
+        const short = dist - car.size.length / 2;
         const j = short <= t.giveWay ? junctionAt[p.id] : null;
         if (j && j.first[p.slot] === short) {
           if (p.move !== 'left') j.seen |= bit(p.slot);
@@ -873,7 +889,7 @@ export function createTraffic(tables, map, random) {
   // m from the exit to the centre of a car that can be queued there: the far corner of the strip `room` long,
   // plus half the car's diagonal, plus 1 m to spare against rounding
   const queueReach = Math.hypot(room, size.width / 2 + t.sideGap) + Math.hypot(size.length, size.width) / 2 + 1;
-  const queued = (box, speed) => Math.abs(speed) < t.boxSpeed && aheadOf(exitPose, box) < room;
+  const queued = (box, speed) => Math.abs(speed) < t.boxSpeed && aheadOf(exitPose, box, size.width) < room;
   function exitBlocked(car, i, truck) {
     let j = i;
     while (car.route[j] && boxOf(car.route[j]) === boxOf(car.route[i])) j++;
@@ -926,7 +942,7 @@ export function createTraffic(tables, map, random) {
     for (let i = 1; i < car.route.length; i++) {
       const p = car.route[i];
       const light = lightAt[p.id] >= 0 ? lights[lightAt[p.id]] : undefined;
-      const short = dist - size.length / 2; // front bumper to the path's start
+      const short = dist - car.size.length / 2; // front bumper to the path's start
       const g = groupAt[p.id];
       const barred = g && g !== groupAt[car.route[i - 1].id] && g.stamp === now && !(g.go & bit(approachAt[p.id]));
       const box = boxOf(p);
@@ -960,7 +976,7 @@ export function createTraffic(tables, map, random) {
   const curveReach = top ** 2 / (2 * t.brake); // m from which a curve or limit can't slow a car below cruise
   function curves(ci) {
     const car = cars[ci];
-    let speed = Math.min(pace * cruise[car.lane.id], car.prim.r ? turnSpeed(car.prim.r) : top);
+    let speed = Math.min(pace * Math.min(cruise[car.lane.id], car.size.top), car.prim.r ? turnSpeed(car.prim.r) : top);
     let dist = -car.s; // centre to the start of the path
     for (let i = 0; i < car.route.length && dist < curveReach; i++) {
       const p = car.route[i];
@@ -988,7 +1004,7 @@ export function createTraffic(tables, map, random) {
     let dist = car.lane.length - car.s; // centre to the start of route path i
     for (let i = 1; i < car.route.length && dist < curveReach; i++) {
       const p = car.route[i];
-      targets[ci] = Math.min(targets[ci], limit(dist - size.length / 2, pace * cruise[p.id]));
+      targets[ci] = Math.min(targets[ci], limit(dist - car.size.length / 2, pace * cruise[p.id]));
       dist += p.length;
     }
   }
@@ -1002,8 +1018,8 @@ export function createTraffic(tables, map, random) {
       const list = zebrasAt[car.route[i].id];
       for (let j = 0; list && j < list.length; j++) {
         const zebra = zebras[list[j].k];
-        const short = dist + list[j].at - size.length / 2; // front bumper to the strip
-        if (short + depth + size.length < 0) continue; // past it
+        const short = dist + list[j].at - car.size.length / 2; // front bumper to the strip
+        if (short + depth + car.size.length < 0) continue; // past it
         if (!stoppable(car, short)) zebra.passing = true;
         else if (zebra.people) targets[ci] = Math.min(targets[ci], limit(short - t.stopGap));
       }
@@ -1021,12 +1037,13 @@ export function createTraffic(tables, map, random) {
   // cars[ci] to that view.
   const reach = t.lookAhead + size.length;
   function behind(ci, view, extra) {
+    const { length, width } = cars[ci].size;
     for (let k = nearby(view.x, view.z, reach) - 1; k >= 0; k--) {
       const other = cars[found[k]];
       if (found[k] === ci || (other.x - view.x) ** 2 + (other.z - view.z) ** 2 > reach ** 2 || !follows(view, other)) continue;
-      targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, footprints[found[k]]) - size.length / 2 - t.followGap));
+      targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, footprints[found[k]], width) - length / 2 - t.followGap));
     }
-    targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, truckBox) - size.length / 2 - t.followGap));
+    targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, truckBox, width) - length / 2 - t.followGap));
   }
 
   // Caps targets[ci] to keep `followGap` behind a car that turned off the car's route less than a car's length ago,
@@ -1035,14 +1052,14 @@ export function createTraffic(tables, map, random) {
   function behindTurnedOff(ci, car) {
     for (let k = nearby(car.x, car.z, reach) - 1; k >= 0; k--) {
       const other = cars[found[k]];
-      if (found[k] === ci || other.s >= size.length || !other.prev) continue;
+      if (found[k] === ci || other.s >= other.size.length || !other.prev) continue;
       let off = other.prev === car.lane;
       let dist = car.lane.length - car.s; // centre to the start of route path i
       for (let i = 1; i < car.route.length && dist < reach && !off; i++) {
         off = other.prev === car.route[i];
         dist += car.route[i].length;
       }
-      if (off) targets[ci] = Math.min(targets[ci], limit(aheadOf(car, footprints[found[k]]) - size.length / 2 - t.followGap));
+      if (off) targets[ci] = Math.min(targets[ci], limit(aheadOf(car, footprints[found[k]], car.size.width) - car.size.length / 2 - t.followGap));
     }
   }
 
@@ -1071,8 +1088,13 @@ export function createTraffic(tables, map, random) {
     now++;
     truckStill = Math.abs(truck.speed) > tables.vehicle.stopSpeed ? 0 : truckStill + dt;
     for (let i = 0; i < cars.length; i++) {
-      if (!cars[i].prim) place(cars[i]); // added from outside (the tests do)
-      corners(cars[i], size, (footprints[i] ??= newBox()));
+      if (!cars[i].prim) {
+        // added from outside (the tests do), a car unless they say
+        cars[i].kind ??= 'car';
+        cars[i].size = kinds[cars[i].kind];
+        place(cars[i]);
+      }
+      corners(cars[i], cars[i].size, (footprints[i] ??= newBox()));
     }
     corners(truck, truckSize, truckBox);
     fillGrid();
@@ -1083,7 +1105,7 @@ export function createTraffic(tables, map, random) {
     for (let i = 0; i < cars.length; i++) targetSpeed(i, truck, lights);
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
-      car.speed = held.has(car.id) ? 0 : Math.min(targets[i], car.speed + t.accel * dt);
+      car.speed = held.has(car.id) ? 0 : Math.min(targets[i], car.speed + car.size.accel * dt);
       car.s += car.speed * dt;
       while (car.s >= (car.route.length === 1 ? leaveAt[car.lane.id] : car.lane.length)) {
         if (car.route.length === 1) {
@@ -1102,14 +1124,14 @@ export function createTraffic(tables, map, random) {
     }
   }
 
-  // The cars whose footprint overlaps `box` (corners in order). Cars too far for their bounding circles to
-  // meet are skipped before the exact test.
+  // The cars whose footprint overlaps `box` (corners in order). Cars too far for a car's bounding circle (the
+  // largest kind's) to meet it are skipped before the exact test.
   const carRadius = Math.hypot(size.length, size.width) / 2;
   function touchingCars(box) {
     const [cx, cz] = [(box[0].x + box[2].x) / 2, (box[0].z + box[2].z) / 2];
     const r = Math.hypot(box[0].x - box[2].x, box[0].z - box[2].z) / 2 + carRadius + 0.01; // 1 cm against rounding
     const out = [];
-    for (const c of cars) if ((c.x - cx) ** 2 + (c.z - cz) ** 2 <= r ** 2 && boxesOverlap(box, corners(c, size, probe))) out.push(c);
+    for (const c of cars) if ((c.x - cx) ** 2 + (c.z - cz) ** 2 <= r ** 2 && boxesOverlap(box, corners(c, c.size ?? kinds[c.kind ?? 'car'], probe))) out.push(c);
     return out;
   }
 

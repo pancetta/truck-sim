@@ -12,6 +12,7 @@ import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets, glowMaterial } from './streets.js';
 import { createPeople } from './people.js';
+import { createRiders } from './riders.js';
 import { ringMeshes, paintSkylineWindows, cutRing } from './skyline.js';
 import { roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { roadPieces } from './sim/paved.js';
@@ -573,6 +574,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
   laterLoads.push(streets.load);
   const people = createPeople(scene, tables, roadHeight / 2);
+  const riders = createRiders(scene, tables);
 
   // The road signs as one batched mesh with one shader: three tests each placement against the view, so only what's
   // on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is
@@ -1078,6 +1080,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     updateGates(state.traffic, dt);
     drawCars(state.traffic, drawingRear);
     people.update(state.pedestrians, truck.position, inView);
+    riders.update(state.traffic, truck.position, inView);
     streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
     if (drawingRear) {
@@ -1140,13 +1143,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const inView = (sphere) => frustum.intersectsSphere(sphere) || (drawingRear && rearFrustum.intersectsSphere(sphere));
   // Only the cars in view, or in the inset's while it shows, are drawn, in full detail within vehicles.near of the
   // truck: from the chase camera, camera.chaseDistance back, the car just ahead of the truck would lose its lights and plate.
-  // An AI car's id picks its body type and paint; a police car is the police kind.
+  // An AI car's id picks its body type and paint; a police car is the police kind. Two-wheelers are riders.js's.
   function drawCars(cars, rear) {
     frustumOf(camera, frustum);
     if (rear) frustumOf(rearCamera, rearFrustum);
     for (const mesh of carMeshes) mesh.count = 0;
     for (const car of parked) drawCar(car.kind, car.x, car.z, car.heading, car.paint, rear);
     for (const car of cars) {
+      if (car.kind !== 'car') continue;
       if (car.police) drawCar(policeKind, car.x, car.z, car.heading, policePaint, rear);
       else drawCar(car.id % carTypes.length, car.x, car.z, car.heading, paints[(car.id * 7) % paints.length], rear);
     }

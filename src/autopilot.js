@@ -25,6 +25,9 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   const path = resample(radius ? rounded(legs, radius, laneAt) : legs, spacing);
   if (loop && Math.hypot(path[0].x - path.at(-1).x, path[0].z - path.at(-1).z) < spacing / 2) path.pop(); // the loop closes
   const lanes = path.map(({ x, z }) => laneAt(x, z));
+  // A leg that doesn't loop ends on the centre line at its stop, which the stop's zone straddles whichever side of the
+  // road it lies on (#77: arriving in the other lane, the truck's end point lay 0.3 m outside spot E's zone, by a wall).
+  if (!loop) lanes[path.length - 1] = 0;
   let idx = 0;
   let stuck = 0;
   const input = { steer: 0, gas: 0, brake: 0 };

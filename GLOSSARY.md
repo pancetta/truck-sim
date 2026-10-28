@@ -134,8 +134,12 @@ _Avoid_: skin, cosmetic
 ### Traffic and rules
 
 **AI car**:
-A car of the city's traffic, driven by the **Sim**.
+A vehicle of the city's traffic, driven by the **Sim**: a car or a **Two-wheeler**.
 _Avoid_: NPC, bot, traffic car
+
+**Two-wheeler** ("Zweirad"):
+An **AI car** of a smaller kind with its own size, speed and acceleration: a scooter ("Roller"), which rides at the road's limit, or a cyclist ("Radfahrer"), who rides slower. The cars behind a cyclist follow it; no **AI car** overtakes.
+_Avoid_: Vespa (a brand), bike, motorbike
 
 **Police car** ("Polizei"):
 An **AI car** on patrol whose presence makes **Rule fines** possible.
