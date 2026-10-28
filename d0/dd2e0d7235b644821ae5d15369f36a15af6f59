@@ -1,0 +1,19 @@
+src/sim/osm.test.js
+  s_73dd93bc7a795a::t_173ca5aa7907ae 420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0dd2e0d7235b644821ae5d15369f36a15af6f59",
+  "prompts": {},
+  "sessions": {
+    "s_73dd93bc7a795a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30c92913-9c24-4b8a-a3c2-c1ebe18a239f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
