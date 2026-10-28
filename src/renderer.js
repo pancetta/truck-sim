@@ -794,6 +794,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // The night lights, rain and reversing camera drawn in the first frame (behind the loading screen) too, so their
   // shaders are ready: the reversing camera's first draw otherwise stalled play by ~3 s in Chrome.
   let warmUp = true;
+  // The objects of a later load (skyline, street lamps, covered car, sky) get their shaders for the main view when they
+  // first show; set when one lands, the reversing camera then draws them once into its target, unshown, so the first
+  // reverse after it doesn't stall (it took seconds on WebGL 2).
+  let warmRear = false;
+  let drawingRear = false; // whether this frame draws the reversing camera's view (inView counts its frustum then)
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
   const eye = new THREE.Vector3();
@@ -943,7 +948,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
     }
-    if (rear) {
+    drawingRear = rear || warmRear;
+    if (drawingRear) {
       rearCamera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
       rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     }
@@ -993,10 +999,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const { min, max } = mesh.geometry.boundingBox;
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
-    drawCars(state.traffic, rear);
+    drawCars(state.traffic, drawingRear);
     streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
-    if (rear) {
+    if (drawingRear) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
       // The truck from outside (SHADOW_ONLY in the cab), so its back edge shows at the bottom as a guide.
       interior.visible = false;
@@ -1004,13 +1010,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
       renderer.render(scene, rearCamera);
       renderer.setRenderTarget(null);
       interior.visible = inCab;
-      const autoClear = renderer.autoClear;
-      renderer.autoClear = false;
-      renderer.setViewport(inset.x, inset.y, inset.width, inset.height);
-      pipeline.render(insetScene, insetCamera);
-      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-      renderer.autoClear = autoClear;
+      if (rear) {
+        const autoClear = renderer.autoClear;
+        renderer.autoClear = false;
+        renderer.setViewport(inset.x, inset.y, inset.width, inset.height);
+        pipeline.render(insetScene, insetCamera);
+        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+        renderer.autoClear = autoClear;
+      }
     }
+    warmRear = false;
   }
 
   // Whether (x, z) is in front of some facade within `box`, all facing DIRS[dir]: past the box's back that way.
@@ -1050,7 +1059,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return out.setFromProjectionMatrix(viewProjection.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse), c.coordinateSystem);
   };
   // Whether a bounding sphere is in view, or in the inset's while it shows; drawCars() sets up both views.
-  const inView = (sphere) => frustum.intersectsSphere(sphere) || (rearTime > 0 && rearFrustum.intersectsSphere(sphere));
+  const inView = (sphere) => frustum.intersectsSphere(sphere) || (drawingRear && rearFrustum.intersectsSphere(sphere));
   // Only the cars in view, or in the inset's while it shows, are drawn, in full detail within vehicles.near of the
   // truck: from the chase camera, camera.chaseDistance back, the car just ahead of the truck would lose its lights and plate.
   // An AI car's id picks its body type and paint; a police car is the police kind.
@@ -1099,8 +1108,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const models = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
   const ready = Promise.all([renderer.init(), models]);
   models.then(() => {
-    for (const load of laterLoads) load().catch(console.error);
-    return showFullSky && loadSky(lighting.sky).then(showFullSky);
+    // Each later load's objects are drawn by the reversing camera once too (see warmRear).
+    for (const load of laterLoads) load().then(() => (warmRear = true), console.error);
+    return showFullSky && loadSky(lighting.sky).then(showFullSky).then(() => (warmRear = true));
   }).catch(console.error);
   laterLoads.push(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
     coveredCar.near = coverMeshes(near, true);

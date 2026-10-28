@@ -103,15 +103,21 @@ function distanceToSegment(a, b) {
 // The pointers holding a control, in the order they pressed it, each with a value
 // from `onPress`. Primary button only; captured, so a finger sliding off still holds.
 // Reuse this for any new on-screen control.
+// A pointer whose up never arrives (iOS can drop a touch, say to a system gesture) would hold the control for good, and
+// on the wheel block every new finger: a press drops the pointers the node no longer captures, and leaving the page
+// (app switch, notification shade) lets go of all of them.
 function trackPointers(node, onPress = () => true) {
   const held = new Map();
   node.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    for (const id of held.keys()) if (!node.hasPointerCapture(id)) held.delete(id);
     node.setPointerCapture(e.pointerId);
     held.set(e.pointerId, onPress(e));
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
     node.addEventListener(type, (e) => held.delete(e.pointerId));
   }
+  window.addEventListener('blur', () => held.clear());
+  document.addEventListener('visibilitychange', () => held.clear());
   return held;
 }
