@@ -356,7 +356,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const part = partOf(terrace);
     const [length, width] = rt.terrace;
     const [side, high] = rt.table;
-    const deck = 0.1;
+    const deck = tables.streets.pavement.height + 0.05; // just over the raised pavement
     isle.push(part(0, 0, length, width, 0, deck));
     for (let i = 0; i < rt.tables; i++) {
       const along = ((i + 0.5) / rt.tables - 0.5) * length;

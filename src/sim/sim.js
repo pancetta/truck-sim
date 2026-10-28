@@ -174,11 +174,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (!stopped) p.energy = Math.max(0, p.energy - dt / tables.energy.drive);
     const input = feel(controls, dt);
 
-    // Reverse: a brake hold at a standstill engages it; a stop with the brake released ends it.
+    // Reverse: a brake hold at a standstill engages it; a stop with the brake released ends it. Both read the pedal
+    // itself, so an exhausted driver's lagging brake never engages it after a stop.
     if (reversing) {
-      if (stopped && input.brake === 0) reversing = false;
+      if (stopped && controls.brake === 0) reversing = false;
     } else {
-      brakeHold = stopped && input.brake > 0 && input.gas === 0 ? brakeHold + dt : 0;
+      brakeHold = stopped && controls.brake > 0 && controls.gas === 0 ? brakeHold + dt : 0;
       if (brakeHold >= v.reverseDelay) reversing = true;
     }
 

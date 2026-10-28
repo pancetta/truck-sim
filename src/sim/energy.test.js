@@ -65,6 +65,18 @@ describe('Sim: driver energy', () => {
     expect(empty.braked).toBeGreaterThan(0); // slower, but it still brakes
     expect(response(tired - 0.01)).toEqual(fresh); // tired alone changes nothing
   });
+
+  test('exhausted, letting go of the brake after a stop never engages reverse', () => {
+    const sim = createSim(tables, undefined, Math.random, rested(0));
+    drive(sim, 5, GAS);
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0, 30);
+    const gears = new Set();
+    for (let t = 0; t < 3; t += DT) {
+      sim.step(DT, IDLE);
+      gears.add(sim.state.truck.gear);
+    }
+    expect([...gears]).toEqual(['N']);
+  });
 });
 
 describe('Sim: snack and meal', () => {
@@ -121,6 +133,12 @@ describe('Sim: snack and meal', () => {
     drive(leaving, 1, GAS);
     expect(leaving.state.service).toBe(null);
     expect(leaving.state.profile.money).toBe(1000);
+  });
+
+  test('dry at a station with the money for a snack but not the fill-up, the truck is still towed', () => {
+    const sim = cena({ ...rested(0.5), fuel: 0, money: snack.price + 1 });
+    drive(sim, 0.1, IDLE);
+    expect(sim.state.lastTow).toMatchObject({ station: 'S' });
   });
 
   test('the restaurant never comes up in offers', () => {

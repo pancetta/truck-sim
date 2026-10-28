@@ -18,11 +18,11 @@ const SCREEN = { top: 2.85, sill: 1.65 }; // windscreen z under the roof (it mee
 // speedometer (`small`: their radius and x either side).
 const CLUSTER = {
   centre: [0.55, 1.59, 2.36],
-  width: 0.54,
+  width: 0.59,
   height: 0.16,
   dial: 0.068,
   dialX: 0.13,
-  small: { dial: 0.042, x: 0.22 },
+  small: { dial: 0.042, x: 0.245 },
   gear: { size: [0.05, 0.034], y: 0.05 },
   info: { size: [0.11, 0.056], y: -0.002 },
 };

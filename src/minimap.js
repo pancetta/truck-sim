@@ -80,10 +80,14 @@ export function createMinimap(canvas, map, tables) {
     const u = scale * 0.5;
     const strokes = () => {
       lctx.beginPath();
-      for (const dx of [-1.6, -1, -0.4]) lctx.moveTo(x + dx * u, y - 2.2 * u), lctx.lineTo(x + dx * u, y - 0.8 * u);
-      lctx.moveTo(x - 1.6 * u, y - 0.8 * u), lctx.lineTo(x - 0.4 * u, y - 0.8 * u);
-      lctx.moveTo(x - 1 * u, y - 0.8 * u), lctx.lineTo(x - 1 * u, y + 2.2 * u);
-      lctx.moveTo(x + 1.2 * u, y - 2.2 * u), lctx.lineTo(x + 1.2 * u, y + 2.2 * u);
+      const line = (x0, y0, x1, y1) => {
+        lctx.moveTo(x + x0 * u, y + y0 * u);
+        lctx.lineTo(x + x1 * u, y + y1 * u);
+      };
+      for (const dx of [-1.6, -1, -0.4]) line(dx, -2.2, dx, -0.8);
+      line(-1.6, -0.8, -0.4, -0.8);
+      line(-1, -0.8, -1, 2.2);
+      line(1.2, -2.2, 1.2, 2.2);
       lctx.stroke();
     };
     const width = lctx.lineWidth;
