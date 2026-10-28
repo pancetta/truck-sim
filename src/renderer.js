@@ -13,6 +13,7 @@ import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
 import { createStreets, glowMaterial } from './streets.js';
 import { createPeople } from './people.js';
 import { createRiders } from './riders.js';
+import { createStreetEvents } from './streetEvents.js';
 import { ringMeshes, paintSkylineWindows, cutRing } from './skyline.js';
 import { roadSurface, osmPavements, pavementGeometry } from './roads.js';
 import { roadPieces } from './sim/paved.js';
@@ -575,6 +576,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   laterLoads.push(streets.load);
   const people = createPeople(scene, tables, roadHeight / 2);
   const riders = createRiders(scene, tables);
+  const streetEvents = createStreetEvents(scene, map, tables);
 
   // The road signs as one batched mesh with one shader: three tests each placement against the view, so only what's
   // on screen within the far plane is drawn (and, for the shadow, what's in the sun's view). `models` is
@@ -1111,6 +1113,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     drawCars(state.traffic, drawingRear);
     people.update(state.pedestrians, truck.position, inView);
     riders.update(state.traffic, truck.position, inView);
+    streetEvents.update(state.events);
     streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
     if (drawingRear) {

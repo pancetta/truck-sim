@@ -2,7 +2,8 @@
 // stops, so every perf run sees the same route: through `stops`, spot ids (tables.perf.spots unless given). With
 // `loop` false it drives from the first stop to the last and no further. Pure pursuit in the right-hand lane (a one-way's middle); when stuck it jumps on along the
 // way. Ported from the investigation's scratch autopilot; since #33 it also waits behind an AI car in its path, as it
-// ignores right of way and otherwise rammed one car over and over at 50 km/h traffic.
+// ignores right of way and otherwise rammed one car over and over at 50 km/h traffic. When street events (#80) close
+// or open an edge, it finds its way again round the closed ones.
 export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loop = true) {
   const { spacing, dodge, radius, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
   const vehicle = tables.fleet[sim.state.profile.vehicle]; // the one it drives (a switch needs a new autopilot)
@@ -22,13 +23,21 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
     return edge.width < 2 * tables.fleet.truck.width ? 0 : edge.laneOffset;
   };
   const corners = stops.map((id) => map.spots.find((s) => s.id === id).pose);
-  const legs = corners.slice(0, loop ? corners.length : -1).flatMap((c, i) => map.graph.route(c, corners[(i + 1) % corners.length]).points);
-  const path = resample(radius ? rounded(legs, radius, laneAt) : legs, spacing);
-  if (loop && Math.hypot(path[0].x - path.at(-1).x, path[0].z - path.at(-1).z) < spacing / 2) path.pop(); // the loop closes
-  const lanes = path.map(({ x, z }) => laneAt(x, z));
-  // A leg that doesn't loop ends on the centre line at its stop, which the stop's zone straddles whichever side of the
-  // road it lies on (#77: arriving in the other lane, the truck's end point lay 0.3 m outside spot E's zone, by a wall).
-  if (!loop) lanes[path.length - 1] = 0;
+  let path;
+  let lanes;
+  let shut; // the closed edges `path` goes round, as a key
+  function plan() {
+    const { closed } = sim.state;
+    shut = [...closed].join();
+    const legs = corners.slice(0, loop ? corners.length : -1).flatMap((c, i) => map.graph.route(c, corners[(i + 1) % corners.length], 0, closed).points);
+    path = resample(radius ? rounded(legs, radius, laneAt) : legs, spacing);
+    if (loop && Math.hypot(path[0].x - path.at(-1).x, path[0].z - path.at(-1).z) < spacing / 2) path.pop(); // the loop closes
+    lanes = path.map(({ x, z }) => laneAt(x, z));
+    // A leg that doesn't loop ends on the centre line at its stop, which the stop's zone straddles whichever side of the
+    // road it lies on (#77: arriving in the other lane, the truck's end point lay 0.3 m outside spot E's zone, by a wall).
+    if (!loop) lanes[path.length - 1] = 0;
+  }
+  plan();
   let idx = 0;
   let stuck = 0;
   const input = { steer: 0, gas: 0, brake: 0 };
@@ -60,6 +69,10 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
 
   function update(dt) {
     const t = sim.state.truck;
+    if ([...sim.state.closed].join() !== shut) {
+      plan();
+      idx = 0;
+    }
     // Advance along the path to the nearest point ahead.
     let best = Infinity;
     let bi = idx;

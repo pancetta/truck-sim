@@ -9,9 +9,11 @@
 // crossing by; `at`, `seen` and `since` the crossing it was last the first car of an approach to, the last step it was
 // and the step it became that (`first`: the step it first did, at that crossing; see rightOfWay); `passed` the nodes of its last PASSED turns, `turns` how many it took;
 // `stopped` the turn off a stop approach it last came to a full stop before (see targetSpeed). `kind` is 'car' or a
-// two-wheeler's (#77, tables.traffic.twoWheelers), and `size` that kind's footprint, top speed and acceleration
+// two-wheeler's (#77, tables.traffic.twoWheelers) or 'garbage' (a street event's garbage truck, #80: car-sized, it
+// stands `halt` s where it appears, then drives on), and `size` that kind's footprint, top speed and acceleration
 // (`kinds`): contacts, following and stopping go by each car's own; the lanes, boxes and gates a car may use are
-// worked out for a car, the largest kind.
+// worked out for a car, the largest kind. Street events close edges (see close): cars no longer turn into them nor
+// appear on them, and the ones on one drive on out of it.
 // Junctions are graph nodes of three or more arms. At unsignalled crossings the approaches drive in by priority (see
 // rightOfWay): the higher road class, and right before left between equal ones; at a stop sign only after a full stop.
 // Oncoming cars whose ways don't cross go together. At light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No
@@ -40,6 +42,8 @@ export function createTraffic(tables, map, random) {
   // Per kind: footprint (m), top speed (m/s) and acceleration (m/s²); a car keeps to the road's limit.
   const kinds = { car: { length: size.length, width: size.width, top: Infinity, accel: t.accel } };
   for (const [kind, k] of Object.entries(t.twoWheelers)) kinds[kind] = { length: k.length, width: k.width, top: (k.top ?? Infinity) / 3.6, accel: k.accel };
+  const garbage = tables.events.garbage;
+  kinds.garbage = { length: size.length, width: size.width, top: garbage.top / 3.6, accel: garbage.accel };
   // A new car's kind, from its id rather than a draw so the seeds keep their runs: the id times the golden ratio
   // spreads evenly over [0, 1), and each two-wheeler kind takes its share of it.
   function kindOf(id) {
@@ -55,6 +59,7 @@ export function createTraffic(tables, map, random) {
   const truckRadius = Math.max(...Object.values(tables.fleet).map((f) => Math.hypot(f.length, f.width) / 2));
   const { stopSpeed } = tables.fleet.truck; // the same for every Vehicle
   const cars = [];
+  const closed = new Uint8Array(map.graph.edges.length); // edge id → 1 while a street event closes it
   let nextId = 1;
   let now = 0; // step count; a crossing's or junction's per-step fields are valid while their `stamp` is `now`
   const pick = (list) => list[Math.floor(random() * list.length)];
@@ -366,13 +371,19 @@ export function createTraffic(tables, map, random) {
     }
     return false;
   }
+  // Never into a closed edge, while the run has a way on that isn't (events only close edges that leave one, see closable).
   function onward(route, last, car) {
     const list = ways[last.id];
+    let open = 0;
     let n = 0;
-    for (let i = 0; i < list.length; i++) if (fresh(route, list[i], car)) n++;
-    if (!n) return pick(list);
-    let k = Math.floor(random() * n);
-    for (let i = 0; i < list.length; i++) if (fresh(route, list[i], car) && k-- === 0) return list[i];
+    for (let i = 0; i < list.length; i++) {
+      if (closed[list[i].out.edge.id]) continue;
+      open++;
+      if (fresh(route, list[i], car)) n++;
+    }
+    if (!open) return pick(list);
+    let k = Math.floor(random() * (n || open));
+    for (let i = 0; i < list.length; i++) if (!closed[list[i].out.edge.id] && (!n || fresh(route, list[i], car)) && k-- === 0) return list[i];
   }
   function revisits(route, turn) {
     const g = groupAt[turn.id];
@@ -412,26 +423,32 @@ export function createTraffic(tables, map, random) {
     for (let i = 0; i < cars.length; i++) if ((cars[i].x - p.x) ** 2 + (cars[i].z - p.z) ** 2 < t.lookAhead ** 2) return false;
     return true;
   };
-  function spawn(truck, police) {
+  // A garbage truck stands farther from the junction ahead than `giveWay`, so that, standing, it never arrives there for
+  // right of way (see rightOfWay) and holds the crossing up.
+  // shortcut: measured to its run's end, which is a junction's box but for a run ending at a node of two arms; count on
+  // along such runs if a garbage truck is seen holding a crossing.
+  const backFromBox = (p) => p.path.length - p.s - size.length / 2 > t.giveWay;
+  function spawn(truck, police, kind = police ? 'car' : null) {
     const near = police ? Math.max(t.spawnDistance[0], tables.police.radius) : t.spawnDistance[0];
     const far = police ? Infinity : t.spawnDistance[1];
-    const atExit = exitSlots.length > 0 && random() < t.exitSpawn; // no draw on a map without exits
+    const atExit = kind !== 'garbage' && exitSlots.length > 0 && random() < t.exitSpawn; // no draw on a map without exits
     const list = atExit ? exitSlots : slots;
     let at = null;
     for (let i = 0; i < SPAWN_TRIES && !at && list.length; i++) {
       const p = pick(list);
       const d2 = (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
-      if (hidden(p, truck, near) && d2 <= far ** 2 && clear(p)) at = p;
+      if (!closed[p.path.edge.id] && (kind !== 'garbage' || backFromBox(p)) && hidden(p, truck, near) && d2 <= far ** 2 && clear(p)) at = p;
     }
-    if (!at) return;
+    if (!at) return null;
     const { path, s } = at;
     const route = [path];
     extend(route);
     const id = nextId++;
-    const kind = police ? 'car' : kindOf(id);
-    const car = { id, kind, size: kinds[kind], x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null };
+    kind ??= kindOf(id);
+    const car = { id, kind, size: kinds[kind], x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null, halt: 0 };
     place(car);
     cars.push(car);
+    return car;
   }
 
   // Sets `out` to the footprint corners of a vehicle (x, z, heading) of the given length and width, in order.
@@ -1076,12 +1093,12 @@ export function createTraffic(tables, map, random) {
     zebras = zebrasNow;
     for (let k = 0; k < zebras.length; k++) zebras[k].passing = false;
     let police = 0;
-    let leaving = 0;
+    let leaving = 0; // and garbage trucks, which come on top of the count too
     for (let i = cars.length - 1; i >= 0; i--) {
       const c = cars[i];
       const past = pastGate(c);
       if (c.gone || ((!c.police || past) && hidden(c, truck, t.despawnDistance)) || (past && (c.x - truck.x) ** 2 + (c.z - truck.z) ** 2 > haze ** 2)) cars.splice(i, 1);
-      else if (past) leaving++;
+      else if (past || c.kind === 'garbage') leaving++;
       else if (c.police) police++;
     }
     if (cars.length - police - leaving < count) spawn(truck, false);
@@ -1107,7 +1124,8 @@ export function createTraffic(tables, map, random) {
     for (let i = 0; i < cars.length; i++) targetSpeed(i, truck, lights);
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
-      car.speed = held.has(car.id) ? 0 : Math.min(targets[i], car.speed + car.size.accel * dt);
+      if (car.halt > 0) car.halt -= dt;
+      car.speed = held.has(car.id) || car.halt > 0 ? 0 : Math.min(targets[i], car.speed + car.size.accel * dt);
       car.s += car.speed * dt;
       while (car.s >= (car.route.length === 1 ? leaveAt[car.lane.id] : car.lane.length)) {
         if (car.route.length === 1) {
@@ -1142,7 +1160,48 @@ export function createTraffic(tables, map, random) {
     Object.assign(truckSize, { length, width });
   }
 
-  return { cars, step, touching: touchingCars, setTruck };
+  // Street events (#80). Whether edge e may be closed: it isn't between the boxes of one crossing, and every run cars
+  // drive into its end nodes by has a way on other than into it or another closed edge.
+  function closable(e) {
+    if (touching(e)) return false;
+    for (const n of [e.from, e.to]) {
+      for (const { in: run } of nodes[n].slots) {
+        if (!run || run.edge === e || !driven[run.id] || !ways[run.id].length) continue;
+        if (!ways[run.id].some((turn) => turn.out.edge !== e && !closed[turn.out.edge.id])) return false;
+      }
+    }
+    return true;
+  }
+  // Closes edge e (by id), or opens it again: a car planning to turn into it plans anew from that turn, unless it can't
+  // stop before the turn any more; then it drives in, and on out of it, as the cars on it do.
+  function close(e, shut = true) {
+    closed[e] = shut ? 1 : 0;
+    if (!shut) return;
+    for (const car of cars) {
+      let dist = car.lane.length - car.s; // centre to the start of route path i
+      for (let i = 1; i < car.route.length; i++) {
+        if (edgeOf(car.route[i]) === e) {
+          if (stoppable(car, dist - car.size.length / 2)) {
+            car.route.length = i; // route[i] is a turn: route[i - 1] the run it leaves
+            extend(car.route, car);
+          }
+          break;
+        }
+        dist += car.route[i].length;
+      }
+    }
+  }
+  const edgeOf = (p) => (p.kind === 'run' ? p.edge : p.out.edge).id;
+  // Whether a car is on edge e (by id), turning into it, plans to (see close) or still has its rear in it.
+  const uses = (e) => cars.some((c) => c.route.some((p) => edgeOf(p) === e) || (c.prev && c.s < c.size.length && edgeOf(c.prev) === e));
+  // A garbage truck standing `halt` s on a hidden lane place, as a car appears (see spawn); null where none is free.
+  function addGarbage(truck, halt) {
+    const car = spawn(truck, false, 'garbage');
+    if (car) car.halt = halt;
+    return car;
+  }
+
+  return { cars, step, touching: touchingCars, setTruck, closable, close, uses, addGarbage };
 }
 
 // Whether `at` is out of the truck's view: `distance` m away or more and off the lines along and across the truck by

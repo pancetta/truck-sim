@@ -190,7 +190,7 @@ describe('Sim: traffic gridlock soak', () => {
   // #46: over long runs at the top tier's count and at 40, with the truck parked off the road (cars only meet
   // cars) or driving the ?perf&auto loop, no car stands for more than `limit` s, not counting the time it waits
   // at a light that isn't green, near the truck, or queued behind the truck or a car that is moving or itself
-  // waiting so.
+  // waiting so. Street events (#80) are on: a garbage truck standing at its work waits too.
   // s; "about 30" in #46, where right before left could hold a car up to ~36 s behind a steady stream from its right,
   // which then let it go; the gridlocks held cars 90–414 s.
   const limit = 40;
@@ -204,7 +204,7 @@ describe('Sim: traffic gridlock soak', () => {
     if (excused.has(car)) return excused.get(car);
     excused.set(car, false); // a cycle of cars each queued behind the next is stuck
     const { traffic, truck, lights } = sim.state;
-    let ok = car.speed >= stopSpeed || Math.hypot(car.x - truck.x, car.z - truck.z) < 30;
+    let ok = car.speed >= stopSpeed || car.halt > 0 || Math.hypot(car.x - truck.x, car.z - truck.z) < 30;
     let dist = -car.s;
     for (const p of car.route) {
       if (ok || dist > 40) break;

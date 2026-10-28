@@ -4,7 +4,8 @@
 // of the pedestrians' outfits; an AI car's id picks it, as for the cars. That instance colour tints the whole model, so
 // the parts that should keep their own colour are dark (tyres, seat, jacket, trousers), where it hardly shows. Per kind, a near level within vehicles.near of
 // the truck (casting shadows) and a far one of a few boxes; each one instanced mesh coloured per instance. Only the
-// ones in view are drawn.
+// ones in view are drawn. Street events' garbage trucks (#80) are drawn here too: a white cab and a compactor body on a
+// car's footprint, with an orange band and a beacon.
 // shortcut: the wheels and the riders' legs don't turn; animate them if players notice up close.
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -70,7 +71,24 @@ const MODELS = {
       [box(0.36, 0.55, 0.3, 0, 0.85, -0.15, 0.7), PAINTED], [box(0.24, 0.24, 0.24, 0, 1.28, 0.15), PAINTED],
     ]),
   ],
+  garbage: () => [
+    merged([
+      ...[-0.78, 0.78].flatMap((x) => [1.4, -1.2].map((z) => [tyre(0.38, 0.28, 0.38, z).translate(x, 0, 0), TYRE])),
+      [box(1.6, 0.35, 4.3, 0, 0.3, 0), TYRE], // chassis
+      [box(1.85, 1.55, 1.35, 0, 0.55, 1.5), PAINTED], // cab
+      [box(1.7, 0.6, 0.05, 0, 1.35, 2.18), 0x22303a], // windscreen
+      [box(1.9, 1.75, 2.9, 0, 0.6, -0.75), PAINTED], // compactor body
+      [box(1.92, 0.15, 2.92, 0, 1.15, -0.75), 0xe8731c], // band
+      [box(1.8, 1.3, 0.4, 0, 0.55, -2.2), METAL], // rear loader
+      [box(0.25, 0.15, 0.25, 0, 2.1, 1.6), 0xffa21f], // beacon
+    ]),
+    merged([
+      [box(1.6, 0.75, 4.3, 0, 0, 0), TYRE],
+      [box(1.85, 1.55, 1.35, 0, 0.55, 1.5), PAINTED], [box(1.9, 1.75, 2.9, 0, 0.6, -0.75), PAINTED],
+    ]),
+  ],
 };
+const RADIUS = { garbage: 2.6 }; // m, the bounding sphere's; 1.2 for a two-wheeler
 
 export function createRiders(scene, tables) {
   const room = Math.max(...tables.rank.tiers.map((t) => t.traffic)); // more than the tier's two-wheelers
@@ -78,6 +96,7 @@ export function createRiders(scene, tables) {
   const colours = {
     scooter: tables.vehicles.paints.map((hex) => new THREE.Color(hex)),
     bicycle: tables.pedestrians.outfits.map((hex) => new THREE.Color(hex)),
+    garbage: [new THREE.Color(0xf2f2ee)],
   };
   // Per kind, [near, far] instanced meshes.
   const meshes = {};
@@ -101,9 +120,9 @@ export function createRiders(scene, tables) {
   const turn = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const one = new THREE.Vector3(1, 1, 1);
-  const bounds = new THREE.Sphere(new THREE.Vector3(), 1.2);
+  const bounds = new THREE.Sphere(new THREE.Vector3(), 1.2); // its radius set per kind
 
-  // Draws the two-wheelers among the Sim's AI `cars` that pass `inView` (a test on a bounding sphere), in detail within
+  // Draws the two-wheelers and garbage trucks among the Sim's AI `cars` that pass `inView` (a test on a bounding sphere), in detail within
   // vehicles.near of `truck`.
   function update(cars, truck, inView) {
     for (const mesh of all) mesh.count = 0;
@@ -111,6 +130,7 @@ export function createRiders(scene, tables) {
       const pair = meshes[car.kind];
       if (!pair) continue;
       bounds.center.set(car.x, 0.8, car.z);
+      bounds.radius = RADIUS[car.kind] ?? 1.2;
       if (!inView(bounds)) continue;
       const mesh = pair[Math.hypot(car.x - truck.x, car.z - truck.z) < tables.vehicles.near ? 0 : 1];
       if (mesh.count === room) continue; // cars leaving through a gate don't count against the tier

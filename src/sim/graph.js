@@ -114,8 +114,9 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   // Shortest legal ways by length to the pose `to`, one search for any number of starts: a function from a start pose
   // to { length (m), points } (the polyline from the start to `to`, both ends included), or null where no road leads.
   // One-way edges are only followed from their `from` node to their `to` node, unless `legal` is false. Edges narrower
-  // than `minWidth` m are never followed, nor is one the way ends on; the one it starts on always is.
-  function towards(to, legal = true, minWidth = 0) {
+  // than `minWidth` m are never followed, nor is one the way ends on; the one it starts on always is. Edges whose ids
+  // are in `closed` (a Set; street events, #80) are not driven along: from a pose on one, only out by its nearer end.
+  function towards(to, legal = true, minWidth = 0, closed = null) {
     const t = to.edge;
     if (t.width < minWidth) return () => null;
     const dist = new Float64Array(nodes.length).fill(Infinity);
@@ -131,7 +132,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       done[n] = 1;
       for (const id of nodes[n].arms) {
         const e = edges[id];
-        if ((against(e) && e.to !== n) || e.width < minWidth) continue; // m → n would run against it, or is too narrow
+        if ((against(e) && e.to !== n) || e.width < minWidth || closed?.has(id)) continue; // m → n would run against it, is too narrow or is closed
         const m = e.from === n ? e.to : e.from;
         if (dist[n] + e.length < dist[m]) [dist[m], via[m]] = [dist[n] + e.length, e];
       }
@@ -139,8 +140,10 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
 
     return (from) => {
       const f = from.edge;
-      const direct = f === t && (!against(f) || to.s >= from.s) ? Math.abs(from.s - to.s) : Infinity;
-      const [back, ahead] = [against(f) ? Infinity : from.s + dist[f.from], f.length - from.s + dist[f.to]];
+      const shut = closed?.has(f.id) ?? false;
+      const direct = f === t && !shut && (!against(f) || to.s >= from.s) ? Math.abs(from.s - to.s) : Infinity;
+      const back = against(f) || (shut && from.s > f.length / 2) ? Infinity : from.s + dist[f.from];
+      const ahead = shut && from.s <= f.length / 2 ? Infinity : f.length - from.s + dist[f.to];
       const length = Math.min(direct, back, ahead);
       if (length === Infinity) return null;
       if (length === direct) return { length, points: tidy(cut(t, from.s, to.s)) };
@@ -158,7 +161,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     };
   }
 
-  const route = (from, to, minWidth) => towards(to, true, minWidth)(from);
+  const route = (from, to, minWidth = 0, closed = null) => towards(to, true, minWidth, closed)(from);
 
   return { nodes, edges, paths: lanePaths(nodes, edges), nearest, project, onRoad, along, pointAt, towards, route };
 }

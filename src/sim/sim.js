@@ -4,6 +4,7 @@
 import { createCells } from './cells.js';
 import { boxesOverlap, createTraffic } from './traffic.js';
 import { createPedestrians } from './pedestrians.js';
+import { createEvents } from './events.js';
 import { clock as dayClock, fleet } from '../tables.js';
 
 const G = 9.81; // m/s²
@@ -66,6 +67,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `pedestrians` are the people on the pavements: { id, x, z, heading } and more (see pedestrians.js).
+  // `events` are the street events: markets and roadworks closing an edge, garbage trucks (see events.js). The truck's
+  // route and the offers' go round the edges they close, `closed` (a Set of edge ids).
   // `zebras` are map.zebras with `people` (waiting at it or on it), `passing` (a vehicle on it or that can't stop before
   // it), `truckOn` (the truck's footprint on its strip) and `owed` (see checkZebras);
   // `zebraAhead` is whether one lies ahead on the truck's edge within tables.signs.hint (see zebraAhead()).
@@ -101,6 +104,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lightsVersion: 0,
     traffic: [],
     pedestrians: [],
+    events: [],
+    closed: new Set(),
     zebras: (map?.zebras ?? []).map((zebra) => ({ ...zebra, people: 0, passing: false, truckOn: false, owed: false })),
     zebraAhead: false,
     policeSees: false,
@@ -152,6 +157,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   if (traffic) state.traffic = traffic.cars;
   const pedestrians = map ? createPedestrians(tables, map, seeded(tables.pedestrians.seed)) : null;
   if (pedestrians) state.pedestrians = pedestrians.people;
+  const events = traffic ? createEvents(tables, map, traffic, seeded(tables.events.seed)) : null;
+  if (events) [state.events, state.closed] = [events.list, events.closed];
+  const closed = state.closed;
   // The weather's spells (tables.weather): clear and rain or fog by turns, drawn from its own seeded random and timed on
   // profile.timePlayed, so the same seed brings the same weather and it goes on across loads without being saved.
   const w = tables.weather;
@@ -183,7 +191,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       else if (e.oneWay) headings.push(toward(e.points[k - 1], e.points[k])); // a one-way's end, the way it came in
       if (!e.oneWay && (!onPoint || k > 0)) headings.push(toward(e.points[onPoint ? k : k + 1], e.points[onPoint ? k - 1 : k]));
       const lane = e.oneWay ? 0 : e.laneOffset;
-      roadPoints.push({ ...map.graph.pointAt(e, s), headings, lane, junction: junction(e.from, s) || junction(e.to, e.length - s) });
+      roadPoints.push({ ...map.graph.pointAt(e, s), headings, lane, junction: junction(e.from, s) || junction(e.to, e.length - s), edge: e.id });
     }
   }
 
@@ -288,6 +296,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     p.distance += moved;
     burn(moved, reversing ? input.brake : input.gas);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
+    events?.step(dt, truck, clearOf);
     truckAtZebras(grip);
     // A moving truck sends people on a strip within tables.zebras.reach m plus `warn` s of its speed back off it.
     const { reach, warn } = tables.zebras;
@@ -720,7 +729,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     here ??= map.graph.nearest(truck.x, truck.z);
     const onRoad = here.d <= here.edge.width / 2;
     const { cell } = tables.city;
-    const key = onRoad ? `${here.edge.id},${here.k},${target.id}` : `off,${Math.floor(truck.x / cell)},${Math.floor(truck.z / cell)},${target.id}`;
+    const at = onRoad ? `${here.edge.id},${here.k}` : `off,${Math.floor(truck.x / cell)},${Math.floor(truck.z / cell)}`;
+    const key = `${at},${target.id},${events?.version}`;
     if (key === routeKey) return;
     routeKey = key;
     const width = order.type === 'oversized' && order.phase === 'dropoff' ? o.oversizedWidth : 0;
@@ -732,10 +742,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // shortest against them; null where no road leads there at all. On the road it runs from `here`, its first point (the
   // truck's own) left out. Off it, it joins the road where straight across plus on by road is shortest, along a line
   // clear of buildings, and starts at that join. With a `width`, only over edges that wide (see graph.towards()), else as
-  // without one.
+  // without one. Never along an edge a street event closes.
   function routeFrom(here, onRoad, to, width = 0) {
     const g = map.graph;
-    return wayFrom(here, onRoad, g.towards(to, true, width)) ?? wayFrom(here, onRoad, g.towards(to, false, width)) ?? (width ? routeFrom(here, onRoad, to) : null);
+    return wayFrom(here, onRoad, g.towards(to, true, width, closed)) ?? wayFrom(here, onRoad, g.towards(to, false, width, closed)) ?? (width ? routeFrom(here, onRoad, to) : null);
   }
   function wayFrom(here, onRoad, way) {
     if (onRoad) {
@@ -743,6 +753,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       return r && { length: r.length, points: r.points.slice(1) };
     }
     const joins = map.graph.edges
+      .filter((e) => !closed.has(e.id))
       .map((e) => map.graph.project(e, truck.x, truck.z))
       .map((p) => ({ p, r: way(p) }))
       .filter(({ r }) => r)
@@ -978,7 +989,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const wide = places.filter((s) => s.pose.edge.width >= width);
       const to = pick(wide.filter((s) => (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier)));
       const from = pick(wide.filter((s) => s !== to));
-      const path = from && to && map.graph.route(from.pose, to.pose, width);
+      const path = from && to && map.graph.route(from.pose, to.pose, width, closed);
       if (!path) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
       const distance = path.length;
       const { time, pay: factor } = special === 'express' ? o.express : { time: 1, pay: 1 };
@@ -1002,7 +1013,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Puts the truck on the nearest free lane pose of the road points, facing along the road, at a standstill in first
   // gear. In a junction, where AI cars would wait for it, only when no other pose is free.
   function resetToRoad() {
-    const poses = roadPoints.map((p) => ({ pose: lanePose(p), junction: p.junction }));
+    const poses = roadPoints.filter((p) => !closed.has(p.edge)).map((p) => ({ pose: lanePose(p), junction: p.junction }));
     const away = ({ pose: p }) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
     poses.sort((a, b) => a.junction - b.junction || away(a) - away(b));
     const free = ({ pose: p }) => fits(p) && !traffic?.touching(corners(p)).length;
@@ -1047,7 +1058,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const { bounds } = map;
     if (minX < bounds.minX || minZ < bounds.minZ || maxX > bounds.maxX || maxZ > bounds.maxZ) return false;
     // Bounding boxes apart (touching included) can't overlap; this skips most candidates cheaply.
-    return !solids.some(minX, minZ, maxX, maxZ, (b) => !(b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) && overlaps(pose, b));
+    const hits = (b) => !(b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) && overlaps(pose, b);
+    for (const x of state.events) if (x.on && x.barriers.some(hits)) return false;
+    return !solids.some(minX, minZ, maxX, maxZ, hits);
+  }
+
+  // Whether a closing street event may put its barriers up: no part of the truck is within 1 m of its edge's road and
+  // pavements, where the barriers stand and which they close off.
+  function clearOf(x) {
+    const e = map.graph.edges[x.edge];
+    const reach = e.width / 2 + tables.osm.pavement + tables.events.depth + Math.hypot(v.length, v.width) / 2 + 1;
+    return map.graph.project(e, truck.x, truck.z).d > reach;
   }
 
   // How far point `p` lies outside the truck's footprint at `pose`; negative inside, by how far it is in.

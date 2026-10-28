@@ -164,12 +164,24 @@ _Avoid_: skin, cosmetic
 ### Traffic and rules
 
 **AI car**:
-A vehicle of the city's traffic, driven by the **Sim**: a car or a **Two-wheeler**.
+A vehicle of the city's traffic, driven by the **Sim**: a car, a **Two-wheeler** or a **Garbage truck**.
 _Avoid_: NPC, bot, traffic car
 
 **Two-wheeler** ("Zweirad"):
 An **AI car** of a smaller kind with its own size, speed and acceleration: a scooter ("Roller"), which rides at the road's limit, or a cyclist ("Radfahrer"), who rides slower. The cars behind a cyclist follow it; no **AI car** overtakes.
 _Avoid_: Vespa (a brand), bike, motorbike
+
+**Garbage truck** ("Müllwagen"):
+An **AI car** that a **Street event** puts in a lane, standing there at its work for about a minute before it drives on. It is car-sized, like the small trucks of narrow old streets. The cars behind it wait; the truck may pass it where the road leaves room.
+_Avoid_: dustcart, bin lorry
+
+**Street event** ("Straßenereignis"):
+Something happening on a street for a while, from a seeded schedule: a market ("Markt") or roadworks ("Baustelle"), which close a street between two **Junctions** with barriers at both ends, or a **Garbage truck**. The route arrow, the minimap's route, **Offers** and **AI cars** go round a **Closed street**.
+_Avoid_: incident, roadblock
+
+**Closed street** ("Gesperrte Straße"):
+A street a **Street event** closes: no route leads along it, no **AI car** turns into it or appears on it, and once nobody is on it, barriers go up across it at both ends.
+_Avoid_: blocked road, closed edge (the code's word, not the players')
 
 **Police car** ("Polizei"):
 An **AI car** on patrol whose presence makes **Rule fines** possible.

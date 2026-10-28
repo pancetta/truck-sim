@@ -461,6 +461,31 @@ export const zebras = {
   stripe: 0.5,
 };
 
+// Street events (#80, sim/events.js), from their own seeded schedule (`seed`): every `every` s (least, most) one more
+// opens while fewer than `count` are open, its kind drawn by `weight`, lasting `duration` s (least, most). A market or
+// roadworks closes an edge between two junctions whose stretch between the barriers is `minLength` m or more, has no
+// spot or zebra crossing, and leaves a way round; it opens `hidden` m or more from the truck, out of its view (as the AI
+// cars appear, traffic.spawnView). Its barriers go up once no car or truck is on the edge, `back` m out from each
+// junction's box, `depth` m deep, across the road and its pavements. A garbage truck is an AI car of its own kind that
+// appears standing in a lane, out of view, and stands there `duration` s before it drives on: car-sized (the small
+// trucks of narrow old streets), at most `top` km/h, accelerating at `accel` m/s². Their look: streetEvents.js and
+// riders.js.
+export const events = {
+  seed: 80,
+  count: 2,
+  every: [30, 90],
+  hidden: 60,
+  kinds: {
+    market: { weight: 1, duration: [240, 480] },
+    roadworks: { weight: 1, duration: [240, 480] },
+    garbage: { weight: 2, duration: [45, 75] },
+  },
+  minLength: 16,
+  back: 1,
+  depth: 0.4,
+  garbage: { top: 30, accel: 1.2 },
+};
+
 export const city = {
   cell: 14, // m, side of the spatial index cells the colliders and road edges are filed under
   resetSpacing: 14, // m between the road points along each edge that Reset to road picks from

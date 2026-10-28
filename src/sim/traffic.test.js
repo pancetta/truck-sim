@@ -995,7 +995,8 @@ describe('Sim: two-wheelers (#77)', () => {
   const { twoWheelers, followGap } = tables.traffic;
 
   test('scooters and cyclists come at their share, each at its own size, scooters at the limit and cyclists at their top speed', () => {
-    const busy = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 30 })) } };
+    // No street events: their garbage trucks come on top of the shares.
+    const busy = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 30 })) }, events: { ...tables.events, count: 0 } };
     const sim = createSim(busy, lattice(), seeded(2));
     const kinds = new Map(); // id → kind
     const fastest = { car: 0, scooter: 0, bicycle: 0 };
