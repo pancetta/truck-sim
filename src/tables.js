@@ -59,7 +59,7 @@ export const orders = {
   dockCentre: 1, // m either side of the bay's centre line; the painted bay lines show it
   dockDepth: 1, // m from the middle of the truck's rear to the dock edge (the building face)
   nightBonus: 0.15, // share of the pay for a delivery completed at night (clock.night)
-  rainBonus: 0.15, // share of the pay for a delivery completed in rain (weather)
+  rainBonus: 0.2, // share of the pay for a delivery completed in rain (weather): rarer than night, and harder
   // Offer types by the lowest rank tier that offers them (names in strings.offerTypes). The type comes from
   // the drop-off and the cargo: dock or fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, dock: 2, fragileDock: 3 },
@@ -76,7 +76,8 @@ export const orders = {
 };
 
 // Rank points per delivery; a tier is reached at its points and brings `traffic` AI cars into the city.
-// Titles are in strings.rankTitles, same order.
+// Titles are in strings.rankTitles, same order. The economy run (#58, scripts/economy.js) earns about 150 points an
+// hour, so the tiers come at about 0.4, 1.3, 3.3 and 7 h of play, alongside the Werkstatt levels they unlock.
 export const rank = {
   pointsPerDelivery: 10,
   timeBonusPoints: 10, // extra points for the full time bonus, in proportion to the share earned
@@ -84,10 +85,10 @@ export const rank = {
   dockPoints: 10, // extra points for a delivery reversed into a dock bay
   tiers: [
     { points: 0, traffic: 8 },
-    { points: 30, traffic: 9 },
-    { points: 80, traffic: 10 },
-    { points: 160, traffic: 11 },
-    { points: 300, traffic: 12 },
+    { points: 60, traffic: 9 },
+    { points: 200, traffic: 10 },
+    { points: 500, traffic: 11 },
+    { points: 1000, traffic: 12 },
   ].map((tier, i) => ({ ...tier, title: strings.rankTitles[i] })),
 };
 
@@ -151,11 +152,11 @@ export const lights = {
 
 // € per offence; money never drops below 0, the unpaid rest is dropped.
 export const fines = {
-  redLight: 100, // only while a police car sees the truck (see police)
+  redLight: 150, // only while a police car sees the truck (see police)
   speeding: 50, // only while a police car sees the truck, at most once per `speeding.cooldown`
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
-  giveWay: 100, // only while a police car sees the truck (see giveWay)
-  stopSign: 100, // only while a police car sees the truck (see stopSign)
+  giveWay: 150, // only while a police car sees the truck (see giveWay)
+  stopSign: 150, // only while a police car sees the truck (see stopSign)
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
@@ -192,8 +193,8 @@ export const weather = {
   streaks: { box: [30, 14, 30], drops: 1500, size: [0.02, 0.8], fall: 11, opacity: 0.5, near: [1.5, 4], colour: 0xc8d0d8, floor: 0.12 },
 };
 
-// The fuel tank (profile.fuel, litres), `tank` litres before the Werkstatt's tank upgrade; a new profile starts full. A full tank lasts about 4–5 average deliveries (one
-// is about 1.7 km of driving on Monti, to the pickup and on).
+// The fuel tank (profile.fuel, litres), `tank` litres before the Werkstatt's tank upgrade; a new profile starts full. A
+// full tank lasts about 4–5 average deliveries: the economy run (#58, scripts/economy.js) burns about 87 L a delivery.
 export const fuel = {
   tank: 400,
   // Litres per km driven, times (1 + perTonne × tonnes of cargo) and (1 + perPedal × the driving pedal, 0..1); a test
@@ -222,8 +223,8 @@ export const energy = {
   tired: 0.3,
   exhausted: 0.12,
   lag: [0.8, 3],
-  snack: { restore: 0.3, price: 15, time: 4 },
-  meal: { price: 40, time: 10 },
+  snack: { restore: 0.3, price: 20, time: 4 },
+  meal: { price: 60, time: 10 },
 };
 
 // A petrol station's look (renderer.js), our own: a pump island on the pavement beside its zone, as long as `island`
