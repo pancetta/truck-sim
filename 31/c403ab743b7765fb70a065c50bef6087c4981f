@@ -1,0 +1,21 @@
+src/sim/orders.test.js
+  s_2bca1c1ec09844::t_d51546af462b29 684,708-709,712-713
+src/tables.js
+  s_2bca1c1ec09844::t_d51546af462b29 69-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "31c403ab743b7765fb70a065c50bef6087c4981f",
+  "prompts": {},
+  "sessions": {
+    "s_2bca1c1ec09844": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6dc12cf7-79d7-4122-bf1f-9604aded4501",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
