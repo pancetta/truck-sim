@@ -12,7 +12,7 @@
 // rightOfWay): the higher road class, and right before left between equal ones; at a stop sign only after a full stop.
 // Oncoming cars whose ways don't cross go together. At light junctions a car turning left waits for the traffic coming the other way (see atJunctions). No
 // car drives into a crossing or junction whose exit lane is queued up (see exitBlocked), or where the truck stands in
-// its way (see truckBlocks).
+// its way (see truckBlocks). A zebra crossing a pedestrian waits at or walks on is a stop line to them (see atZebras).
 // The step allocates next to nothing (#31): footprints, poses and the neighbour grid are scratch that is
 // reused every step, and per-path data is looked up by path id, so the cost grows about linearly with the cars.
 
@@ -1025,11 +1025,11 @@ export function createTraffic(tables, map, random) {
 
   // Drops cars that left the road or (police aside) the truck's surroundings, spawns one while fewer than `count`
   // and a police car while fewer than tables.police.count, then drives each car at `share` of their cruise and turn
-  // speeds; the ones in `held` (ids, a Set or Map) stand still. `crossings` are the Sim's zebra crossings, map.zebras
+  // speeds; the ones in `held` (ids, a Set or Map) stand still. `zebrasNow` are the Sim's zebra crossings, map.zebras
   // with their `people` (see atZebras), whose `passing` it sets.
-  function step(dt, truck, lights, count, held = new Set(), share = 1, crossings = []) {
+  function step(dt, truck, lights, count, held = new Set(), share = 1, zebrasNow = []) {
     pace = share;
-    zebras = crossings;
+    zebras = zebrasNow;
     for (let k = 0; k < zebras.length; k++) zebras[k].passing = false;
     let police = 0;
     for (let i = cars.length - 1; i >= 0; i--) {

@@ -39,10 +39,12 @@ function bench(frames, lights) {
   const traffic = createTraffic(tables, map, seeded(1));
   const truck = { ...frames[0].truck };
   const held = new Set();
+  // Every other zebra crossing with someone at it, so the cars meet stopping ones and passing ones (#79).
+  const zebras = map.zebras.map((zebra, k) => ({ ...zebra, people: k % 2, passing: false }));
   const play = (i) => {
     Object.assign(truck, frames[i].truck);
     for (let k = 0; k < lights.length; k++) lights[k].phase = frames[i].phases[k];
-    traffic.step(step, truck, lights, 100, held);
+    traffic.step(step, truck, lights, 100, held, 1, zebras);
   };
   // Fills the city and warms up the JIT; new cars need `lookAhead` of room, so filling takes a while.
   for (let i = 0; i < 1000; i++) play(i);

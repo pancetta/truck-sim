@@ -4,8 +4,8 @@
 // through another going the same way. Like the AI cars they appear and leave out of the truck's view, keeping the
 // count the Sim asks for.
 // They set foot on the road only at a zebra crossing (#79, map.zebras, tables.zebras): one walking past a kerb may
-// cross. It waits there until no vehicle is on the strip or can't stop before it any more and the truck isn't moving
-// near, then walks straight over to a walk passing the other kerb. One on the strip as the truck comes near steps
+// cross. It waits there until no vehicle, the truck included, is on the strip or can't stop before it, then walks
+// straight over to a walk passing the other kerb. One on the strip as the truck comes near steps
 // back quickly, away from the truck. On the strip they are solid to the truck (sim.js); nothing else collides with them.
 // A pedestrian is { id, x, z, heading, walk, s (m along it), zebra (index, -1 for none), waiting, onRoad (off the
 // kerb, crossing) } and its crossing's state. Walks are closed polylines { points, at, length } walked forwards: a
@@ -57,18 +57,18 @@ export function createPedestrians(tables, map, random) {
     out.heading = Math.atan2(b.x - a.x, b.z - a.z);
   }
 
-  // Each walk's `stops`, where it passes a zebra's kerb ({ s, k (the zebra), side (of its kerbs) }, by s), and each
-  // zebra's `ends` per side, where a pedestrian crossing to that side joins a walk ({ walk, s }). A zebra needs both.
+  // Each walk's `stops`, where it passes a zebra's kerb ({ s, zebra (its index), side (of its kerbs) }, by s), and
+  // each zebra's `ends` per side, where a pedestrian crossing to that side joins a walk ({ walk, s }). A zebra needs
+  // both.
   const zt = tables.zebras;
-  const zebras = map.zebras ?? [];
-  const ends = zebras.map(({ kerbs }) => kerbs.map((kerb) => walks.flatMap((walk) => {
+  const ends = (map.zebras ?? []).map(({ kerbs }) => kerbs.map((kerb) => walks.flatMap((walk) => {
     const near = nearest(walk, kerb);
     return near.d < k + 0.5 ? [{ walk, s: near.s }] : [];
   })));
   for (const walk of walks) walk.stops = [];
-  ends.forEach((sides, kz) => {
+  ends.forEach((sides, zebra) => {
     if (sides.some((list) => !list.length)) return;
-    sides.forEach((list, side) => list.forEach(({ walk, s }) => walk.stops.push({ s, k: kz, side })));
+    sides.forEach((list, side) => list.forEach(({ walk, s }) => walk.stops.push({ s, zebra, side })));
   });
   for (const walk of walks) walk.stops.sort((a, b) => a.s - b.s);
 
@@ -76,23 +76,24 @@ export function createPedestrians(tables, map, random) {
   for (const walk of walks) for (let s = 0; s < walk.length; s += PLACES) places.push({ walk, s });
 
   // Drops the pedestrians out of view past `despawnDistance`, adds one while fewer than `count`, and walks them.
-  // `crossings` are the Sim's zebras, map.zebras with `passing` (traffic.js) and `people` (waiting at or on it, which
-  // this sets); `near` is the truck's footprint grown by tables.zebras.reach (corners in order).
-  function step(dt, truck, count, crossings = [], near = null) {
+  // `zebras` are the Sim's, map.zebras with `passing` (a vehicle on it or that can't stop before it, set by traffic.js
+  // and sim.js) and `people` (waiting at it or on it, which this sets); `near` is the truck's footprint grown as far as
+  // the truck should keep pedestrians off a strip (corners in order).
+  function step(dt, truck, count, zebras = [], near = null) {
     for (let i = people.length - 1; i >= 0; i--) {
       if (!outOfView(people[i], truck, p.despawnDistance, viewCos)) continue;
       people[i] = people[people.length - 1]; // order doesn't matter, and splice would allocate
       people.pop();
     }
     if (people.length < count) spawn(truck);
-    for (let i = 0; i < crossings.length; i++) crossings[i].people = 0;
+    for (let i = 0; i < zebras.length; i++) zebras[i].people = 0;
     const d = p.speed * dt;
     for (let i = 0; i < people.length; i++) {
       const person = people[i];
       if (person.zebra < 0) walkOn(person, d);
-      else if (person.waiting) wait(person, dt, truck, crossings[person.zebra], near);
-      else cross(person, dt, truck, crossings[person.zebra], near);
-      if (person.zebra >= 0) crossings[person.zebra].people++;
+      else if (person.waiting) wait(person, dt, zebras[person.zebra]);
+      else cross(person, dt, truck, zebras[person.zebra], near);
+      if (person.zebra >= 0) zebras[person.zebra].people++;
     }
   }
 
@@ -106,7 +107,7 @@ export function createPedestrians(tables, map, random) {
       const s = stop.s < from ? stop.s + walk.length : stop.s; // passed round the end of the walk
       if (s <= from || s > person.s || random() >= zt.use) continue;
       person.s = stop.s;
-      person.zebra = stop.k;
+      person.zebra = stop.zebra;
       person.side = stop.side;
       person.waiting = true;
       person.waited = 0;
@@ -116,13 +117,12 @@ export function createPedestrians(tables, map, random) {
     pose(walk, person.s, person);
   }
 
-  // At the kerb until the way is clear, then out over the strip to a walk past the other kerb; after
-  // tables.zebras.patience s, on along its walk.
-  function wait(person, dt, truck, zebra, near) {
+  // At the kerb until no vehicle is on the strip or can't stop before it (`passing`), then out over the strip to a
+  // walk past the other kerb; after tables.zebras.patience s, on along its walk.
+  function wait(person, dt, zebra) {
     person.waited += dt;
     if (person.waited > zt.patience) return void (person.zebra = -1);
-    const moving = Math.abs(truck.speed) > tables.vehicle.stopSpeed && (truck.x - zebra.x) ** 2 + (truck.z - zebra.z) ** 2 < zt.look ** 2;
-    if (zebra.passing || moving || (near && boxesOverlap(near, zebra.strip))) return;
+    if (zebra.passing) return;
     const list = ends[person.zebra][1 - person.side];
     person.end = list[Math.floor(random() * list.length)];
     pose(person.end.walk, person.end.s, to);
@@ -153,9 +153,11 @@ export function createPedestrians(tables, map, random) {
     if (person.t <= 0) {
       person.waiting = true;
       person.waited = 0;
+      person.hurry = false;
       return pose(person.walk, person.s, person);
     }
     if (person.t >= person.span) {
+      person.hurry = false;
       person.walk = person.end.walk;
       person.s = person.end.s;
       person.zebra = -1;

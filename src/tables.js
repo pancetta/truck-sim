@@ -370,18 +370,19 @@ export const pedestrians = {
 // a lower road class where it meets a higher one, of the `classes` here (none on one-lane service edges): `back` m out
 // from the junction's mouth to the strip's middle, `depth` m deep along the road, where the arm is long enough and a
 // pavement line passes both kerbs. A pedestrian walking past a kerb crosses with chance `use`, waits there until no
-// vehicle is on the strip or can't stop before it, and the truck isn't moving within `look` m; after `patience` s it
-// walks on. One on the strip as the truck comes within `reach` m of it steps back, away from the truck, at
-// `stepBack` m/s; on the strip they are solid to the truck. Its stripes (renderer.js) are `stripe` m wide with as
-// much gap.
+// vehicle is on the strip or can't stop before it (the truck at full brake with `margin` m to spare); after `patience`
+// s it walks on. One on the strip as the truck comes within `reach` m of it, plus `warn` s of its speed, steps back,
+// away from the truck, at `stepBack` m/s; on the strip they are solid to the truck. Its stripes (renderer.js) are
+// `stripe` m wide with as much gap.
 export const zebras = {
   classes: ['secondary', 'tertiary', 'residential', 'unclassified'],
   back: 3,
   depth: 4,
   use: 0.5,
-  look: 20,
+  margin: 2,
   patience: 20,
   reach: 2,
+  warn: 1.5,
   stepBack: 3,
   stripe: 0.5,
 };

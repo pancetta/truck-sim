@@ -55,7 +55,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
   // `pedestrians` are the people on the pavements: { id, x, z, heading } and more (see pedestrians.js).
-  // `zebras` are map.zebras with `people` (waiting at it or on it) and `passing` (a car on it or committed to it);
+  // `zebras` are map.zebras with `people` (waiting at it or on it), `passing` (a vehicle on it or that can't stop before
+  // it), `truckOn` (the truck's footprint on its strip) and `owed` (see checkZebras);
   // `zebraAhead` is whether one lies ahead on the truck's edge within tables.signs.hint (see zebraAhead()).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
@@ -88,7 +89,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lightsVersion: 0,
     traffic: [],
     pedestrians: [],
-    zebras: (map?.zebras ?? []).map((zebra) => ({ ...zebra, people: 0, passing: false })),
+    zebras: (map?.zebras ?? []).map((zebra) => ({ ...zebra, people: 0, passing: false, truckOn: false, owed: false })),
     zebraAhead: false,
     policeSees: false,
     junctionRule: null,
@@ -261,8 +262,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const before = met.length ? traffic.touching(corners({ x, z, heading })) : [];
     const closer = (c) => outside(c, truck) < outside(c, { x, z, heading }) - 1e-6;
     const pushed = before.filter((c) => met.includes(c) && closer(c));
-    const blocked = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0 || onZebra();
-    const hit = blocked && !state.collision && speedBefore >= o.hitSpeed;
+    const solid = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0;
+    const blocked = solid || onZebra(); // a pedestrian stops the truck too, but it's no Hit
+    const hit = solid && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
     checkRedLight(frontBefore, front()); // before touchCars, which may stop the truck
@@ -273,7 +275,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     p.distance += moved;
     burn(moved, reversing ? input.brake : input.gas);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
-    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, corners(truck, tables.zebras.reach));
+    truckAtZebras(grip);
+    const { reach, warn } = tables.zebras;
+    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, corners(truck, reach + Math.abs(truck.speed) * warn));
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
     if (map) state.zebraAhead = zebraAhead();
@@ -471,19 +475,36 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs a fine if the
-  // police see it, once per pass: the pass lasts while the truck's footprint is on the strip.
-  let onZebras = new Set(); // the zebras whose strip the truck's footprint is on
+  // police see it, once per pass: the pass lasts while the truck's footprint is on the strip (`truckOn`). Only if the
+  // truck could still have stopped once they were there (`owed`, see truckAtZebras): one who came to the kerb as it
+  // was already too close doesn't count.
   function checkZebras() {
     if (!state.zebras.length) return;
     const box = corners(truck);
     const reach = v.length + 2 * tables.zebras.depth; // m between centres within which the strip and the truck may meet
-    const next = new Set();
     for (const zebra of state.zebras) {
-      if ((zebra.x - truck.x) ** 2 + (zebra.z - truck.z) ** 2 > reach ** 2 || !boxesOverlap(box, zebra.strip)) continue;
-      if (!onZebras.has(zebra) && zebra.people && state.policeSees) fine('zebra');
-      next.add(zebra);
+      const on = (zebra.x - truck.x) ** 2 + (zebra.z - truck.z) ** 2 <= reach ** 2 && boxesOverlap(box, zebra.strip);
+      if (on && !zebra.truckOn && zebra.owed && state.policeSees) fine('zebra');
+      zebra.truckOn = on;
     }
-    onZebras = next;
+  }
+
+  // A zebra crossing the truck is on, or is heading for and couldn't stop before at full brake (on this `grip`, with
+  // tables.zebras.margin m to spare), is `passing`, as one an AI car is committed to (traffic.js): no pedestrian sets
+  // out over it. After the traffic's step, which clears the flags. A zebra with people at it while the truck isn't
+  // committed to it is `owed` until they are gone.
+  function truckAtZebras(grip) {
+    const sign = Math.sign(truck.speed);
+    const [fx, fz] = [Math.sin(truck.heading) * sign, Math.cos(truck.heading) * sign];
+    const stop = truck.speed ** 2 / ((2 * v.brakeForce * grip) / truck.mass) + tables.zebras.margin;
+    for (const zebra of state.zebras) {
+      const [dx, dz] = [zebra.x - truck.x, zebra.z - truck.z];
+      const ahead = dx * fx + dz * fz - v.length / 2 - tables.zebras.depth / 2; // the leading bumper to the strip
+      const across = Math.abs(dx * fz - dz * fx);
+      const committed = zebra.truckOn || (sign && ahead > 0 && ahead < stop && across < zebra.half + v.width);
+      if (committed) zebra.passing = true;
+      zebra.owed = zebra.people > 0 && (zebra.owed || !committed);
+    }
   }
 
   // Whether a zebra crossing lies ahead along the edge the truck's leading bumper is on (backwards when reversing),
