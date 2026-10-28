@@ -276,8 +276,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     burn(moved, reversing ? input.brake : input.gas);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
     truckAtZebras(grip);
+    // A moving truck sends people on a strip within tables.zebras.reach m plus `warn` s of its speed back off it.
     const { reach, warn } = tables.zebras;
-    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, corners(truck, reach + Math.abs(truck.speed) * warn));
+    const near = Math.abs(truck.speed) > v.stopSpeed ? corners(truck, reach + Math.abs(truck.speed) * warn) : null;
+    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, near);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
     if (map) state.junctionRule = junctionAhead();
     if (map) state.zebraAhead = zebraAhead();

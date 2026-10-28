@@ -158,9 +158,18 @@ describe('zebra crossings: the truck', () => {
   test('pedestrians cross in front of the truck standing just short of the strip; with it on the strip they wait, then give up', () => {
     const near = createSim(crowd(withTraffic(0)), map, seeded(1));
     Object.assign(near.state.truck, before(0.5));
-    let crossed = false;
-    steps(near, 60, IDLE, () => (crossed ||= near.state.pedestrians.some(onStrip)));
-    expect(crossed).toBe(true);
+    const out = new Set(); // ids on the strip last step
+    let [crossed, turned] = [0, 0];
+    steps(near, 60, IDLE, () => {
+      for (const q of near.state.pedestrians) {
+        if (out.has(q.id) && q.zebra < 0) crossed++; // reached the far kerb
+        if (out.has(q.id) && q.waiting) turned++; // back at the kerb it set out from
+        if (onStrip(q)) out.add(q.id);
+        else out.delete(q.id);
+      }
+    });
+    expect(crossed).toBeGreaterThan(0);
+    expect(turned).toBe(0);
 
     const on = createSim(crowd(withTraffic(0)), map, seeded(1));
     Object.assign(on.state.truck, { ...before(0), z: zebra.z }); // across the middle of the strip
