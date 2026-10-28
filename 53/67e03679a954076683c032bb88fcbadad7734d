@@ -1,0 +1,56 @@
+src/sim/events.test.js
+  s_1e440d4c3efca4::t_401745e8453c79 23-24,55
+  s_1e440d4c3efca4::t_f792eba2abf518 39-46
+  s_1e440d4c3efca4::t_5914a7fd891e14 1-22,25-38,47-54,56-180
+src/sim/graph.js
+  s_1e440d4c3efca4::t_ef988511fca2b2 141-144
+  s_1e440d4c3efca4::t_30c2c5d3301b05 116-118
+  s_1e440d4c3efca4::t_8a67b806b41c53 133
+  s_1e440d4c3efca4::t_676f8493f9d3d0 162
+src/sim/sim.js
+  s_1e440d4c3efca4::t_ce68c0dfd234e7 66,102,154-155,746,955
+  s_1e440d4c3efca4::t_fea36eb9c90a9f 7,65,101,153,187,292,725-726,738,932,1000-1004,1007-1008
+  s_1e440d4c3efca4::t_61edb95579de09 1005-1006,1009-1010
+src/sim/traffic.test.js
+  s_1e440d4c3efca4::t_e56c83ffe2eae5 995-996
+GLOSSARY.md
+  s_1e440d4c3efca4::t_7ef99e9f923441 146,153-163
+  s_1e440d4c3efca4::t_f237dea8121886 164
+src/sim/traffic.js
+  s_1e440d4c3efca4::t_c4b4dbda383077 445
+  s_1e440d4c3efca4::t_8bea26b000247b 423-424,427,437
+  s_1e440d4c3efca4::t_757603127102ef 12-13,15-16,45-46,371,374,376-383,428,439,444,448
+  s_1e440d4c3efca4::t_28cdb91769e5f3 59,431,1094,1099,1125-1126,1156-1197
+  s_1e440d4c3efca4::t_88a86947377833 425-426
+src/tables.js
+  s_1e440d4c3efca4::t_31b07d9eb1e394 400-424
+src/sim/events.js
+  s_1e440d4c3efca4::t_6f2b711e6daa23 1-120
+src/autopilot.js
+  s_1e440d4c3efca4::t_ce68c0dfd234e7 5-6,25-39,71-74
+src/streetEvents.js
+  s_1e440d4c3efca4::t_7fe3a05385081e 23,50-51,73-82
+  s_1e440d4c3efca4::t_8c65cca7bb8f58 1-22,24-49,52-72,83-105
+src/renderer.js
+  s_1e440d4c3efca4::t_7fe3a05385081e 16,579,1086
+src/sim/soak.test.js
+  s_1e440d4c3efca4::t_e56c83ffe2eae5 193,207
+src/riders.js
+  s_1e440d4c3efca4::t_a2674a83574fa9 7-8,74-89,91,99,123,125,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5367e03679a954076683c032bb88fcbadad7734d",
+  "prompts": {},
+  "sessions": {
+    "s_1e440d4c3efca4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a32ef48d-c075-44ae-ad47-316e6150142f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
