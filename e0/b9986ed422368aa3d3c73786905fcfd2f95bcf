@@ -1,0 +1,65 @@
+src/sim/orders.test.js
+  s_335aad663f0ef8::t_32113da35888c8 21-23,150-154,156,239-243,246,249-258,264,283,368-382,385,398-402,404,410,453,458,541-542,548,553-555
+  s_335aad663f0ef8::t_3cfae9d709d68d 665,669
+  s_335aad663f0ef8::t_6052042baafcae 551-552
+  s_335aad663f0ef8::t_f0014e3bc7bb2e 182,354,549
+  s_335aad663f0ef8::t_211aa780a35bb3 649-664,666-668,670-681
+src/hud.test.js
+  s_335aad663f0ef8::t_976d2269432139 2,10-11
+src/save.test.js
+  s_335aad663f0ef8::t_a022060207493a 119
+  s_335aad663f0ef8::t_8f2ba5e16b7376 85,88-89
+  s_335aad663f0ef8::t_01df14818244d6 27,29,39-43,64-65,80-83,86-87,90-96,105
+  s_335aad663f0ef8::t_21c12abf98862b 84
+src/autopilot.test.js
+  s_335aad663f0ef8::t_cdf500b79872e8 85
+src/sim/sim.js
+  s_335aad663f0ef8::t_a7f2e6df13eef5 486-487
+  s_335aad663f0ef8::t_ba495d4f85ed6f 765
+  s_335aad663f0ef8::t_9ef5e35d23c82e 12-15
+  s_335aad663f0ef8::t_e012bbce22b594 19,21,48-50,54-58,71-72,496-499,695-700,773-780,798-802,937
+src/tables.js
+  s_335aad663f0ef8::t_8b610656fe4f42 78-81,86,88-92
+  s_335aad663f0ef8::t_e7d84708feceaf 82-84,93-95
+src/hud.js
+  s_335aad663f0ef8::t_976d2269432139 5-6,27-28,59,64,82,111-116
+src/orders.js
+  s_335aad663f0ef8::t_976d2269432139 2,62,107-110
+  s_335aad663f0ef8::t_3721310aff5fa8 11,15-16
+src/save.js
+  s_335aad663f0ef8::t_9ef5e35d23c82e 23-26,32-35,37-38,53
+src/sim/traffic.test.js
+  s_335aad663f0ef8::t_45379c17e7715f 71-72,78,580,617
+src/strings.js
+  s_335aad663f0ef8::t_976d2269432139 31-33
+  s_335aad663f0ef8::t_8b610656fe4f42 38
+src/style.css
+  s_335aad663f0ef8::t_3721310aff5fa8 830,835
+  s_335aad663f0ef8::t_976d2269432139 331-334,829,831-834,836-839
+  s_335aad663f0ef8::t_e7216f9443a317 840
+src/sim/zebras.test.js
+  s_335aad663f0ef8::t_1016d8f0c4d99b 4,96-99,105-107,116,126,129-130,133,139,142,147
+scripts/economy.js
+  s_335aad663f0ef8::t_ee19aac7b5b417 186,199
+src/sim/sim.test.js
+  s_335aad663f0ef8::t_cdf500b79872e8 298,315
+  s_335aad663f0ef8::t_45379c17e7715f 302,387,481,543-544,547,550-551,554,556-557,562-573
+GLOSSARY.md
+  s_335aad663f0ef8::t_81155f2e4689e4 14,27-34,36,40-41,319-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0b9986ed422368aa3d3c73786905fcfd2f95bcf",
+  "prompts": {},
+  "sessions": {
+    "s_335aad663f0ef8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b0c1473-4ad6-454f-b76d-ed3a2ff196fc",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
