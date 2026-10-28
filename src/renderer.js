@@ -791,7 +791,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const wetMaterials = [asphalt.material, pavers, kerbs].map((material) => ({ material, colour: material.color.clone(), roughness: material.roughness }));
   const dry = { fog: cam.fog, haze: lighting.haze, sun: 1, sky: 1, grey: 0, wet: 0 }; // the clear weather's look
 
-  let warmNight = true; // the night lights and rain drawn in the first frame (behind the loading screen) too, so their shaders are ready
+  // The night lights, rain and reversing camera drawn in the first frame (behind the loading screen) too, so their
+  // shaders are ready: the reversing camera's first draw otherwise stalled play by ~3 s in Chrome.
+  let warmUp = true;
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
   const eye = new THREE.Vector3();
@@ -895,9 +897,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     // Each view shows one side of the cab: the interior from the seat, the kit's cab from outside. In reverse gear the
     // reversing camera shows in an inset over the chosen view.
     rearTime = !showroom && state.truck.gear === 'R' ? cam.rearHold : Math.max(0, rearTime - dt);
-    if (frame.hidden !== !rearTime) {
-      frame.hidden = !rearTime;
-      if (rearTime) measureInset();
+    const rear = rearTime > 0 || warmUp;
+    if (frame.hidden !== !rear) {
+      frame.hidden = !rear;
+      if (rear) measureInset();
     }
     inCab = showroom ? showroom === 'cab' : cabView;
     const wasChased = chased;
@@ -940,7 +943,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
     }
-    if (rearTime) {
+    if (rear) {
       rearCamera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
       rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
     }
@@ -968,15 +971,15 @@ export function createRenderer(canvas, tables, map, onProgress) {
       material.roughness = roughness * (1 - wetness * weather.wet.gloss);
     }
     rainShare.value = kind === 'rain' ? intensity : 0;
-    rain.visible = rainShare.value > 0 || warmNight;
+    rain.visible = rainShare.value > 0 || warmUp;
     sun.intensity = daytime.sun * blend(1, weatherLook.sun);
     sun.color.copy(daytime.colour);
     scene.environmentIntensity = (skyLight * (daytime.sky.r + daytime.sky.g + daytime.sky.b)) / 3;
     const night = isNight(clock, tables.clock);
-    headlights.visible = night || warmNight;
-    reversingLights.visible = (night && state.truck.gear === 'R') || warmNight;
+    headlights.visible = night || warmUp;
+    reversingLights.visible = (night && state.truck.gear === 'R') || warmUp;
     headlights.rotation.z = reversingLights.rotation.z = -roll; // flat on the road while the body rolls
-    warmNight = false;
+    warmUp = false;
     // The sun's shadow covers the ground around a point ahead of the camera.
     camera.getWorldDirection(focus).setY(0).normalize().multiplyScalar(lighting.shadow.ahead).add(camera.position);
     shadowCentre(focus, light, shadowTexel, sun.target.position);
@@ -990,10 +993,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const { min, max } = mesh.geometry.boundingBox;
       mesh.visible = Math.hypot(Math.max(min.x - cx, 0, cx - max.x), Math.max(min.z - cz, 0, cz - max.z)) < tables.buildings.detailDistance && facing(min, max, dir, cx, cz);
     }
-    drawCars(state.traffic, !!rearTime);
+    drawCars(state.traffic, rear);
     streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
-    if (rearTime) {
+    if (rear) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
       // The truck from outside (SHADOW_ONLY in the cab), so its back edge shows at the bottom as a guide.
       interior.visible = false;
