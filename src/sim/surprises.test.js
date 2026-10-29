@@ -124,6 +124,20 @@ describe('Sim: surprises on the way (#85)', () => {
     expect([...oversized]).toEqual(['oversized,C']);
   });
 
+  test("so does a Schwertransport's, in the Schwerlaster (#90)", () => {
+    const t = quiet({ closed: 0, dropoff: 1 });
+    const { tables, map } = ladder({ ...t, orders: { ...t.orders, shares: { schwertransport: 1 } } }, true);
+    const moved = new Set();
+    for (let played = 0; played < 20; played++) {
+      const lorry = { ...freshProfile(), timePlayed: played, stars: tables.rank.tiers.at(-1).stars, vehicle: 'lorry', vehicles: { truck: {}, lorry: {} } };
+      const sim = createSim(tables, map, seeded(1), lorry);
+      loadAtoB(sim, map);
+      timeUntil(sim, IDLE, () => sim.state.lastSurprise, 5);
+      moved.add([sim.state.order.type, sim.state.order.dropoff].join());
+    }
+    expect([...moved]).toEqual(['schwertransport,C']);
+  });
+
   test('surprises come at the table chances, at most one per order', () => {
     const { tables, map } = ladder(quiet({ closed: 0.3, dropoff: 0.2 }));
     const sim = createSim(tables, map, seeded(2));

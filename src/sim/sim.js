@@ -1108,15 +1108,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Moves the last drop-off to another place like it (a dock for a dock, in a pedestrian street for one there; for an
-  // oversized load, one a wide route leads to from the pickup, as for its offer), farther from here by road but by at
-  // most `detour` m, at random. The drop pays for the extra way (its `umweg`), and it is added to the drop's and the
+  // oversized load or a schwertransport, one a wide route leads to from the pickup, as for its offer), farther from here
+  // by road but by at most `detour` m, at random. The drop pays for the extra way (its `umweg`), and it is added to the drop's and the
   // order's distance and, at reference speed (an express order's shortened, as its offer's), their expected times.
   function changeDropoff(here) {
     const order = state.order;
     const drop = order.drops.at(-1);
     const old = spot(drop.spot);
     const onRoad = here.d <= here.edge.width / 2;
-    const width = order.type === 'oversized' ? o.oversizedWidth : 0;
+    const width = wideLoad(order.type) ? o.oversizedWidth : 0;
     const way = (to) => routeFrom(here, onRoad, to.pose, width)?.length ?? Infinity;
     const now = way(old);
     const taken = [order.pickup, ...order.drops.map((d) => d.spot)];
