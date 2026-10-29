@@ -25,7 +25,8 @@ export function createSave(storage, tables) {
     // rested driver, the clock at its start and no time played; v4 → v5 (#81) turns rank points into Stars, one per
     // 10 points rounded down, which keeps the Tier (tables.rank); v5 → v6 (#88) makes the truck, with its upgrades, the
     // first owned Vehicle and the current one; v6 → v7 (#86) starts Reputation empty; v7 → v8 (#87) starts Story progress
-    // empty. Vehicles the tables don't know are dropped (driving the truck again). Reputation and Story progress are kept
+    // empty; v8 → v9 (#96) brings no trailer. A trailer level out of range starts fresh; one hitched to another Vehicle than
+    // the truck, or not bought, is unhitched. Vehicles the tables don't know are dropped (driving the truck again). Reputation and Story progress are kept
     // for every map, spot and chain, also those this build doesn't know, as a map that comes later keeps its own.
     const fresh = freshProfile();
     if (isObject(data) && data.version === 3) {
@@ -42,8 +43,9 @@ export function createSave(storage, tables) {
     }
     if (isObject(data) && data.version === 6) data = { ...data, version: 7, reputation: {} };
     if (isObject(data) && data.version === 7) data = { ...data, version: 8, stories: {} };
+    if (isObject(data) && data.version === 8) data = { ...data, version: 9, trailer: { level: 0, hitched: false } };
     if (!isObject(data) || data.version !== fresh.version) return null;
-    const { money, stars, distance, vehicle, vehicles, owned, equipped, fuel, energy, timeOfDay, timePlayed, reputation, stories } = data;
+    const { money, stars, distance, vehicle, vehicles, owned, equipped, fuel, energy, timeOfDay, timePlayed, reputation, stories, trailer } = data;
     if (!isAmount(money) || !isStars(stars) || !isAmount(distance)) return null;
     if (!isAmount(fuel) || !isAmount(timePlayed)) return null;
     if (!(isAmount(energy) && energy <= 1) || !(isAmount(timeOfDay) && timeOfDay < 24 * 60)) return null;
@@ -52,6 +54,7 @@ export function createSave(storage, tables) {
     if (!isObject(reputation) || !Object.values(reputation).every((m) => isObject(m) && Object.values(m).every(isStars))) return null;
     const isStory = (x) => isObject(x) && typeof x.client === 'string' && isStars(x.step);
     if (!isObject(stories) || !Object.values(stories).every((m) => isObject(m) && Object.values(m).every(isStory))) return null;
+    if (!isObject(trailer) || !isStars(trailer.level) || trailer.level > tables.trailer.levels.length || typeof trailer.hitched !== 'boolean') return null;
 
     const inRange = ([id, level]) => Number.isInteger(level) && level >= 0 && level <= tables.upgrades[id].levels.length;
     const fleet = { truck: {}, ...vehicles };
@@ -79,6 +82,7 @@ export function createSave(storage, tables) {
       timePlayed,
       reputation,
       stories,
+      trailer: { level: trailer.level, hitched: trailer.hitched && trailer.level > 0 && current === 'truck' },
     };
   }
 

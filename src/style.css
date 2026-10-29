@@ -611,7 +611,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 .dash-rule,
 .dash-police,
 .dash-fuel-low,
-.dash-tired {
+.dash-tired,
+.dash-jackknife {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -641,7 +642,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 .dash-rule[hidden],
 .dash-police[hidden],
 .dash-fuel-low[hidden],
-.dash-tired[hidden] {
+.dash-tired[hidden],
+.dash-jackknife[hidden] {
   display: none;
 }
 
@@ -660,7 +662,8 @@ body:has(.rear-inset:not([hidden])) .goal {
   display: none;
 }
 
-.dash-fuel-low {
+.dash-fuel-low,
+.dash-jackknife {
   background: #d1495b;
 }
 

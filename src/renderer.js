@@ -10,6 +10,7 @@ import { createResolution } from './resolution.js';
 import { DIRS, planBuildings, buildingMeshes, dockHalf } from './buildings.js';
 import { atlasCells, paintFacadePictures } from './facadePictures.js';
 import { carGeometries, skinTexture, detailAtlas } from './vehicles.js';
+import { trailerModel } from './trailerModel.js';
 import { createStreets, glowMaterial } from './streets.js';
 import { createPeople } from './people.js';
 import { createRiders } from './riders.js';
@@ -799,6 +800,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let shownLook = null;
 
   function paint({ body, cab }) {
+    trailerPaint.color.setHex(palette[body]);
     const colour = exterior.geometry.getAttribute('color');
     if (!colour) return; // not loaded yet
     const c = new THREE.Color();
@@ -837,6 +839,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
   }
   let body = bodies.truck; // the one shown
   scene.add(truck);
+
+  // The trailer (#96), drawn where state.trailer is while hitched, its box in the truck's paint (see paint()).
+  const trailerGeometry = trailerModel(tables.trailer, palette);
+  const trailerPaint = new THREE.MeshStandardMaterial({ color: palette.truckBody, roughness: 0.55, metalness: 0.15 });
+  const trailerBody = new THREE.Group();
+  trailerBody.add(new THREE.Mesh(trailerGeometry.body, trailerPaint), new THREE.Mesh(trailerGeometry.details, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })));
+  for (const mesh of trailerBody.children) mesh.castShadow = mesh.receiveShadow = true;
+  scene.add(trailerBody);
 
   // The headlights at night (tables.lighting.headlights), and the reversing lights in gear R: a round glow stretched
   // along the road, its middle a third of its length out from the bumper, so it also fades out under the truck rather
@@ -986,6 +996,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
     const vehicle = tables.fleet[state.profile.vehicle];
     if (shownVehicle !== state.profile.vehicle) showVehicle(state.profile.vehicle);
+    const hitched = state.trailer;
+    trailerBody.visible = !!hitched || warmUp;
+    if (hitched) {
+      trailerBody.position.set(hitched.x, 0, hitched.z);
+      trailerBody.rotation.set(0, hitched.heading, 0);
+      trailerBody.updateMatrixWorld();
+    }
+    // The reversing lights at the back of the combination.
+    const back = hitched ? trailerBody : truck;
+    if (reversingLights.parent !== back) {
+      back.add(reversingLights);
+      reversingLights.position.z = -(hitched ? tables.trailer.length : vehicle.length) / 2;
+    }
     // The wheel at the same angle as the on-screen one; positive is clockwise from the driver's seat.
     body.cab.update(state, input.steer * tables.controls.wheelLock);
     showLook(look);
@@ -1048,20 +1071,24 @@ export function createRenderer(canvas, tables, map, onProgress) {
     } else {
       // Chase camera: behind and above the truck, pulled in before a building in the way (as after reversing
       // into a dock) and raised as it does so the truck doesn't fill the view; quickly but not at once, and eases
-      // back out, as the Werkstatt's camera does.
+      // back out, as the Werkstatt's camera does. Farther back and higher with the trailer.
       const [dx, dz] = [-Math.sin(heading), -Math.cos(heading)];
-      const room = Math.min(chaseRoom(x, z, dx, dz), canopyRoom(x, z, dx, dz));
+      const [extra, higher] = hitched ? cam.trailerChase : [0, 0];
+      const reach = cam.chaseDistance + extra;
+      const room = Math.min(chaseRoom(x, z, dx, dz, reach), canopyRoom(x, z, dx, dz));
       // Switched to from another view: straight to the room it has, not through a building.
       if (!wasChased) chaseArm = room;
       else chaseArm = room < chaseArm ? Math.max(room, chaseArm - cam.chasePullIn * dt) : Math.min(room, chaseArm + tables.showroom.armSpeed * dt);
-      const height = cam.chaseHeight + (cam.chaseDistance - chaseArm) * cam.chaseRise;
+      const height = cam.chaseHeight + higher + (reach - chaseArm) * cam.chaseRise;
       camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
       camera.lookAt(x, cam.lookHeight, z);
     }
     drawingRear = rear || warmRear;
     if (drawingRear) {
-      rearCamera.position.copy(truck.localToWorld(eye.fromArray(vehicle.rearEye)));
-      rearCamera.lookAt(truck.localToWorld(lookAt.set(0, 0, vehicle.rearEye[2] - cam.rearLook)));
+      // On the trailer's roof while it is hitched.
+      const at = hitched ? tables.trailer.rearEye : vehicle.rearEye;
+      rearCamera.position.copy(back.localToWorld(eye.fromArray(at)));
+      rearCamera.lookAt(back.localToWorld(lookAt.set(0, 0, at[2] - cam.rearLook)));
     }
     // The time of day: the sun or moon and the sky, and at night the headlights and street lights.
     // The Werkstatt shows the truck at noon, so its paint can be seen.
@@ -1149,14 +1176,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // doesn't count, or the camera would have no room at all.
   const canopyRoom = (x, z, dx, dz) => Math.max(0, Math.min(...canopies.map((b) => rayToBox(x, z, dx, dz, b) || Infinity)) - tables.showroom.wallGap);
 
-  // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most chaseDistance. The ray is
-  // walked in 1 m steps through the buildings, so it can miss a corner it only grazes.
-  function chaseRoom(x, z, dx, dz) {
-    for (let d = 0; d <= cam.chaseDistance + 1; d++) {
+  // m along (dx, dz) from (x, z) to `wallGap` before the first building, at most `reach`. The ray is walked in 1 m steps
+  // through the buildings, so it can miss a corner it only grazes.
+  function chaseRoom(x, z, dx, dz, reach) {
+    for (let d = 0; d <= reach + 1; d++) {
       const b = blockAt(x + dx * d, z + dz * d);
-      if (b) return Math.min(cam.chaseDistance, rayToOutline(x, z, dx, dz, b.points) - tables.showroom.wallGap);
+      if (b) return Math.min(reach, rayToOutline(x, z, dx, dz, b.points) - tables.showroom.wallGap);
     }
-    return cam.chaseDistance;
+    return reach;
   }
 
   const carMatrix = new THREE.Matrix4();

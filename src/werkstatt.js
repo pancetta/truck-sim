@@ -1,5 +1,5 @@
 // Werkstatt button and panel: the Vehicles to buy and choose; the current Vehicle's upgrades, each with its level, next
-// price, needed rank and effect; the visual items to try on and buy (on a Vehicle they fit); and the save reset. Reads
+// price, needed rank and effect, and for the truck its trailer, to buy, upgrade, hitch and unhitch (#96); the visual items to try on and buy (on a Vehicle they fit); and the save reset. Reads
 // Sim state; buys only through the Sim's commands. main.js pauses the Sim while the panel is `open` and hands `look` and
 // `showroom` to the renderer. A tried-on item lives only in `previews` here, never in the profile, and closing the panel
 // drops it.
@@ -99,7 +99,24 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
           '</li>'
         );
       })
-      .join('');
+      .join('') + trailerRow();
+  }
+
+  // The truck's trailer: its level, hitched or not, and the next level's load, price and Tier; nothing in another Vehicle.
+  function trailerRow() {
+    const { vehicle, trailer } = sim.state.profile;
+    if (vehicle !== 'truck') return '';
+    const { levels } = tables.trailer;
+    const next = levels[trailer.level];
+    const needs = next?.rank > 0 ? ` · ${strings.from} ${tables.rank.tiers[next.rank].title}` : '';
+    const detail = next ? `→ ${strings.level} ${trailer.level + 1}: ${strings.trailerLoad} +${next.capacity} t · ${eur(next.price)}${needs}` : strings.maxLevel;
+    const hitched = trailer.level ? ` · ${trailer.hitched ? strings.hitched : strings.unhitched}` : '';
+    return (
+      `<li><p><b>${strings.trailer}</b> ${strings.level} ${trailer.level}/${levels.length}${hitched}<br><small>${detail}</small></p>` +
+      (next ? `<button type="button" data-buy-trailer>${strings.buy}</button>` : '') +
+      (trailer.level ? `<button type="button" data-hitch="${!trailer.hitched}">${trailer.hitched ? strings.unhitch : strings.hitch}</button>` : '') +
+      '</li>'
+    );
   }
 
   // Shows a command's refusal, if any, and draws the panel again.
@@ -122,6 +139,9 @@ export function createWerkstatt(root, sim, tables, strings, onReset) {
     if (vehicle) answer(sim.buyVehicle(vehicle));
     const chosen = target('choose')?.choose;
     if (chosen) answer(sim.chooseVehicle(chosen));
+    if (target('buy-trailer')) answer(sim.buyTrailer());
+    const hitch = target('hitch')?.hitch;
+    if (hitch) answer(sim.hitchTrailer(hitch === 'true'));
     if (target('tab')) {
       tab = target('tab').tab;
       focus = null; // back to the orbit

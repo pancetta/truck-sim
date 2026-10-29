@@ -1,7 +1,7 @@
 // Dashboard overlay, the truck's own: speed (red above the limit), the speed limit, gear, RPM, the fuel gauge, total
 // distance and the game clock, and above it the name of the street the truck is on, the next junction's rule while one
 // is near and a zebra crossing sign while one is, a police sign while a police car sees the truck, the low-fuel warning
-// and the tired or exhausted warning.
+// the tired or exhausted warning and the jackknifed trailer's notice.
 // A status strip at the top shows the player's and driver's: rank, Stars and progress to the next tier, the driver's
 // energy and the time played. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond,
@@ -45,6 +45,7 @@ export function createHud(root, tables, strings) {
       <div class="dash-police" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3.5"/></svg>${strings.policeSees}</div>
       <div class="dash-fuel-low" role="status" hidden>${strings.fuelLow}</div>
       <div class="dash-tired" role="status" hidden></div>
+      <div class="dash-jackknife" role="status" hidden>${strings.jackknifed}</div>
     </div>`;
   const speed = root.querySelector('.dash-speed b');
   const gear = root.querySelector('.dash-gear');
@@ -71,6 +72,7 @@ export function createHud(root, tables, strings) {
   const fuelBar = root.querySelector('.dash-fuel i');
   const fuelLow = root.querySelector('.dash-fuel-low');
   const tired = root.querySelector('.dash-tired');
+  const jackknife = root.querySelector('.dash-jackknife');
 
   // Writes to the DOM only when a shown value changes, not every frame.
   const set = (el, text) => {
@@ -88,7 +90,7 @@ export function createHud(root, tables, strings) {
 
   // In the cab view the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the overlay hides but for the
   // limit and the signs (style.css).
-  function update({ truck, rank, profile, tank, policeSees, junctionRule, zebraAhead, speedLimit, street: name, tired: isTired, exhausted }, inCab) {
+  function update({ truck, rank, profile, tank, policeSees, junctionRule, zebraAhead, speedLimit, street: name, tired: isTired, exhausted, jackknifed }, inCab) {
     root.classList.toggle('cab', inCab);
     const kmh = Math.round(Math.abs(truck.speed) * 3.6);
     set(speed, String(kmh));
@@ -116,6 +118,7 @@ export function createHud(root, tables, strings) {
     }
     if (police.hidden === policeSees) police.hidden = !policeSees;
     if (zebra.hidden === zebraAhead) zebra.hidden = !zebraAhead;
+    if (jackknife.hidden === jackknifed) jackknife.hidden = !jackknifed;
     const fuel = (profile.fuel / tank).toFixed(2);
     if (fuel !== shownFuel) {
       fuelBar.style.transform = `scaleX(${(shownFuel = fuel)})`;

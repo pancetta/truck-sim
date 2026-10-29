@@ -56,6 +56,7 @@ export function createTraffic(tables, map, random) {
   // The player's truck: the current Vehicle's footprint (setTruck()), and the largest Vehicle's radius, so the junction
   // boxes' reach (see around()) holds whichever it is.
   const truckSize = { length: 0, width: 0 };
+  let trailer = null; // the trailer hitched to it (#96): the Sim's live { x, z, heading } of its body, or null (setTruck())
   const truckRadius = Math.max(...Object.values(tables.fleet).map((f) => Math.hypot(f.length, f.width) / 2));
   const { stopSpeed } = tables.fleet.truck; // the same for every Vehicle
   const cars = [];
@@ -216,6 +217,7 @@ export function createTraffic(tables, map, random) {
   // must not call nearby() again.
   const footprints = [];
   const truckBox = newBox();
+  const trailerBox = newBox();
   const probe = newBox();
   const pathBox = newBox();
   const pathPose = { x: 0, z: 0, heading: 0 };
@@ -621,7 +623,7 @@ export function createTraffic(tables, map, random) {
         if (!stoppable(car, short)) {
           hold(g, approachAt[p.id], moveAt[p.id]);
           if (g.occupied) mark(g, car, i, g.occupied);
-        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOf(car, truckBox, car.size.width) - half >= short) {
+        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOfTruck(car, car.size.width) - half >= short) {
           arrive(g, approachAt[p.id], car, short, moveAt[p.id], i);
         }
       }
@@ -786,13 +788,18 @@ export function createTraffic(tables, map, random) {
     return true;
   }
 
-  // Whether the truck's footprint overlaps the box (`hulls`, see hullOf) of a crossing group or light junction:
-  // first whether its centre is within `reach` of the box's centre (x, z), so most boxes cost one test a step.
+  // Whether the truck's footprint, or its trailer's, overlaps the box (`hulls`, see hullOf) of a crossing group or light
+  // junction: first whether its centre is within `reach` of the box's centre (x, z), so most boxes cost one test a step.
   function truckIn(box, truck) {
-    if ((box.x - truck.x) ** 2 + (box.z - truck.z) ** 2 > box.reach ** 2) return false;
-    for (const hull of box.hulls) if (!separates(hull, hull.length, hull, truckBox) && !separates(truckBox, 2, hull, truckBox)) return true;
+    return footIn(box, truck, truckBox) || (trailer !== null && footIn(box, trailer, trailerBox));
+  }
+  function footIn(box, at, foot) {
+    if ((box.x - at.x) ** 2 + (box.z - at.z) ** 2 > box.reach ** 2) return false;
+    for (const hull of box.hulls) if (!separates(hull, hull.length, hull, foot) && !separates(foot, 2, hull, foot)) return true;
     return false;
   }
+  // m ahead of `view` (see aheadOf) to the truck or its trailer, whichever is nearer.
+  const aheadOfTruck = (view, width) => (trailer ? Math.min(aheadOf(view, truckBox, width), aheadOf(view, trailerBox, width)) : aheadOf(view, truckBox, width));
   // Sets the box's centre and reach (see truckIn) from its hulls.
   function around(box) {
     const points = box.hulls.flat();
@@ -914,7 +921,7 @@ export function createTraffic(tables, map, random) {
     while (car.route[j] && boxOf(car.route[j]) === boxOf(car.route[i])) j++;
     if (!car.route[j]) return false;
     poseAt(car.route[j], 0, exitPose);
-    if (queued(truckBox, truck.speed)) return true;
+    if (queued(truckBox, truck.speed) || (trailer && queued(trailerBox, truck.speed))) return true;
     for (let k = nearby(exitPose.x, exitPose.z, queueReach) - 1; k >= 0; k--) {
       const c = cars[found[k]];
       if (c !== car && queued(footprints[found[k]], c.speed)) return true;
@@ -936,7 +943,8 @@ export function createTraffic(tables, map, random) {
         poseAt(p, n ? (k * p.length) / n : 0, pathPose);
         pathPose.x += (Math.sin(pathPose.heading) * t.followGap) / 2;
         pathPose.z += (Math.cos(pathPose.heading) * t.followGap) / 2;
-        if (boxesOverlap(corners(pathPose, pathSize, pathBox), truckBox)) return true;
+        corners(pathPose, pathSize, pathBox);
+        if (boxesOverlap(pathBox, truckBox) || (trailer && boxesOverlap(pathBox, trailerBox))) return true;
       }
     }
     return false;
@@ -1070,7 +1078,7 @@ export function createTraffic(tables, map, random) {
       if (found[k] === ci || (other.x - view.x) ** 2 + (other.z - view.z) ** 2 > reach ** 2 || !follows(view, other)) continue;
       targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, footprints[found[k]], width) - length / 2 - t.followGap));
     }
-    targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, truckBox, width) - length / 2 - t.followGap));
+    targets[ci] = Math.min(targets[ci], limit(extra + aheadOfTruck(view, width) - length / 2 - t.followGap));
   }
 
   // Caps targets[ci] to keep `followGap` behind a car that turned off the car's route less than a car's length ago,
@@ -1124,6 +1132,7 @@ export function createTraffic(tables, map, random) {
       corners(cars[i], cars[i].size, (footprints[i] ??= newBox()));
     }
     corners(truck, truckSize, truckBox);
+    if (trailer) corners(trailer, tables.trailer, trailerBox);
     fillGrid();
     truckCount = truckAhead(truck);
     rightOfWay(truck);
@@ -1163,9 +1172,11 @@ export function createTraffic(tables, map, random) {
     return out;
   }
 
-  // Sets the truck's footprint ({ length, width }, m) to a Vehicle's.
-  function setTruck({ length, width }) {
+  // Sets the truck's footprint ({ length, width }, m) to a Vehicle's, and its trailer's body ({ x, z, heading }, which
+  // the Sim moves; tables.trailer's size), or null for none: the cars treat the two as one.
+  function setTruck({ length, width }, hitched = null) {
     Object.assign(truckSize, { length, width });
+    trailer = hitched;
   }
 
   // Street events (#80). Whether edge e may be closed: it isn't between the boxes of one crossing, and every run cars

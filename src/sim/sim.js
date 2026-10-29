@@ -12,17 +12,18 @@ const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
 // migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), v6 with Vehicles (#88), v7 with
-// Reputation (#86), v8 with Story chains (#87), and the grid city's v1 and v2 start fresh.
+// Reputation (#86), v8 with Story chains (#87), v9 with the trailer (#96), and the grid city's v1 and v2 start fresh.
 // stars: the Stars earned in total, which make the Rank; distance: m driven in total; vehicle: the current Vehicle's id
 // (tables.fleet); vehicles: each owned Vehicle's id → its upgrades (id → level), the truck always among them;
 // equipped: slot → visual id; fuel: litres in the current Vehicle's tank; energy: the driver's, 0..1; timeOfDay: game
 // minutes since midnight; timePlayed: s of play in total; reputation: map id → spot id → the Stars earned on that
 // Client's orders (see tables.reputation); stories: map id → Story chain id (tables.stories) → { client (its spot id),
-// step (the steps delivered) }.
+// step (the steps delivered) }; trailer: the truck's trailer (tables.trailer), its `level` (0 while not bought) and
+// whether it is `hitched` (only ever to the truck).
 // The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
   return {
-    version: 8,
+    version: 9,
     money: 0,
     stars: 0,
     distance: 0,
@@ -36,6 +37,7 @@ export function freshProfile() {
     timePlayed: 0,
     reputation: {},
     stories: {},
+    trailer: { level: 0, hitched: false },
   };
 }
 
@@ -101,6 +103,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // elsewhere and while a stop runs), replaced only when it changes; `service` the running stop bought with
   // buyService(), { id, price, progress 0..1 }, or null. `lastTow` ({ station (spot id), fee }) is replaced on
   // every tow.
+  // `trailer` is the hitched trailer's body ({ x, z, heading }, see follow()), or null; `jackknifed` whether the last
+  // move was refused at the trailer's jackknife limit, until one goes through.
   const state = {
     truck,
     collision: false,
@@ -131,6 +135,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     service: null,
     lastTow: null,
     weather: { kind: 'clear', intensity: 0 },
+    trailer: null,
+    jackknifed: false,
     get garageAvailable() {
       return truck.speed === 0 && !state.order && atHome();
     },
@@ -153,7 +159,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       return state.profile.energy < tables.energy.exhausted;
     },
   };
+  const tr = tables.trailer;
   let v = upgradedVehicle();
+  truck.mass = v.emptyMass;
+  if (profile.trailer.hitched) state.trailer = trailerBehind(truck, truck.heading);
   updateRank();
   let clock = 0; // s of Sim time, drives the light cycles
   let nextOfferId = 1;
@@ -168,7 +177,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let speedingFined = -Infinity; // clock at the last speeding fine
   const traffic = map ? createTraffic(tables, map, random) : null;
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
-  traffic?.setTruck(v);
+  traffic?.setTruck(v, state.trailer);
   if (traffic) state.traffic = traffic.cars;
   const pedestrians = map ? createPedestrians(tables, map, seeded(tables.pedestrians.seed)) : null;
   if (pedestrians) state.pedestrians = pedestrians.people;
@@ -285,24 +294,34 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / (v.steerFadeSpeed * grip)) ** 2);
     const yawRate = -(truck.speed / v.wheelbase) * Math.tan(angle);
     const { x, z, heading } = truck;
+    const trailer = state.trailer;
+    const was = trailer && { x: trailer.x, z: trailer.z, heading: trailer.heading };
     const frontBefore = front();
     truck.heading += yawRate * dt;
     truck.x += Math.sin(truck.heading) * truck.speed * dt;
     truck.z += Math.cos(truck.heading) * truck.speed * dt;
+    if (trailer) follow(trailer);
 
     // Solid stop, no damage to the truck: undo the move that hit something, a wall or a car it wasn't
     // already touching, or that pushed into a car it was (one that drove into it): the move brought the car's
     // centre closer to the truck's footprint (sliding along it isn't pushing). Reverse backs a stuck truck off.
+    // The trailer is part of the truck in this; a move that folds it past its jackknife limit stops it too.
     const shed = speedBefore - Math.abs(truck.speed);
-    const met = traffic ? traffic.touching(corners(truck)) : [];
-    const before = met.length ? traffic.touching(corners({ x, z, heading })) : [];
-    const closer = (c) => outside(c, truck) < outside(c, { x, z, heading }) - 1e-6;
+    const met = traffic ? touching(truck, trailer) : [];
+    const before = met.length ? touching({ x, z, heading }, was) : [];
+    const closer = (c) => apart(c, truck, trailer) < apart(c, { x, z, heading }, was) - 1e-6;
     const pushed = before.filter((c) => met.includes(c) && closer(c));
-    const solid = !fits(truck) || met.some((c) => !before.includes(c)) || pushed.length > 0;
+    const solid = !fits(truck) || (trailer && !fits(trailer, tr)) || met.some((c) => !before.includes(c)) || pushed.length > 0;
+    const folded = trailer && Math.abs(hitchAngle(truck, trailer));
+    const kinked = folded > tr.jackknife && folded > Math.abs(hitchAngle({ heading }, was));
     const blocked = solid || onZebra(); // a pedestrian stops the truck too, but it's no Hit
     const hit = solid && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
-    if (state.collision) Object.assign(truck, { x, z, heading, speed: 0 });
+    state.jackknifed = kinked || (state.jackknifed && truck.speed === 0);
+    if (blocked || kinked) {
+      Object.assign(truck, { x, z, heading, speed: 0 });
+      if (trailer) Object.assign(trailer, was);
+    }
     checkRedLight(frontBefore, front()); // before touchCars, which may stop the truck
     if (traffic) touchCars(met, before, pushed);
     checkZebras();
@@ -468,7 +487,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // and stops the truck, until the truck pushes into it (`pushed`), which is the truck's move too. A contact
   // lasts until the truck is `contactGap` clear of the car, so pushing on or nudging it again isn't a new one.
   function touchCars(met, before, pushed) {
-    const near = contacts.size ? traffic.touching(corners(truck, tables.traffic.contactGap)) : [];
+    const near = contacts.size ? touching(truck, state.trailer, tables.traffic.contactGap) : [];
     const now = state.traffic.filter((c) => met.includes(c) || (contacts.has(c.id) && near.includes(c)));
     const next = new Map();
     for (const c of now) {
@@ -513,20 +532,23 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Whether a pedestrian on a zebra crossing's strip stands in the truck's footprint: there they are solid to it.
   function onZebra() {
     if (!state.zebras.some((zebra) => zebra.people)) return false;
-    const box = corners(truck, tables.pedestrians.radius);
-    return state.pedestrians.some((q) => q.zebra >= 0 && !q.waiting && inside(q.x, q.z, box));
+    const r = tables.pedestrians.radius;
+    const boxes = state.trailer ? [corners(truck, r), corners(state.trailer, r, tr)] : [corners(truck, r)];
+    return state.pedestrians.some((q) => q.zebra >= 0 && !q.waiting && boxes.some((box) => inside(q.x, q.z, box)));
   }
 
   // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs the order's clean
-  // Star, and a fine if the police see it, once per pass: the pass lasts while the truck's footprint is on the strip
-  // (`truckOn`). Only if the truck could still have stopped once they were there (`owed`, see truckAtZebras): one who
+  // Star, and a fine if the police see it, once per pass: the pass lasts while the truck's footprint, or its trailer's, is
+  // on the strip (`truckOn`). Only if the truck could still have stopped once they were there (`owed`, see truckAtZebras): one who
   // came to the kerb as it was already too close doesn't count.
   function checkZebras() {
     if (!state.zebras.length) return;
     const box = corners(truck);
-    const reach = v.length + 2 * tables.zebras.depth; // m between centres within which the strip and the truck may meet
+    const trailerBox = state.trailer && corners(state.trailer, 0, tr);
+    // Whether the strip's middle is within the length of `size` plus twice the strip's depth of `pose`: where they may meet.
+    const near = (zebra, pose, size) => (zebra.x - pose.x) ** 2 + (zebra.z - pose.z) ** 2 <= (size.length + 2 * tables.zebras.depth) ** 2;
     for (const zebra of state.zebras) {
-      const on = (zebra.x - truck.x) ** 2 + (zebra.z - truck.z) ** 2 <= reach ** 2 && boxesOverlap(box, zebra.strip);
+      const on = (near(zebra, truck, v) && boxesOverlap(box, zebra.strip)) || (!!trailerBox && near(zebra, state.trailer, tr) && boxesOverlap(trailerBox, zebra.strip));
       if (on && !zebra.truckOn && zebra.owed) {
         fault('zebra');
         if (state.policeSees) fine('zebra');
@@ -571,14 +593,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Whether a police car is within tables.police.radius of the truck with no building on the line from it to the
-  // truck's centre or to the middle of its front bumper (a car on the cross street sees the cab come out at a junction).
+  // truck's centre, to the middle of its front bumper (a car on the cross street sees the cab come out at a junction) or
+  // to its trailer's middle.
   // shortcut: the lines are sampled every 0.5 m, so one clipping a building's corner by under 0.5 m is clear, and the
   // truck's rear corners don't count; upgrade to the footprint if players notice.
   function policeSees() {
     for (const c of state.traffic) {
       if (!c.police || (truck.x - c.x) ** 2 + (truck.z - c.z) ** 2 > tables.police.radius ** 2) continue;
       const front = { x: truck.x + (Math.sin(truck.heading) * v.length) / 2, z: truck.z + (Math.cos(truck.heading) * v.length) / 2 };
-      if (inSight(c, truck) || inSight(c, front)) return true;
+      if (inSight(c, truck) || inSight(c, front) || (state.trailer && inSight(c, state.trailer))) return true;
     }
     return false;
   }
@@ -881,22 +904,38 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Makes profile.vehicle the truck: its constants with its upgrades, standing empty at idle, with no more fuel than its
-  // tank holds, and traffic's view of the truck's size; the offers go, as they were for the old one's load.
+  // tank holds, and traffic's view of the truck's size; the offers go, as they were for the old one's load. Any other
+  // Vehicle than the truck leaves the trailer at Home.
   // shortcut: one fuel level shared by the fleet, cut to the new tank on a switch; keep fuel per Vehicle if players
   // switch to top up.
   function useVehicle() {
     base = tables.fleet[state.profile.vehicle];
-    v = upgradedVehicle();
-    Object.assign(truck, { mass: v.emptyMass, rpm: v.idleRpm });
-    traffic?.setTruck(v);
+    state.profile.trailer.hitched &&= state.profile.vehicle === 'truck';
+    hitch();
+    truck.rpm = v.idleRpm;
     state.profile.fuel = Math.min(state.profile.fuel, state.tank);
+  }
+
+  // Puts the trailer straight behind the truck while profile.trailer.hitched, else takes it off: the truck's constants
+  // (see upgradedVehicle()), its empty mass and traffic's view of it follow, and the offers go, as they were for the
+  // old cargo limit. Only at a standstill with no order, so the truck is empty.
+  function hitch() {
+    state.trailer = state.profile.trailer.hitched ? trailerBehind(truck, truck.heading) : null;
+    state.jackknifed = false;
+    v = upgradedVehicle();
+    truck.mass = v.emptyMass;
+    traffic?.setTruck(v, state.trailer);
     state.offers = [];
   }
 
-  // Effective vehicle constants: the base table with the bought upgrades applied.
+  // Effective vehicle constants: the base table with the bought upgrades applied, and the trailer's mass and thirst while
+  // it is hitched.
   function upgradedVehicle() {
+    const hitched = state.profile.trailer.hitched;
     return {
       ...base,
+      emptyMass: base.emptyMass + (hitched ? tr.emptyMass : 0),
+      thirst: base.thirst * (hitched ? tr.thirst : 1),
       torqueCurve: base.torqueCurve.map(([rpm, torque]) => [rpm, torque * (levelOf('motor')?.factor ?? 1)]),
       brakeForce: base.brakeForce * (levelOf('brakes')?.factor ?? 1),
       steerFadeSpeed: base.steerFadeSpeed * (levelOf('tyres')?.factor ?? 1),
@@ -979,6 +1018,36 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return OK;
   }
 
+  // Buys the trailer (tables.trailer), its first level, or its next level. Returns { ok, reason }; a refusal changes
+  // nothing.
+  function buyTrailer() {
+    if (state.profile.vehicle !== 'truck') return refuse('notTruck');
+    if (!atHome()) return refuse('notAtHome');
+    if (!state.garageAvailable) return refuse('notIdle');
+    const owned = state.profile.trailer;
+    const next = tr.levels[owned.level];
+    if (!next) return refuse('maxLevel');
+    if (state.rank.tier < next.rank) return refuse('rankTooLow');
+    if (state.profile.money < next.price) return refuse('noMoney');
+    state.profile.money -= next.price;
+    owned.level++;
+    state.offers = []; // the orders panel then asks again, with what the trailer now carries
+    return OK;
+  }
+
+  // Hitches the trailer to the truck (`on`) or unhitches it (see hitch()). Returns { ok, reason }; a refusal changes
+  // nothing. Hitching refuses too where the trailer has no room straight behind.
+  function hitchTrailer(on) {
+    if (state.profile.vehicle !== 'truck') return refuse('notTruck');
+    if (!state.profile.trailer.level) return refuse('notOwned');
+    if (!atHome()) return refuse('notAtHome');
+    if (!state.garageAvailable) return refuse('notIdle');
+    if (on && !fitsStraight(truck, true)) return refuse('noRoom');
+    state.profile.trailer.hitched = on;
+    hitch();
+    return OK;
+  }
+
   // Whether the profile owns a visual item; a slot's free stock item is everyone's.
   const owns = (id) => tables.visuals[id].price === 0 || state.profile.owned.includes(id);
 
@@ -1011,8 +1080,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Whether the current Vehicle fits through a bollard gate (tables.osm.gate), so routes and offers may use pedestrian
   // edges; the gate's bollards themselves are plain colliders.
   const narrow = () => v.width < tables.osm.gate;
-  // Whether the current Vehicle fits the map's dock bays, so docks may be an offer's spots (#90).
-  const fitsBays = () => v.length <= tables.osm.bayLength;
+  // Whether the current Vehicle fits the map's dock bays, so docks may be an offer's spots (#90); with the trailer it
+  // doesn't (#96).
+  const fitsBays = () => v.length <= tables.osm.bayLength && !state.trailer;
   const schwer = (cargo) => cargo.weight > o.schwertransport;
   const wideLoad = (type) => type === 'oversized' || type === 'schwertransport';
   const spot = (id) => map.spots.find((s) => s.id === id);
@@ -1046,6 +1116,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // first drop, its distance, pay and expected time are the whole order's. Spots on pedestrian edges only take orders
   // in a narrow Vehicle, of their own type ('pedestrian'), never a special one; docks only in a Vehicle that fits their
   // bays.
+  // With the trailer hitched the cargo limit rises by its level's capacity, though never to a schwertransport's loads, and
+  // an offer whose cargo only the trailer makes possible pays tables.trailer.pay times as much (#96).
   // Each offer carries its Client's (the pickup's) Reputation level (`reputation`) and pays its level's `pay` times as
   // much; one more offer comes from a Client of level 1 or more, express from a level that has it (tables.reputation).
   // Each Story chain under way on this map adds its next step's offer from its Client, first in the list, with `story`
@@ -1056,8 +1128,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
-    const maxCargo = base.maxCargo * (levelOf('cargoBed')?.factor ?? 1);
-    const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && o.types[typeOf(c)] <= state.rank.tier && (o.kinds[c.kind]?.tier ?? 0) <= state.rank.tier);
+    const bed = base.maxCargo * (levelOf('cargoBed')?.factor ?? 1);
+    const maxCargo = bed + (state.trailer ? tr.levels[state.profile.trailer.level - 1].capacity : 0);
+    const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && !(state.trailer && schwer(c)) && o.types[typeOf(c)] <= state.rank.tier && (o.kinds[c.kind]?.tier ?? 0) <= state.rank.tier);
     for (let i = 0; i < o.offerCount; i++) {
       const draw = random();
       let share = 0;
@@ -1099,7 +1172,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (!legs) return; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
       const { time, pay: express } = special === 'express' ? o.express : { time: 1, pay: 1 };
       const reputation = standing(from.id);
-      const factor = express * tables.reputation.levels[reputation].pay;
+      const factor = express * tables.reputation.levels[reputation].pay * (cargo?.weight > bed ? tr.pay : 1);
       let driven = routeFrom(here, here.d <= here.edge.width / 2, from.pose)?.length ?? 0;
       const drops = legs.map(({ stop, distance }, k) => ({
         spot: stop.id,
@@ -1212,13 +1285,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const poses = roadPoints.filter((p) => !closed.has(p.edge)).map((p) => ({ pose: lanePose(p), junction: p.junction }));
     const away = ({ pose: p }) => (p.x - truck.x) ** 2 + (p.z - truck.z) ** 2;
     poses.sort((a, b) => a.junction - b.junction || away(a) - away(b));
-    const free = ({ pose: p }) => fits(p) && !traffic?.touching(corners(p)).length;
+    const free = ({ pose: p }) => fitsStraight(p) && !(traffic && touching(p, state.trailer && trailerBehind(p, p.heading)).length);
     place((poses.find(free) ?? poses[0]).pose);
   }
 
-  // Puts the truck at `pose`, at a standstill in first gear.
+  // Puts the truck at `pose`, at a standstill in first gear, its trailer straight behind.
   function place(pose) {
     Object.assign(truck, pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
+    if (state.trailer) trailerBehind(truck, truck.heading, state.trailer);
+    state.jackknifed = false;
     reversing = false;
     brakeHold = 0;
     redLine = null;
@@ -1242,11 +1317,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return pose;
   }
 
-  // Whether the truck's footprint at `pose` stays inside the map and clear of every collider. Runs every step,
-  // so it tests only the colliders indexed in the cells under the footprint's bounding box.
-  function fits(pose) {
+  // Whether the truck's footprint (or one of `size`, the trailer's) at `pose` stays inside the map and clear of every
+  // collider. Runs every step, so it tests only the colliders indexed in the cells under the footprint's bounding box.
+  function fits(pose, size = v) {
     if (!map) return true;
-    const cs = corners(pose);
+    const cs = corners(pose, 0, size);
     const minX = Math.min(cs[0].x, cs[1].x, cs[2].x, cs[3].x);
     const maxX = Math.max(cs[0].x, cs[1].x, cs[2].x, cs[3].x);
     const minZ = Math.min(cs[0].z, cs[1].z, cs[2].z, cs[3].z);
@@ -1254,7 +1329,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const { bounds } = map;
     if (minX < bounds.minX || minZ < bounds.minZ || maxX > bounds.maxX || maxZ > bounds.maxZ) return false;
     // Bounding boxes apart (touching included) can't overlap; this skips most candidates cheaply.
-    const hits = (b) => !(b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) && overlaps(pose, b);
+    const hits = (b) => !(b.minX >= maxX || b.maxX <= minX || b.minZ >= maxZ || b.maxZ <= minZ) && overlaps(pose, b, size);
     for (const x of state.events) if (x.on && x.barriers.some(hits)) return false;
     return !solids.some(minX, minZ, maxX, maxZ, hits);
   }
@@ -1263,30 +1338,79 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // pavements, where the barriers stand and which they close off.
   function clearOf(x) {
     const e = map.graph.edges[x.edge];
-    const reach = e.width / 2 + tables.osm.pavement + tables.events.depth + Math.hypot(v.length, v.width) / 2 + 1;
+    const trailer = state.trailer ? tr.hitch + tr.drawbar + tr.length : 0; // m the trailer reaches past the truck's middle
+    const reach = e.width / 2 + tables.osm.pavement + tables.events.depth + Math.hypot(v.length, v.width) / 2 + trailer + 1;
     return map.graph.project(e, truck.x, truck.z).d > reach;
   }
 
-  // How far point `p` lies outside the truck's footprint at `pose`; negative inside, by how far it is in.
-  function outside(p, { x, z, heading }) {
+  // Whether the truck at `pose` fits (see fits()), with its trailer, if `hitched`, straight behind: then the whole
+  // combination's box, from the truck's front to the trailer's rear, so nothing stands in the gap between them either
+  // (#96 QA: a reset put a bollard there, and the truck could go neither way).
+  // shortcut: driving, the gap isn't solid, so a post can slip into it in a tight turn; Reset to road gets out of it.
+  function fitsStraight(pose, hitched = state.trailer !== null) {
+    if (!hitched) return fits(pose);
+    const [front, back] = [v.length / 2, tr.hitch + tr.drawbar + tr.length]; // m ahead of and behind the truck's middle
+    const along = (front - back) / 2;
+    const middle = { x: pose.x + Math.sin(pose.heading) * along, z: pose.z + Math.cos(pose.heading) * along, heading: pose.heading };
+    return fits(middle, { length: front + back, width: Math.max(v.width, tr.width) });
+  }
+
+  // The trailer's body ({ x, z, heading }, into `out`) behind the truck at `pose`, its drawbar at `heading`.
+  function trailerBehind({ x, z, heading: h }, heading, out = {}) {
+    const back = tr.drawbar + tr.length / 2; // m from the hitch to the body's middle
+    out.x = x - Math.sin(h) * tr.hitch - Math.sin(heading) * back;
+    out.z = z - Math.cos(h) * tr.hitch - Math.cos(heading) * back;
+    out.heading = heading;
+    return out;
+  }
+
+  // Moves the trailer after the truck's move, kinematically (#96): the middle of its axles, tr.axle m behind the hitch,
+  // only rolls along the drawbar's line, so the drawbar turns to the hitch's new place from where the axles were. It
+  // cuts corners driving forwards and folds ever further reversing. Where the hitch moved much more than a step's way at
+  // once (the autopilot's jump, a test putting the truck somewhere), it comes straight behind instead.
+  function follow(t) {
+    const [hx, hz] = [truck.x - Math.sin(truck.heading) * tr.hitch, truck.z - Math.cos(truck.heading) * tr.hitch];
+    const ahead = tr.drawbar + tr.length / 2 - tr.axle; // m from the body's middle forwards to its axles
+    const [ax, az] = [t.x + Math.sin(t.heading) * ahead, t.z + Math.cos(t.heading) * ahead];
+    const jumped = Math.abs(Math.hypot(hx - ax, hz - az) - tr.axle) > tr.axle / 2;
+    trailerBehind(truck, jumped ? truck.heading : Math.atan2(hx - ax, hz - az), t);
+  }
+
+  // The truck's heading less the trailer's, -π..π.
+  const hitchAngle = (truckPose, trailer) => Math.atan2(Math.sin(truckPose.heading - trailer.heading), Math.cos(truckPose.heading - trailer.heading));
+
+  // The AI cars whose footprint overlaps the truck's at `pose` or its trailer's at `trailer` (null for none), each
+  // `grow` m larger all round.
+  function touching(pose, trailer, grow = 0) {
+    const cars = traffic.touching(corners(pose, grow));
+    if (trailer) for (const c of traffic.touching(corners(trailer, grow, tr))) if (!cars.includes(c)) cars.push(c);
+    return cars;
+  }
+
+  // How far point `p` lies outside the footprints of the truck at `pose` and its trailer at `trailer` (null for none).
+  const apart = (p, pose, trailer) => Math.min(outside(p, pose), trailer ? outside(p, trailer, tr) : Infinity);
+
+  // How far point `p` lies outside the truck's footprint (or one of `size`) at `pose`; negative inside, by how far it is in.
+  function outside(p, { x, z, heading }, size = v) {
     const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
-    const along = Math.abs((p.x - x) * fx + (p.z - z) * fz) - v.length / 2;
-    const right = Math.abs(-(p.x - x) * fz + (p.z - z) * fx) - v.width / 2;
+    const along = Math.abs((p.x - x) * fx + (p.z - z) * fz) - size.length / 2;
+    const right = Math.abs(-(p.x - x) * fz + (p.z - z) * fx) - size.width / 2;
     return along > 0 || right > 0 ? Math.hypot(Math.max(0, along), Math.max(0, right)) : Math.max(along, right);
   }
 
-  // Footprint corners, `grow` m larger all round; right is (-cos heading, sin heading).
-  function corners({ x, z, heading }, grow = 0) {
+  // Footprint corners (the truck's, or of `size`), `grow` m larger all round; right is (-cos heading, sin heading).
+  function corners({ x, z, heading }, grow = 0, size = v) {
     const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
-    const [l, w] = [v.length / 2 + grow, v.width / 2 + grow];
+    const [l, w] = [size.length / 2 + grow, size.width / 2 + grow];
     return [[l, w], [l, -w], [-l, -w], [-l, w]].map(([a, b]) => ({ x: x + fx * a - fz * b, z: z + fz * a + fx * b }));
   }
 
-  // Whether the truck's box at `pose` overlaps collider b's outline (`points`, any simple polygon, turned any way):
-  // a side of the outline reaches into the box, or the box lies wholly inside it. Touching isn't overlapping.
-  function overlaps({ x, z, heading }, b) {
+  // Whether the truck's box (or one of `size`) at `pose` overlaps collider b's outline (`points`, any simple polygon,
+  // turned any way): a side of the outline reaches into the box, or the box lies wholly inside it. Touching isn't
+  // overlapping.
+  function overlaps({ x, z, heading }, b, size = v) {
     const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
-    const [l, w] = [v.length / 2, v.width / 2];
+    const [l, w] = [size.length / 2, size.width / 2];
     const p = b.points;
     for (let i = 0; i < p.length; i++) {
       // The side's ends in the truck's frame: m ahead of its centre and right of it.
@@ -1305,7 +1429,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   if (map) {
     // A new game starts at the map's start pose (its start spot's), else on the road nearest the middle of the city.
     Object.assign(truck, map.start ?? { x: (map.bounds.minX + map.bounds.maxX) / 2, z: (map.bounds.minZ + map.bounds.maxZ) / 2 });
-    if (!map.start || !fits(truck)) resetToRoad();
+    if (state.trailer) trailerBehind(truck, truck.heading, state.trailer);
+    if (!map.start || !fitsStraight(truck)) resetToRoad();
     updateTraffic(0);
     state.policeSees = policeSees();
     state.junctionRule = junctionAhead();
@@ -1313,7 +1438,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVehicle, chooseVehicle, buyVisual, equipVisual, owns, buyService, sleep };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVehicle, chooseVehicle, buyTrailer, hitchTrailer, buyVisual, equipVisual, owns, buyService, sleep };
 }
 
 // A seeded random (mulberry32): for the Sim under ?auto, so every run meets the same traffic and offers, and for the

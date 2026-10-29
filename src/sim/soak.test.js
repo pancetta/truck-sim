@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import * as tables from '../tables.js';
 import { createAutopilot } from '../autopilot.js';
 import { poseAt } from './lanes.js';
+import { freshProfile } from './sim.js';
 import { build, way, monti, undrained, createSim, seeded, offRoad, vehiclesOverlap, DT, GAS, BRAKE, IDLE } from './fixtures.js';
 
 // The soaks and the collider broad phase, on the real Monti extract (spec #59).
@@ -110,9 +111,10 @@ describe('Sim: traffic soak', () => {
   const CAR = tables.city.obstacles.car; // the largest kind
 
   // Steps `seconds` with the truck driven by `drive(sim)` (returns step i → input), or parked at each of `poses`
-  // in turn for an equal share of the time. Returns the car-made contacts with the truck and between cars.
-  function soak(seed, seconds, drive, poses = []) {
-    const sim = createSim(busy, map, seeded(seed));
+  // in turn for an equal share of the time, starting with `profile` (the trailer hitched or not). Returns the car-made
+  // contacts with the truck (and its trailer) and between cars.
+  function soak(seed, seconds, drive, poses = [], profile = freshProfile()) {
+    const sim = createSim(busy, map, seeded(seed), profile);
     const input = drive?.(sim);
     const steps = seconds * 60;
     let touching = new Set(); // ids of the cars touching the truck, and 'id,id' of pairs of cars touching
@@ -123,10 +125,10 @@ describe('Sim: traffic soak', () => {
       const placed = poses.length > 0 && i === Math.ceil((k * steps) / poses.length);
       if (placed) Object.assign(sim.state.truck, poses[k]);
       sim.step(DT, input ? input(i) : IDLE);
-      const { truck, traffic } = sim.state;
+      const { truck, trailer, traffic } = sim.state;
       const now = new Set();
       for (const [a, car] of traffic.entries()) {
-        if (vehiclesOverlap(car, car.size, truck, tables.fleet.truck)) now.add(car.id);
+        if (vehiclesOverlap(car, car.size, truck, tables.fleet.truck) || (trailer && vehiclesOverlap(car, car.size, trailer, tables.trailer))) now.add(car.id);
         for (const other of traffic.slice(a + 1)) {
           const pair = `${Math.min(car.id, other.id)},${Math.max(car.id, other.id)}`;
           if ((car.x - other.x) ** 2 + (car.z - other.z) ** 2 < CAR.length ** 2 && vehiclesOverlap(car, car.size, other, other.size)) now.add(pair);
@@ -142,7 +144,9 @@ describe('Sim: traffic soak', () => {
     return { contacts, crashes };
   }
 
-  test('AI cars never drive into the truck or into each other', () => {
+  // The truck parked in junction boxes, reversing back and forth, and on the autopilot loop, over three seeds; with
+  // `profile`. Returns the car-made contacts and crashes.
+  function soaks(profile) {
     const { nodes, edges } = map.graph;
     // The truck parked in junction boxes: Via Cavour's five-arm one, the Largo Visconti Venosta ring, the crossings on
     // Via Urbana and the light junction, each at a slant.
@@ -157,7 +161,7 @@ describe('Sim: traffic soak', () => {
     let crashes = 0;
     const add = (run) => ([contacts, crashes] = [contacts + run.contacts, crashes + run.crashes]);
     for (const seed of [1, 2, 3]) {
-      add(soak(seed, 40 * boxes.length, null, boxes));
+      add(soak(seed, 40 * boxes.length, null, boxes, profile));
       // Anywhere across a road, any heading.
       const random = seeded(seed + 100);
       const poses = Array.from({ length: 10 }, () => {
@@ -165,7 +169,7 @@ describe('Sim: traffic soak', () => {
         const p = map.graph.pointAt(e, random() * e.length);
         return { x: p.x + (random() - 0.5) * e.width * 0.6, z: p.z + (random() - 0.5) * e.width * 0.6, heading: random() * 2 * Math.PI, speed: 0 };
       });
-      add(soak(seed, 20 * poses.length, null, poses));
+      add(soak(seed, 20 * poses.length, null, poses, profile));
       const reversing = (sim) => {
         const p = map.graph.pointAt(cavour, cavour.length / 2);
         const q = map.graph.pointAt(cavour, cavour.length / 2 + 1);
@@ -173,16 +177,23 @@ describe('Sim: traffic soak', () => {
         Object.assign(sim.state.truck, { x: p.x - Math.cos(heading) * cavour.laneOffset, z: p.z + Math.sin(heading) * cavour.laneOffset, heading, speed: 0 });
         return (i) => (i % 600 < 200 ? GAS : BRAKE);
       };
-      add(soak(seed, 120, reversing));
+      add(soak(seed, 120, reversing, [], profile));
       const autopilot = (sim) => {
         const pilot = createAutopilot(sim, map, busy);
         pilot.place();
         return () => pilot.update(DT);
       };
-      add(soak(seed, 120, autopilot));
+      add(soak(seed, 120, autopilot, [], profile));
     }
-    expect(contacts).toBe(0);
-    expect(crashes).toBe(0);
+    return { contacts, crashes };
+  }
+
+  test('AI cars never drive into the truck or into each other', () => {
+    expect(soaks(freshProfile())).toEqual({ contacts: 0, crashes: 0 });
+  }, 120_000);
+
+  test('AI cars never drive into the truck or its trailer (#96)', () => {
+    expect(soaks({ ...freshProfile(), trailer: { level: 1, hitched: true } })).toEqual({ contacts: 0, crashes: 0 });
   }, 120_000);
 });
 
@@ -203,7 +214,7 @@ describe('Sim: traffic gridlock soak', () => {
   function waiting(car, sim, excused) {
     if (excused.has(car)) return excused.get(car);
     excused.set(car, false); // a cycle of cars each queued behind the next is stuck
-    const { traffic, truck, lights } = sim.state;
+    const { traffic, truck, trailer, lights } = sim.state;
     let ok = car.speed >= stopSpeed || car.halt > 0 || Math.hypot(car.x - truck.x, car.z - truck.z) < 30;
     let dist = -car.s;
     for (const p of car.route) {
@@ -218,20 +229,20 @@ describe('Sim: traffic gridlock soak', () => {
         while (i < car.route.length && s > car.route[i].length) s -= car.route[i++].length;
         if (i === car.route.length) break;
         poseAt(car.route[i], s, pose);
-        ahead = [...traffic, truck].find((o) => o !== car && Math.hypot(o.x - pose.x, o.z - pose.z) < 1.5) ?? null;
+        ahead = [...traffic, truck, ...(trailer ? [trailer] : [])].find((o) => o !== car && Math.hypot(o.x - pose.x, o.z - pose.z) < 1.5) ?? null;
       }
-      ok = ahead === truck || (ahead !== null && waiting(ahead, sim, excused));
+      ok = ahead === truck || (trailer !== null && ahead === trailer) || (ahead !== null && waiting(ahead, sim, excused));
     }
     excused.set(car, ok);
     return ok;
   }
 
   // The longest any car was stuck, in s, with the truck driven by the autopilot, or else parked off the road near
-  // `near` ({ x, z }).
-  function longestStuck(cars, seed, near) {
+  // `near` ({ x, z }); starting with `profile` (the trailer hitched or not).
+  function longestStuck(cars, seed, near, profile = freshProfile()) {
     const counted = { ...undrained(), rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: cars })) } };
     const map = monti(counted);
-    const sim = createSim(counted, map, seeded(seed));
+    const sim = createSim(counted, map, seeded(seed), profile);
     let input = () => IDLE;
     if (near) {
       Object.assign(sim.state.truck, offRoad(map, near.x, near.z), { heading: 0, speed: 0 });
@@ -272,6 +283,11 @@ describe('Sim: traffic gridlock soak', () => {
   // congestion above. At the top tier's count it doesn't come about.
   test(`${top} cars, the truck on the autopilot loop: no car stuck for over ${limit} s`, () => {
     const longest = [1, 2, 3].map((seed) => Math.round(longestStuck(top, seed)));
+    expect(longest.filter((s) => s > limit)).toEqual([]);
+  }, 120_000);
+  test(`${top} cars, the truck with its trailer (#96) on the autopilot loop: no car stuck for over ${limit} s`, () => {
+    const hitched = { ...freshProfile(), trailer: { level: 1, hitched: true } };
+    const longest = [1, 2, 3].map((seed) => Math.round(longestStuck(top, seed, null, hitched)));
     expect(longest.filter((s) => s > limit)).toEqual([]);
   }, 120_000);
 });

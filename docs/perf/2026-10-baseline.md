@@ -1013,6 +1013,17 @@ The Schwerlaster is a fourth code-built body (vehicles.js) with its cab interior
 | main, cab (2 runs) | 16.7 / 16.7–16.8 | 3.0–3.2 / 3.25–3.34 | 0.14 | 2.8–3.0 / 3.08–3.16 | 80 / 325k | 274–281 ms |
 | #90, cab (2 runs) | 16.7 / 16.8 | 3.0–3.2 / 3.25–3.34 | 0.13–0.14 | 2.9–3.1 / 3.08–3.18 | 80 / 325k | 270–271 ms |
 
+## Trailer (#96)
+
+The trailer is two meshes (its painted box, and the chassis, wheels, drawbar and lights merged into one vertex-coloured geometry) in their own group, shown while it is hitched and in the warm-up frame. Hitched, the Sim tests a second footprint against the colliders and the AI cars each step, and the traffic one more box in its truck checks; the sim time stays within noise.
+
+**How measured:** the dev build of this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 1, `?perf&auto` (vsync), chase view, the overlay's last 1,200 frames. `?auto` starts from a fresh profile, so the hitched run set the trailer after load. Relative numbers only; dev build, not production.
+
+| | frame ms median / p95 | busy ms median / p95 | sim ms median / p95 | render ms median / p95 | draw calls / triangles |
+|---|---|---|---|---|---|
+| unhitched | 16.7 / 16.8 | 3.5 / 4.3 | 0.1 / 0.2 | 3.3 / 4.0 | 134 / 428k |
+| hitched | 16.7 / 16.7 | 3.2 / 4.5 | 0.2 / 0.3 | 3.0 / 4.1 | 136 / 429k |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

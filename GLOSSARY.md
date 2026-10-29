@@ -210,9 +210,16 @@ A **Vehicle**: a four-axle box lorry, heavy, wide and slow to turn, carrying the
 _Avoid_: lorry (in the UI), semi, any brand name
 
 **Werkstatt**:
-The garage at **Home** where the player buys and switches **Vehicles** and buys **Upgrades** and **Visuals**; open only
-while the truck stands still in **Home**'s **Zone** with no **Order**.
+The garage at **Home** where the player buys and switches **Vehicles**, buys **Upgrades**, **Visuals** and the
+**Anhänger**, and hitches it; open only while the truck stands still in **Home**'s **Zone** with no **Order**.
 _Avoid_: garage, shop, showroom (the showroom is only its camera)
+
+**Anhänger**:
+The truck's optional trailer, bought in the **Werkstatt** and upgraded in levels ("Stufe"), hitched and unhitched only
+at **Home**. Hitched, it trails the truck on its hinge, cutting corners and folding when reversing, up to the jackknife
+("eingeknickt") where the two stop until driven straight; it raises the truck's cargo limit by its level, a cargo only
+it makes possible pays more, and it brings no dock **Offers**. Its **Contacts** and **Fines** are the truck's.
+_Avoid_: trailer (in German UI text), semi-trailer (it is a drawbar trailer), hitch (as the noun for it)
 
 **Upgrade** ("Technik"):
 A bought improvement to how a **Vehicle** drives (motor, brakes, tyres, suspension, cargo bed, tank), in levels

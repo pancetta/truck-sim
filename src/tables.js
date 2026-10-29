@@ -348,6 +348,30 @@ export const upgrades = {
   cargoBed: { levels: [{ price: 1500, rank: 0, factor: 1.4 }, { price: 3500, rank: 2, factor: 1.8 }, { price: 7000, rank: 4, factor: 2.4 }] },
   tank: { levels: [{ price: 1000, rank: 0, factor: 1.25 }, { price: 2500, rank: 1, factor: 1.5 }, { price: 5000, rank: 3, factor: 1.75 }] },
 };
+// The trailer (Anhänger, #96): the truck's alone, bought in the Werkstatt (its first level) and upgraded level by level,
+// each from Rank tier `rank` for `price` €. Hitched, the truck's cargo limit rises by the level's `capacity` t, though
+// never to a Schwertransport's loads, an offer whose cargo only the trailer makes possible pays `pay` times as much, it
+// gets no dock offers (the bays are too short), and it uses `thirst` times the fuel. Hitched and unhitched at Home.
+// It drives kinematically (sim.js follow()): the hitch is `hitch` m behind the truck's middle (its rear bumper is at
+// length / 2), the axles' middle `axle` m behind the hitch trails it, and the body (`length` × `width` m) starts `drawbar`
+// m behind the hitch. Past a hitch angle of `jackknife` rad the combination stops until it is straightened; a forward
+// turn at full lock settles at about 1.2. The renderer draws it `height` m tall (trailerModel.js), its reversing camera
+// at `rearEye` (m from the body's middle: x left, y up, z forward; see camera.rearEye).
+export const trailer = {
+  levels: [{ price: 6000, rank: 2, capacity: 6 }, { price: 3500, rank: 3, capacity: 10 }, { price: 7000, rank: 4, capacity: 14 }],
+  pay: 1.3,
+  thirst: 1.3,
+  emptyMass: 3000, // kg
+  hitch: 4.3,
+  drawbar: 1.4,
+  axle: 5,
+  length: 7,
+  width: 2.5,
+  jackknife: 1.4, // rad (~80°)
+  height: 3.7,
+  rearEye: [0, 3.55, -3.45],
+};
+
 // Werkstatt visual items by id (names in strings.visuals, slot names in strings.visualSlots), bought with
 // money and no rank. Each slot's one free item is the stock look, which everyone owns. Colours name palette
 // entries. The renderer (truckLook.js) draws them; the save module drops ids not listed here.
@@ -892,6 +916,9 @@ export const perf = {
 export const camera = {
   chaseDistance: 14, // m behind the truck
   chaseHeight: 6, // m above the ground
+  // m the chase camera stands farther back and higher with the trailer hitched (#96), which reaches 12.7 m back from the
+  // truck's middle and would otherwise fill the view
+  trailerChase: [9, 1.5],
   chaseRise: 0.5, // m the chase camera rises per m it is pulled in before a building (see renderer.js)
   // m/s the chase camera moves in at most before a building; when the arm's line swept onto a block corner in a turn,
   // pulling it in at once jumped the view up to 2 m in one frame (#73). In a quick turn the camera can then be a few m

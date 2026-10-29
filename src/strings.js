@@ -162,8 +162,16 @@ export const strings = {
   current: 'Im Einsatz',
   litres: 'l',
   looksTruckOnly: 'Aussehen gibt es nur für den Lkw',
-  // Why buyUpgrade(), buyVehicle(), chooseVehicle(), buyVisual(), equipVisual(), buyService() or sleep() refused, by its
-  // reason.
+  // The truck's trailer (#96), in the Werkstatt's Technik tab, and the HUD's notice while it is jackknifed.
+  trailer: 'Anhänger',
+  trailerLoad: 'Ladung',
+  hitch: 'Ankuppeln',
+  unhitch: 'Abkuppeln',
+  hitched: 'angekuppelt',
+  unhitched: 'abgekuppelt',
+  jackknifed: 'Anhänger eingeknickt: vorwärts geradeziehen',
+  // Why buyUpgrade(), buyVehicle(), chooseVehicle(), buyTrailer(), hitchTrailer(), buyVisual(), equipVisual(),
+  // buyService() or sleep() refused, by its reason.
   refusals: {
     notIdle: 'Nur im Stand ohne Auftrag',
     notAtHome: 'Nur zu Hause',
@@ -175,6 +183,8 @@ export const strings = {
     notOwned: 'Noch nicht gekauft',
     moving: 'Erst anhalten', // buyService()
     busy: 'Läuft schon',
+    notTruck: 'Nur für den Lkw', // the trailer
+    noRoom: 'Kein Platz hinter dem Lkw', // hitchTrailer()
   },
   technik: 'Technik',
   looks: 'Aussehen',

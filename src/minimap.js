@@ -143,7 +143,7 @@ export function createMinimap(canvas, map, tables) {
   }
   resize();
 
-  function update({ truck, order, route }) {
+  function update({ truck, trailer, order, route }) {
     if (devicePixelRatio !== ratio) resize();
     const now = performance.now();
     if (now - drawn < 1000 / rate - 2) return; // 2 ms slack, so frame jitter doesn't push a redraw a frame late
@@ -162,20 +162,31 @@ export function createMinimap(canvas, map, tables) {
       ctx.stroke();
     }
 
-    // The truck as an arrowhead along its heading; forward is (sin, cos) in map x/z, which is canvas x/y.
+    // The truck as an arrowhead along its heading; forward is (sin, cos) in map x/z, which is canvas x/y. Its trailer (#96)
+    // as a block behind, hinged at the arrowhead's notch and swung by the hitch angle, drawn first so the arrow stays on top.
     ctx.save();
     ctx.translate(tx, ty);
     ctx.rotate(-truck.heading);
     ctx.scale(scale, scale);
+    ctx.fillStyle = hex(palette.truckBody);
+    ctx.strokeStyle = hex(palette.trim);
+    ctx.lineWidth = outline;
+    if (trailer) {
+      ctx.save();
+      ctx.translate(0, -truckSize * 0.3);
+      ctx.rotate(truck.heading - trailer.heading);
+      ctx.beginPath();
+      ctx.rect(-truckSize * 0.4, -truckSize * 1.3, truckSize * 0.8, truckSize);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.beginPath();
     ctx.moveTo(0, truckSize);
     ctx.lineTo(truckSize * 0.7, -truckSize * 0.7);
     ctx.lineTo(0, -truckSize * 0.3);
     ctx.lineTo(-truckSize * 0.7, -truckSize * 0.7);
     ctx.closePath();
-    ctx.fillStyle = hex(palette.truckBody);
-    ctx.strokeStyle = hex(palette.trim);
-    ctx.lineWidth = outline;
     ctx.fill();
     ctx.stroke();
     ctx.restore();

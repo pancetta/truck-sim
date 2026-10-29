@@ -24,7 +24,7 @@ function fakeStorage(items = {}) {
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
 const valid = {
-  version: 8,
+  version: 9,
   money: 1234,
   stars: 4,
   distance: 5678.9,
@@ -39,16 +39,20 @@ const valid = {
   reputation: { monti: { B: 9, J: 0 }, laterMap: { A: 3 } }, // a map that comes later keeps its own
   // Mid-chain on this map, and a chain this build doesn't know on a map that comes later.
   stories: { monti: { geburtstag: { client: 'B', step: 2 } }, laterMap: { laterChain: { client: 'A', step: 0 } } },
+  trailer: { level: 2, hitched: true },
 };
-// The same progress as saved by the earlier versions: 7, before Story chains (#87), 6, before Reputation (#86), 5, with
+// The same progress as saved by the earlier versions: 8, before the trailer (#96), 7, before Story chains (#87), 6, before Reputation (#86), 5, with
 // the truck's upgrades before Vehicles (#88), 4, with rank points before Stars (#81), 3, before fuel, energy and the
 // clock (#48), and the grid city's 1, before the distance counter, and 2 (#67: no migration). Migrated, they come with no
-// Story progress, and before v7 with no Reputation.
-const { stories, ...v8Fields } = valid;
+// trailer, before v8 with no Story progress, and before v7 with no Reputation.
+const { trailer, ...v9Fields } = valid;
+const v8 = { ...v9Fields, version: 8 };
+const noTrailer = { level: 0, hitched: false };
+const { stories, ...v8Fields } = v8;
 const v7 = { ...v8Fields, version: 7 };
 const { reputation, ...v7Fields } = v7;
 const v6 = { ...v7Fields, version: 6 };
-const migrated = { ...valid, reputation: {}, stories: {} };
+const migrated = { ...valid, reputation: {}, stories: {}, trailer: noTrailer };
 const { vehicle, vehicles, ...v6Fields } = v6;
 const v5 = { ...v6Fields, upgrades: { motor: 2 }, version: 5 };
 const { stars, ...v5Fields } = v5;
@@ -72,6 +76,10 @@ describe('save module', () => {
     profile.stories.monti = { espressomat: { client: 'K', step: 3 } };
     save.save(profile);
     expect(createSave(storage, tables).load()).toEqual(profile);
+    profile.vehicle = 'truck';
+    profile.trailer = { level: 3, hitched: true };
+    save.save(profile);
+    expect(createSave(storage, tables).load()).toEqual(profile);
     expect(stored(valid)).toEqual(valid);
   });
 
@@ -84,7 +92,9 @@ describe('save module', () => {
       { ...valid, vehicles: { truck: { motor: 4 } } }, { ...valid, vehicles: { truck: {}, van: { motor: 1.5 } } },
       { ...valid, vehicles: { truck: {}, van: null } }, { ...valid, reputation: null }, { ...valid, reputation: { monti: [] } },
       { ...valid, reputation: { monti: { B: -1 } } }, { ...valid, reputation: { monti: { B: 2.5 } } }, { ...valid, reputation: { monti: { B: '3' } } },
-      { ...v7Fields, version: 7 }, { ...v8Fields, version: 8 }, { ...valid, stories: null }, { ...valid, stories: { monti: [] } },
+      { ...v7Fields, version: 7 }, { ...v8Fields, version: 8 }, { ...v9Fields, version: 9 }, { ...valid, trailer: null },
+      { ...valid, trailer: { level: 4, hitched: false } }, { ...valid, trailer: { level: -1, hitched: false } },
+      { ...valid, trailer: { level: 1.5, hitched: false } }, { ...valid, trailer: { level: 1, hitched: 'yes' } }, { ...valid, stories: null }, { ...valid, stories: { monti: [] } },
       { ...valid, stories: { monti: { geburtstag: 2 } } }, { ...valid, stories: { monti: { geburtstag: { client: 'B', step: -1 } } } },
       { ...valid, stories: { monti: { geburtstag: { client: 'B', step: 1.5 } } } }, { ...valid, stories: { monti: { geburtstag: { step: 1 } } } },
       { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
@@ -101,12 +111,21 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 7 save loads as version 8, with all progress kept and no Story progress yet', () => {
-    expect(fresh.version).toBe(8);
-    expect(stored(v7)).toEqual({ ...valid, stories: {} });
+  test('a version 8 save loads as version 9, with all progress kept and no trailer', () => {
+    expect(fresh.version).toBe(9);
+    expect(stored(v8)).toEqual({ ...valid, trailer: noTrailer });
   });
 
-  test('a version 6 save goes through both steps, with no Reputation and no Story progress yet', () => {
+  test('a version 7 save goes through both steps, with no Story progress and no trailer', () => {
+    expect(stored(v7)).toEqual({ ...valid, stories: {}, trailer: noTrailer });
+  });
+
+  test('a trailer hitched to another Vehicle than the truck, or not bought, is unhitched', () => {
+    expect(stored({ ...valid, vehicle: 'van', vehicles: { truck: {}, van: {} } }).trailer).toEqual({ level: 2, hitched: false });
+    expect(stored({ ...valid, trailer: { level: 0, hitched: true } }).trailer).toEqual(noTrailer);
+  });
+
+  test('a version 6 save goes through every step, with no Reputation, no Story progress and no trailer', () => {
     expect(stored(v6)).toEqual(migrated);
   });
 
@@ -138,7 +157,7 @@ describe('save module', () => {
   });
 
   test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
-    const newer = JSON.stringify({ ...valid, version: 9 });
+    const newer = JSON.stringify({ ...valid, version: 10 });
     const storage = fakeStorage({ [KEY]: newer });
     const save = createSave(storage, tables);
     const profile = save.load();
@@ -152,7 +171,7 @@ describe('save module', () => {
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 9, '8', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 10, '9', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 
@@ -174,7 +193,7 @@ describe('save module', () => {
   });
 
   test('the truck is always owned, and a current Vehicle the tables no longer have gives way to it', () => {
-    expect(stored({ ...valid, vehicles: { van: { motor: 1 } }, vehicle: 'van' })).toEqual({ ...valid, vehicles: { truck: {}, van: { motor: 1 } }, vehicle: 'van', fuel: 123.4 });
+    expect(stored({ ...valid, vehicles: { van: { motor: 1 } }, vehicle: 'van' })).toEqual({ ...valid, vehicles: { truck: {}, van: { motor: 1 } }, vehicle: 'van', fuel: 123.4, trailer: { level: 2, hitched: false } });
     expect(stored({ ...valid, vehicle: 'rocket' })).toEqual(valid);
     expect(stored({ ...valid, vehicle: 'van' })).toEqual(valid); // not owned
   });
