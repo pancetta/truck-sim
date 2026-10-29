@@ -86,8 +86,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `pedestrians` are the people on the pavements: { id, x, z, heading } and more (see pedestrians.js).
   // `events` are the street events: markets and roadworks closing an edge, garbage trucks (see events.js). The truck's
   // route and the offers' go round the edges they close, `closed` (a Set of edge ids).
-  // `zebras` are map.zebras with `people` (waiting at it or on it), `crossing` (set out over it), `passing` (a vehicle on it or that can't stop before
-  // it), `truckOn` (the truck's footprint on its strip) and `owed` (see checkZebras);
+  // `zebras` are map.zebras with `people` (waiting at it or on it), `crossing` (set out over it, or stepped back from
+  // it), `passing` (a vehicle on it or that can't stop before it), `truckOn` (the truck's footprint on its strip) and
+  // `owed` (see checkZebras);
   // `zebraAhead` is whether one lies ahead on the truck's edge within tables.signs.hint (see zebraAhead()).
   // `policeSees` is whether a police car sees the truck, so a rule fine would be taken (see policeSees()).
   // `junctionRule` is the rule of the next junction ahead within tables.signs.hint (see junctionAhead()):
@@ -634,7 +635,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // much to spare as sends people on it back (`reach` and `warn`, see step), is `passing`, as one an AI car is
   // committed to (traffic.js): no pedestrian sets out over it, only to turn back. After the traffic's step, which clears
   // the flags. A zebra someone sets out over while the truck could still stop before it at normal braking
-  // (tables.zebras.brake, or full where that is less) is `owed` until none are on it.
+  // (tables.zebras.brake, or full where that is less) is `owed` while any are `crossing` (on it, or stepped back from it).
   function truckAtZebras(grip) {
     const sign = Math.sign(truck.speed);
     const [fx, fz] = [Math.sin(truck.heading) * sign, Math.cos(truck.heading) * sign];
@@ -1410,6 +1411,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     brakeHold = 0;
     redLine = null;
     owed = [];
+    for (const zebra of state.zebras) zebra.owed = zebra.truckOn = false; // a pose on a strip is no new entry
     settled = false;
     stoppedAt = -1;
     updateRoute();

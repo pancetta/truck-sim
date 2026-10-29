@@ -85,9 +85,9 @@ export function createPedestrians(tables, map, random, free = () => true) {
 
   // Drops the pedestrians out of view past `despawnDistance`, adds one while fewer than `count`, and walks them.
   // `zebras` are the Sim's, map.zebras with `passing` (a vehicle on it or that can't stop before it, set by traffic.js
-  // and sim.js), `people` (waiting at it or on it) and `crossing` (set out over it, or stepped `back` from it), which this
-// sets; `near` is the moving truck's footprint grown as
-  // far as it should keep pedestrians off a strip (corners in order), null while it stands. `bodies` are the truck's and
+  // and sim.js), `people` (waiting at it or on it) and `crossing` (set out over it, or stepped `back` from it), which
+  // this sets; `near` is the moving truck's footprint grown as far as it should keep pedestrians off a strip (corners
+  // in order), null while it stands. `bodies` are the truck's and
   // its trailer's footprints ({ x, z, heading, length, width }) and `ahead` the m ahead of them (behind, negative, while
   // reversing) that people on the pavement get out of the way of too.
   function step(dt, truck, count, zebras = [], near = null, bodies = [], ahead = 0) {

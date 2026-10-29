@@ -334,8 +334,8 @@ at the start of red), speeding (over the **Speed limit** by more than a toleranc
 with **Priority** brakes hard; once per **Junction**) and stop (driving into a **Crossing** from a **Stop**
 **Approach** without having stood still in the last stretch before it, queued behind a car too; once per pass) and
 zebra (driving onto a **Zebra crossing** while a **Pedestrian** is on it who set out while the truck could still have
-stopped with normal braking; one waiting at the kerb doesn't count; once per pass) and pedestrian ("Fußgänger gefährdet": driving onto the
-pavement close to a **Pedestrian** walking there; once per pass).
+stopped with normal braking; one waiting at the kerb doesn't count; once per pass) and pedestrian ("Fußgänger
+gefährdet": driving onto the pavement close to a **Pedestrian** walking there; once per pass).
 
 **Witness**:
 A **Police car** within range of the truck with a clear line of sight at the moment of a rule break.

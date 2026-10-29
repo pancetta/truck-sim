@@ -667,10 +667,10 @@ export const pedestrians = {
 // pavement line passes both kerbs. A pedestrian walking past a kerb crosses with chance `use`, waits there until no
 // vehicle is on the strip or can't stop before it (the truck at full brake, with `reach` and `warn` to spare); after
 // `patience` s it walks on. The truck entering the strip while someone is on it, who set out over it while the truck
-// could still have stopped at `brake` m/s² (normal braking, as hard as cargo takes, see hardBrake), is a break (sim.js
-// checkZebras, #111). One on the strip as the truck comes within `reach` m of it, plus `warn` s of its speed, steps back,
-// away from the truck, at `stepBack` m/s; on the strip they are solid to the truck. Its stripes (renderer.js) are
-// `stripe` m wide with as much gap.
+// could still have stopped at `brake` m/s² (normal braking, as hard as cargo takes, see cargo's hardBrake 2.5), is a
+// break (sim.js checkZebras, #111). One on the strip as the truck comes within `reach` m of it, plus `warn` s of its
+// speed, steps back, away from the truck, at `stepBack` m/s; on the strip they are solid to the truck. Its stripes
+// (renderer.js) are `stripe` m wide with as much gap.
 export const zebras = {
   classes: ['secondary', 'tertiary', 'residential', 'unclassified'],
   back: 3,
