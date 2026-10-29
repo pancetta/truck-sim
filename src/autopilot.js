@@ -5,6 +5,7 @@
 // ignores right of way and otherwise rammed one car over and over at 50 km/h traffic.
 export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loop = true) {
   const { spacing, dodge, radius, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
+  const vehicle = tables.fleet[sim.state.profile.vehicle]; // the one it drives (a switch needs a new autopilot)
   // Which side of each edge its parked cars stand on: 1 right of the edge's way, -1 left.
   const parkedSide = new Map();
   for (const c of map.colliders.filter((c) => c.kind === 'car')) {
@@ -18,7 +19,7 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   const laneAt = (x, z) => {
     const { edge } = map.graph.nearest(x, z);
     if (edge.oneWay) return -(parkedSide.get(edge) ?? 0) * dodge;
-    return edge.width < 2 * tables.vehicle.width ? 0 : edge.laneOffset;
+    return edge.width < 2 * tables.fleet.truck.width ? 0 : edge.laneOffset;
   };
   const corners = stops.map((id) => map.spots.find((s) => s.id === id).pose);
   const legs = corners.slice(0, loop ? corners.length : -1).flatMap((c, i) => map.graph.route(c, corners[(i + 1) % corners.length]).points);
@@ -82,10 +83,11 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
     const turning = [1, 2, 3].some((k) => turns(at(idx + k - 1), at(idx + k), at(idx + k + 1)));
     const target = Math.min(turning || Math.abs(err) > 0.3 ? turnSpeed : cruiseSpeed, sim.state.speedLimit / 3.6);
     const waiting = carAhead(t);
-    input.steer = Math.max(-1, Math.min(1, -err * steerGain));
+    // The gain is the truck's; a shorter wheelbase turns quicker for the same lock, so it steers less to keep the line.
+    input.steer = Math.max(-1, Math.min(1, -err * steerGain * (vehicle.wheelbase / tables.fleet.truck.wheelbase)));
     input.gas = !waiting && t.speed < target ? 1 : 0;
     // Brakes off once stopped: holding the brake at a standstill engages reverse.
-    input.brake = (waiting && t.speed > tables.vehicle.stopSpeed) || t.speed > target + 1 ? 0.6 : 0;
+    input.brake = (waiting && t.speed > vehicle.stopSpeed) || t.speed > target + 1 ? 0.6 : 0;
     stuck = Math.abs(t.speed) < 0.3 ? stuck + dt : 0;
     if (stuck > (waiting ? waitTime : stuckTime)) {
       stuck = 0;
@@ -104,8 +106,8 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   // so waiting for them could hold both for good.
   function carAhead(t) {
     const [fx, fz] = [Math.sin(t.heading), Math.cos(t.heading)];
-    const reach = Math.max(0, t.speed) ** 2 / 6 + (tables.vehicle.length + tables.city.obstacles.car.length) / 2 + 3;
-    const side = (tables.vehicle.width + tables.city.obstacles.car.width) / 2 + 0.5;
+    const reach = Math.max(0, t.speed) ** 2 / 6 + (vehicle.length + tables.city.obstacles.car.length) / 2 + 3;
+    const side = (vehicle.width + tables.city.obstacles.car.width) / 2 + 0.5;
     return sim.state.traffic.some((c) => {
       const along = (c.x - t.x) * fx + (c.z - t.z) * fz;
       const ways = Math.sin(c.heading) * fx + Math.cos(c.heading) * fz > 0.5;

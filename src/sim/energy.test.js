@@ -81,7 +81,7 @@ describe('Sim: driver energy', () => {
 
 describe('Sim: snack and meal', () => {
   test('a petrol station offers a snack while the driver is below full energy, after the fill-up', () => {
-    const sim = cena({ ...rested(0.5), fuel: tables.fuel.tank / 2 });
+    const sim = cena({ ...rested(0.5), fuel: tables.fleet.truck.tank / 2 });
     sim.step(DT, IDLE);
     expect(sim.state.serviceOffer.map((s) => s.id)).toEqual(['fuel', 'snack']);
     expect(sim.state.serviceOffer[1]).toEqual({ id: 'snack', price: snack.price });

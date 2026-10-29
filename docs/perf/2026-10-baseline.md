@@ -968,6 +968,19 @@ Stars draw nothing in the 3D view: a Stars banner in the DOM after each delivery
 | main, cab (2 runs) | 16.7 / 16.7 | 2.5–2.9 / 2.66–3.01 | 0.12 | 2.4–2.8 / 2.50–2.85 | 111 / 387–388k | 318–323 ms |
 | #81, cab (2 runs) | 16.7 / 16.8 | 2.5–2.8 / 2.57–2.77 | 0.11–0.12 | 2.3–2.7 / 2.41–2.62 | 109 / 385k | 300–319 ms |
 
+## Vehicles (#88)
+
+The van is a code-built body and details mesh (vehicles.js) with its own cab interior, both in the truck's group and hidden while the truck is driven; the warm-up frame draws them once so a switch doesn't stall. Driving the truck, the draw calls and triangles are the same as main; the hidden van adds 4 programs, 5 geometries and a texture. The Sim reads the current Vehicle's constants where it read the truck's.
+
+**How measured:** production builds of main (`d0dd2e0`) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames 55 s after it first showed, cab view, alternating main, this change, main, this change, load average 2.6–4.1. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.7 | 2.4 / 2.44–2.48 | 0.13–0.14 | 2.2–2.3 / 2.26–2.30 | 87 / 321k | 321–329 ms |
+| #88, cab (2 runs) | 16.7 / 16.7–16.8 | 2.4–2.5 / 2.43–2.73 | 0.13–0.14 | 2.2–2.3 / 2.26–2.56 | 87 / 321k | 314–320 ms |
+
+The second #88 run's busy p95 of 4.7 ms (2.9 ms in the other three) came with the machine's load at its highest.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

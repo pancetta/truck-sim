@@ -4,7 +4,7 @@ import * as tables from '../tables.js';
 import { BRAKE, DT, GAS, IDLE, acceptFrom, box, build, createSim, deliver, drive, lane, monti, parkAt, seeded, timeUntil, way } from './fixtures.js';
 
 function withMass(emptyMass) {
-  return { ...tables, vehicle: { ...tables.vehicle, emptyMass } };
+  return { ...tables, fleet: { ...tables.fleet, truck: { ...tables.fleet.truck, emptyMass } } };
 }
 
 function snapshot(sim) {
@@ -104,8 +104,8 @@ describe('Sim: gearbox', () => {
     for (let t = 0; t < 60; t += DT) {
       sim.step(DT, GAS);
       gears.push(sim.state.truck.gear);
-      expect(sim.state.truck.rpm).toBeGreaterThanOrEqual(tables.vehicle.idleRpm);
-      expect(sim.state.truck.rpm).toBeLessThanOrEqual(tables.vehicle.torqueCurve.at(-1)[0]);
+      expect(sim.state.truck.rpm).toBeGreaterThanOrEqual(tables.fleet.truck.idleRpm);
+      expect(sim.state.truck.rpm).toBeLessThanOrEqual(tables.fleet.truck.torqueCurve.at(-1)[0]);
     }
 
     expect(gears[0]).toBe(1);
@@ -132,7 +132,7 @@ describe('Sim: gearbox', () => {
 });
 
 describe('Sim: reverse', () => {
-  const { reverseDelay, reverseSpeed } = tables.vehicle;
+  const { reverseDelay, reverseSpeed } = tables.fleet.truck;
 
   test('holding the brake at a standstill waits for the reverse delay, then reverses up to the cap', () => {
     const sim = createSim(tables);
@@ -199,8 +199,8 @@ describe('Sim: mass', () => {
       const toStop = timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
       return { toSpeed, toStop };
     }
-    const light = run(tables.vehicle.emptyMass);
-    const heavy = run(tables.vehicle.emptyMass * 2);
+    const light = run(tables.fleet.truck.emptyMass);
+    const heavy = run(tables.fleet.truck.emptyMass * 2);
 
     expect(heavy.toSpeed).toBeGreaterThan(light.toSpeed);
     expect(heavy.toStop).toBeGreaterThan(light.toStop);
@@ -215,8 +215,8 @@ describe('Sim: mass', () => {
     }
 
     // Positive roll leans the body to the truck's right; a right turn leans it left.
-    expect(lean(tables.vehicle.emptyMass)).toBeLessThan(0);
-    expect(lean(tables.vehicle.emptyMass * 1.5)).toBeLessThan(lean(tables.vehicle.emptyMass));
+    expect(lean(tables.fleet.truck.emptyMass)).toBeLessThan(0);
+    expect(lean(tables.fleet.truck.emptyMass * 1.5)).toBeLessThan(lean(tables.fleet.truck.emptyMass));
   });
 });
 const { lane: laneOffset } = tables.osm.classes.residential;
@@ -250,7 +250,7 @@ describe('Sim: city', () => {
 
     expect(sim.state.collision).toBe(true);
     expect(sim.state.truck.speed).toBe(0);
-    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(wall);
+    expect(sim.state.truck.z + tables.fleet.truck.length / 2).toBeLessThanOrEqual(wall);
   });
 
   test('driving into the map edge stops the truck inside the map', () => {
@@ -262,7 +262,7 @@ describe('Sim: city', () => {
 
     expect(sim.state.collision).toBe(true);
     expect(sim.state.truck.speed).toBe(0);
-    expect(sim.state.truck.z + tables.vehicle.length / 2).toBeLessThanOrEqual(map.bounds.maxZ);
+    expect(sim.state.truck.z + tables.fleet.truck.length / 2).toBeLessThanOrEqual(map.bounds.maxZ);
   });
 
   test('driving at an angle past a building corner without touching it does not stop the truck', () => {
@@ -295,11 +295,11 @@ describe('Sim: city', () => {
 });
 
 describe('Sim: profile', () => {
-  const profile = { ...freshProfile(), money: 500, stars: 5, distance: 1000, upgrades: { motor: 2 }, owned: ['red'], equipped: { paint: 'red' } };
+  const profile = { ...freshProfile(), money: 500, stars: 5, distance: 1000, vehicles: { truck: { motor: 2 } }, owned: ['red'], equipped: { paint: 'red' } };
 
   test('a fresh Sim starts with no money and no payment', () => {
     const sim = laneSim();
-    expect(sim.state.profile).toMatchObject({ version: 5, money: 0, stars: 0, distance: 0, fuel: tables.fuel.tank, energy: 1 });
+    expect(sim.state.profile).toMatchObject({ version: 6, money: 0, stars: 0, distance: 0, fuel: tables.fleet.truck.tank, energy: 1 });
     expect(sim.state.lastPayment).toBe(null);
   });
 
@@ -358,7 +358,7 @@ describe('Sim: distance', () => {
     expect(sim.state.profile.distance).toBeCloseTo(forwards, 6);
 
     const stop = snapshot(sim);
-    drive(sim, tables.vehicle.reverseDelay + 3, BRAKE);
+    drive(sim, tables.fleet.truck.reverseDelay + 3, BRAKE);
     drive(sim, 3, IDLE);
     const backwards = -moved(sim, stop).forward;
     expect(backwards).toBeGreaterThan(2);
@@ -384,7 +384,7 @@ describe('Sim: distance', () => {
 
 describe('Sim: Werkstatt', () => {
   const MONEY = 100000;
-  const rich = (upgrades = {}, stars = 0) => ({ ...freshProfile(), money: MONEY, stars, upgrades });
+  const rich = (upgrades = {}, stars = 0) => ({ ...freshProfile(), money: MONEY, stars, vehicles: { truck: upgrades } });
   const plane = (profile = rich()) => createSim(tables, undefined, Math.random, profile);
 
   test('the Werkstatt is available only at a standstill with no active order', () => {
@@ -407,7 +407,7 @@ describe('Sim: Werkstatt', () => {
     expect(tuned.buyUpgrade('motor')).toEqual({ ok: true, reason: null });
 
     expect(tuned.state.profile.money).toBe(MONEY - tables.upgrades.motor.levels[0].price);
-    expect(tuned.state.profile.upgrades.motor).toBe(1);
+    expect(tuned.state.profile.vehicles.truck.motor).toBe(1);
     const to50 = (sim) => timeUntil(sim, GAS, () => sim.state.truck.speed >= 50 / 3.6);
     expect(to50(tuned)).toBeLessThan(to50(plane()) * 0.95);
   });
@@ -447,11 +447,11 @@ describe('Sim: Werkstatt', () => {
       return max;
     }
     const sim = laneSim(3, rich());
-    expect(heaviest(sim)).toBe(tables.orders.maxCargo);
+    expect(heaviest(sim)).toBe(tables.fleet.truck.maxCargo);
 
     sim.buyUpgrade('cargoBed');
 
-    expect(heaviest(sim)).toBe(tables.upgrades.cargoBed.levels[0].maxCargo);
+    expect(heaviest(sim)).toBe(tables.fleet.truck.maxCargo * tables.upgrades.cargoBed.levels[0].factor);
   });
 
   test('each refused purchase gives its reason and changes nothing', () => {
@@ -481,7 +481,114 @@ describe('Sim: Werkstatt', () => {
     const sim = plane(rich({ motor: 1 }, tables.rank.tiers[rank].stars));
 
     expect(sim.buyUpgrade('motor').ok).toBe(true);
-    expect(sim.state.profile.upgrades.motor).toBe(2);
+    expect(sim.state.profile.vehicles.truck.motor).toBe(2);
+  });
+});
+
+describe('Sim: Vehicles', () => {
+  const OK = { ok: true, reason: null };
+  const { van } = tables.fleet;
+  const vanTier = tables.rank.tiers[van.rank].stars;
+  const rich = (profile = {}) => ({ ...freshProfile(), money: 100000, stars: vanTier, ...profile });
+  const plane = (profile = rich()) => createSim(tables, undefined, Math.random, profile);
+  const withVan = (upgrades = {}) => rich({ vehicles: { truck: {}, van: upgrades } });
+
+  test('buying the van costs its price and drives it from then on, with no upgrades; the truck stays owned', () => {
+    const sim = plane();
+    expect(sim.buyVehicle('van')).toEqual(OK);
+    expect(sim.state.profile).toMatchObject({ money: 100000 - van.price, vehicle: 'van', vehicles: { truck: {}, van: {} } });
+    expect(sim.state.truck.mass).toBe(van.emptyMass);
+    expect(sim.chooseVehicle('truck')).toEqual(OK);
+    expect(sim.state.profile.vehicle).toBe('truck');
+    expect(sim.state.truck.mass).toBe(tables.fleet.truck.emptyMass);
+  });
+
+  test('each refused purchase or choice gives its reason and changes nothing', () => {
+    const moving = plane(withVan());
+    drive(moving, 1, GAS);
+    const onOrder = laneSim(1, withVan());
+    acceptFrom(onOrder, 'A');
+    const cases = [
+      [plane(), 'buyVehicle', 'rocket', 'unknown'],
+      [plane(), 'buyVehicle', 'toString', 'unknown'],
+      [plane(), 'chooseVehicle', 'rocket', 'unknown'],
+      [moving, 'buyVehicle', 'van', 'notIdle'],
+      [moving, 'chooseVehicle', 'truck', 'notIdle'],
+      [onOrder, 'chooseVehicle', 'truck', 'notIdle'],
+      [plane(rich({ stars: vanTier - 1 })), 'buyVehicle', 'van', 'rankTooLow'],
+      [plane(rich({ money: van.price - 1 })), 'buyVehicle', 'van', 'noMoney'],
+      [plane(withVan()), 'buyVehicle', 'van', 'owned'],
+      [plane(withVan()), 'buyVehicle', 'truck', 'owned'],
+      [plane(), 'chooseVehicle', 'van', 'notOwned'],
+    ];
+    for (const [sim, command, id, reason] of cases) {
+      const before = structuredClone(sim.state.profile);
+      expect(sim[command](id), `${command} ${id}`).toEqual({ ok: false, reason });
+      expect(sim.state.profile, `${command} ${id}`).toEqual(before);
+    }
+  });
+
+  test('each Vehicle keeps its own upgrades, and they apply to the current one', () => {
+    const sim = plane(withVan());
+    expect(sim.buyUpgrade('motor')).toEqual(OK); // the truck's
+    expect(sim.chooseVehicle('van')).toEqual(OK);
+    expect(sim.buyUpgrade('brakes')).toEqual(OK);
+    expect(sim.buyUpgrade('brakes')).toEqual(OK);
+    expect(sim.state.profile.vehicles).toEqual({ truck: { motor: 1 }, van: { brakes: 2 } });
+
+    // The van's brakes stop it shorter than a van without them.
+    const stop = (s) => {
+      timeUntil(s, GAS, () => s.state.truck.speed >= 40 / 3.6);
+      const start = snapshot(s);
+      timeUntil(s, BRAKE, () => s.state.truck.speed === 0);
+      return moved(s, start).forward;
+    };
+    const plain = plane(withVan());
+    plain.chooseVehicle('van');
+    expect(stop(sim)).toBeLessThan(stop(plain) * 0.8);
+  });
+
+  test('the van is quicker to 50 km/h and stops shorter than the truck', () => {
+    const [truck, vanSim] = [plane(withVan()), plane(withVan())];
+    vanSim.chooseVehicle('van');
+    const to50 = (s) => timeUntil(s, GAS, () => s.state.truck.speed >= 50 / 3.6);
+    const [truckTime, vanTime] = [to50(truck), to50(vanSim)];
+    expect(vanTime).toBeLessThan(truckTime * 0.7);
+    const stop = (s) => {
+      const start = snapshot(s);
+      timeUntil(s, BRAKE, () => s.state.truck.speed === 0);
+      return moved(s, start).forward;
+    };
+    expect(stop(vanSim)).toBeLessThan(stop(truck));
+  });
+
+  test("the van loads only what it carries, its Ladefläche raising that, and holds its own tank's fuel", () => {
+    const heaviest = (sim) => {
+      let max = 0;
+      for (let i = 0; i < 100; i++) for (const o of sim.requestOffers()) max = Math.max(max, o.cargo.weight);
+      return max;
+    };
+    const sim = laneSim(3, withVan());
+    expect(heaviest(sim)).toBe(tables.fleet.truck.maxCargo);
+    expect(sim.state.fuel).toBe(tables.fleet.truck.tank);
+
+    expect(sim.chooseVehicle('van')).toEqual(OK);
+    expect(sim.state.offers).toEqual([]); // offered for the truck's load
+    expect(heaviest(sim)).toBe(van.maxCargo);
+    expect(sim.state.tank).toBe(van.tank);
+    expect(sim.state.fuel).toBe(van.tank); // cut to its tank
+    sim.buyUpgrade('cargoBed');
+    expect(heaviest(sim)).toBeGreaterThan(van.maxCargo);
+    expect(heaviest(sim)).toBeLessThanOrEqual(van.maxCargo * tables.upgrades.cargoBed.levels[0].factor);
+  });
+
+  test("the van's footprint is its own: driving into a building, it stops with its own front at the wall", () => {
+    const sim = laneSim(1, withVan());
+    sim.chooseVehicle('van');
+    drive(sim, 10, GAS);
+    expect(sim.state.collision).toBe(true);
+    expect(sim.state.truck.z + van.length / 2).toBeLessThanOrEqual(wall);
+    expect(sim.state.truck.z + van.length / 2).toBeGreaterThan(wall - 0.5);
   });
 });
 

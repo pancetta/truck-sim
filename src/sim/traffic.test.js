@@ -79,17 +79,20 @@ describe('Sim: traffic', () => {
     expect(tiers.at(-1).traffic).toBeGreaterThan(tiers[0].traffic);
   });
 
-  test('AI cars stop behind the standing truck at the following distance and never drive into it', () => {
+  // The van is chosen after the Sim is built, so traffic's view of the truck's size follows a switch (#88).
+  test.each(['truck', 'van'])('AI cars stop behind the standing %s at the following distance and never drive into it', (id) => {
     // A ring road round a 180 × 80 m block; the truck stands in the middle of its north side, in the eastbound lane.
     const ring = build([way('residential', [[-90, -40], [90, -40], [90, 40], [-90, 40]]), way('residential', [[-90, 40], [-90, -40]])]);
-    const sim = trafficSim(ring, 3);
+    const sim = trafficSim(ring, 3, { ...freshProfile(), vehicles: { truck: {}, van: {} } });
+    const size = tables.fleet[id];
+    expect(sim.chooseVehicle(id).ok).toBe(true);
     Object.assign(sim.state.truck, { x: 0, z: -40 + classes.residential.lane, heading: EAST });
     const truck = { ...sim.state.truck };
 
     let hits = 0;
     for (let t = 0; t < 120; t += DT) {
       sim.step(DT, IDLE);
-      hits += sim.state.traffic.filter((c) => vehiclesOverlap(c, CAR, truck, tables.vehicle)).length;
+      hits += sim.state.traffic.filter((c) => vehiclesOverlap(c, CAR, truck, size)).length;
     }
 
     // Eastbound cars in the truck's lane, nearest the truck's rear first.
@@ -99,7 +102,7 @@ describe('Sim: traffic', () => {
     expect(hits).toBe(0);
     expect(behind.length).toBeGreaterThan(0);
     expect(behind[0].speed).toBe(0);
-    expect(truck.x - tables.vehicle.length / 2 - (behind[0].x + CAR.length / 2)).toBeCloseTo(followGap, 1);
+    expect(truck.x - size.length / 2 - (behind[0].x + CAR.length / 2)).toBeCloseTo(followGap, 1);
     // The next car keeps its distance to the first.
     if (behind[1]) expect(behind[0].x - behind[1].x - CAR.length).toBeGreaterThanOrEqual(followGap - 0.05);
   });
@@ -257,7 +260,7 @@ describe('Sim: traffic', () => {
 describe('Sim: right of way and collisions', () => {
   const { stopGap, truckHold, truckLine } = tables.traffic;
   const lane = classes.residential.lane;
-  const half = tables.vehicle.length / 2;
+  const half = tables.fleet.truck.length / 2;
 
   // The crossing (CROSS unless `ways` says otherwise) with no cars of its own; the truck stands off the road, facing
   // south.
@@ -376,7 +379,7 @@ describe('Sim: right of way and collisions', () => {
     const sim = crossSim();
     Object.assign(sim.state.truck, eastArm(3));
     const a = addCar(sim, 1, through[NORTH]);
-    drive(sim, tables.vehicle.reverseDelay + 0.5, BRAKE); // into reverse
+    drive(sim, tables.fleet.truck.reverseDelay + 0.5, BRAKE); // into reverse
 
     const { entered } = watch(sim, [a], 8, BRAKE);
 
@@ -464,7 +467,7 @@ describe('Sim: right of way and collisions', () => {
 
     sim.resetToRoad();
 
-    expect(vehiclesOverlap(sim.state.truck, tables.vehicle, car, CAR)).toBe(false);
+    expect(vehiclesOverlap(sim.state.truck, tables.fleet.truck, car, CAR)).toBe(false);
   });
 
   test('back on the road avoids crossings, where the cars would wait for the truck', () => {
@@ -631,7 +634,7 @@ describe('Sim: right of way and collisions', () => {
       const sim = crossSim({ ...freshProfile(), money: 500 });
       const car = addCar(sim, 1, through[NORTH]);
       const { x, z } = sim.state.truck;
-      Object.assign(car, { x: x - tables.vehicle.width / 2 - 1.4, z: z + half + 1.4, heading });
+      Object.assign(car, { x: x - tables.fleet.truck.width / 2 - 1.4, z: z + half + 1.4, heading });
       sim.state.truck.speed = 1;
       sim.step(DT, IDLE);
       return { fine: sim.state.lastFine, stopped: sim.state.truck.speed === 0 };
@@ -675,7 +678,7 @@ describe('Sim: right of way and collisions', () => {
     const sim = crossSim({ ...freshProfile(), money: 500 });
     const car = addCar(sim, 1, through[NORTH]);
     const { truck } = sim.state;
-    Object.assign(truck, { x: car.x - CAR.width / 2 + 0.3 - tables.vehicle.width / 2, z: car.z + 2, heading: NORTH });
+    Object.assign(truck, { x: car.x - CAR.width / 2 + 0.3 - tables.fleet.truck.width / 2, z: car.z + 2, heading: NORTH });
     sim.step(DT, IDLE);
     const start = truck.z;
 
@@ -723,7 +726,7 @@ describe('Sim: right of way and collisions', () => {
             let entered = 0;
             for (let t = 0; t < 40; t += DT) {
               sim.step(DT, IDLE);
-              into += cars.filter((c) => sim.state.traffic.includes(c) && vehiclesOverlap(c, CAR, sim.state.truck, tables.vehicle)).length;
+              into += cars.filter((c) => sim.state.traffic.includes(c) && vehiclesOverlap(c, CAR, sim.state.truck, tables.fleet.truck)).length;
               entered += cars.filter((c) => sim.state.traffic.includes(c) && inCrossing(c)).length;
             }
             const left = cars.filter((c) => sim.state.traffic.includes(c));
@@ -899,14 +902,14 @@ describe('Sim: traffic on the road graph', () => {
     function rollIn(back, speed, seen = true) {
       const { sim, centre } = stopCross();
       if (seen) through(sim, centre, 99, 1, 3).police = true;
-      truckOn(sim, centre, 1, centre.radius + tables.vehicle.length / 2 + back, speed);
+      truckOn(sim, centre, 1, centre.radius + tables.fleet.truck.length / 2 + back, speed);
       sim.step(DT, IDLE);
       let [fines, last, front] = [0, sim.state.lastFine, Infinity];
       for (let t = 0; t < 4; t += DT) {
         sim.step(DT, GAS);
         if (sim.state.lastFine !== last && sim.state.lastFine.reason === 'stopSign') fines++;
         last = sim.state.lastFine;
-        front = Math.min(front, sim.state.truck.x - tables.vehicle.length / 2);
+        front = Math.min(front, sim.state.truck.x - tables.fleet.truck.length / 2);
       }
       expect(front).toBeLessThan(centre.radius); // it drove in
       return fines;
@@ -932,7 +935,7 @@ describe('Sim: traffic on the road graph', () => {
       const { sim, centre } = star([90, 0, -90, 180], ['tertiary', 'residential', 'tertiary', 'residential']);
       const car = through(sim, centre, 1, 0, 2, centre.slots[0].in.length - short - CAR.length / 2, speed);
       if (seen) through(sim, centre, 99, 1, 3).police = true;
-      truckOn(sim, centre, 1, centre.radius + tables.vehicle.length / 2 + 0.5, 5);
+      truckOn(sim, centre, 1, centre.radius + tables.fleet.truck.length / 2 + 0.5, 5);
       let [fines, last, stopped] = [0, sim.state.lastFine, false];
       for (let t = 0; t < 4; t += DT) {
         sim.step(DT, GAS);
@@ -1053,7 +1056,7 @@ describe('Sim: two-wheelers (#77)', () => {
   function beside(kind) {
     const sim = createSim(quiet, ring(), seeded(1));
     const other = addCar(sim, 1, [[-80, -40], [90, -40]], false, kind);
-    const z = other.z - twoWheelers.bicycle.width / 2 - tables.traffic.sideGap - 0.05 - tables.vehicle.width / 2;
+    const z = other.z - twoWheelers.bicycle.width / 2 - tables.traffic.sideGap - 0.05 - tables.fleet.truck.width / 2;
     Object.assign(sim.state.truck, { x: 0, z, heading: EAST, speed: 0 });
     return { sim, other };
   }
@@ -1067,7 +1070,7 @@ describe('Sim: two-wheelers (#77)', () => {
     for (let t = 0; t < 15 && bike.x < truck.x + 20; t += DT) {
       sim.step(DT, BRAKE);
       slowest = Math.min(slowest, bike.speed);
-      touches += vehiclesOverlap(bike, bike.size, truck, tables.vehicle);
+      touches += vehiclesOverlap(bike, bike.size, truck, tables.fleet.truck);
       blocked += sim.state.collision;
     }
     expect(bike.x).toBeGreaterThan(truck.x + 20);
@@ -1079,6 +1082,6 @@ describe('Sim: two-wheelers (#77)', () => {
     const { sim: carSim, other: car } = beside('car');
     timeUntil(carSim, IDLE, () => car.x > -30 && car.speed === 0, 60);
     expect(car.speed).toBe(0);
-    expect(carSim.state.truck.x - tables.vehicle.length / 2 - (car.x + CAR.length / 2)).toBeCloseTo(followGap, 1);
+    expect(carSim.state.truck.x - tables.fleet.truck.length / 2 - (car.x + CAR.length / 2)).toBeCloseTo(followGap, 1);
   });
 });

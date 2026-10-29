@@ -23,7 +23,8 @@ export function createSave(storage, tables) {
     // Migrations first, chained, then the checks for the current version; any other starts fresh (v1 and v2 were the
     // grid city's, #67). Fuel over the (upgraded) tank is cut back to a full one. v3 → v4 (#48) adds a full tank, a
     // rested driver, the clock at its start and no time played; v4 → v5 (#81) turns rank points into Stars, one per
-    // 10 points rounded down, which keeps the Tier (tables.rank).
+    // 10 points rounded down, which keeps the Tier (tables.rank); v5 → v6 (#88) makes the truck, with its upgrades, the
+    // first owned Vehicle and the current one. Vehicles the tables don't know are dropped (driving the truck again).
     const fresh = freshProfile();
     if (isObject(data) && data.version === 3) {
       const { fuel, energy, timeOfDay, timePlayed } = fresh;
@@ -33,29 +34,39 @@ export function createSave(storage, tables) {
       const { rankPoints, ...rest } = data;
       data = { ...rest, version: 5, stars: isAmount(rankPoints) ? Math.floor(rankPoints / 10) : null };
     }
+    if (isObject(data) && data.version === 5) {
+      const { upgrades, ...rest } = data;
+      data = { ...rest, version: 6, vehicle: 'truck', vehicles: { truck: upgrades } };
+    }
     if (!isObject(data) || data.version !== fresh.version) return null;
-    const { money, stars, distance, upgrades, owned, equipped, fuel, energy, timeOfDay, timePlayed } = data;
+    const { money, stars, distance, vehicle, vehicles, owned, equipped, fuel, energy, timeOfDay, timePlayed } = data;
     if (!isAmount(money) || !Number.isInteger(stars) || stars < 0 || !isAmount(distance)) return null;
     if (!isAmount(fuel) || !isAmount(timePlayed)) return null;
     if (!(isAmount(energy) && energy <= 1) || !(isAmount(timeOfDay) && timeOfDay < 24 * 60)) return null;
-    if (!isObject(upgrades) || !isObject(equipped)) return null;
+    if (!isObject(vehicles) || !Object.values(vehicles).every(isObject) || !isObject(equipped)) return null;
     if (!Array.isArray(owned) || !owned.every((id) => typeof id === 'string')) return null;
 
-    const levels = Object.entries(upgrades).filter(([id]) => Object.hasOwn(tables.upgrades, id));
     const inRange = ([id, level]) => Number.isInteger(level) && level >= 0 && level <= tables.upgrades[id].levels.length;
-    if (!levels.every(inRange)) return null;
+    const fleet = { truck: {}, ...vehicles };
+    const bought = {};
+    for (const [id, upgrades] of Object.entries(fleet).filter(([id]) => Object.hasOwn(tables.fleet, id))) {
+      const levels = Object.entries(upgrades).filter(([u]) => Object.hasOwn(tables.upgrades, u));
+      if (!levels.every(inRange)) return null;
+      bought[id] = Object.fromEntries(levels);
+    }
+    const current = Object.hasOwn(bought, vehicle) ? vehicle : 'truck';
     const kept = [...new Set(owned)].filter((id) => Object.hasOwn(tables.visuals, id));
     const worn = Object.entries(equipped).filter(([slot, id]) => kept.includes(id) && tables.visuals[id].slot === slot);
-    const bought = Object.fromEntries(levels);
     return {
       version: data.version,
       money,
       stars,
       distance,
-      upgrades: bought,
+      vehicle: current,
+      vehicles: bought,
       owned: kept,
       equipped: Object.fromEntries(worn),
-      fuel: Math.min(fuel, tankOf({ upgrades: bought }, tables)),
+      fuel: Math.min(fuel, tankOf({ vehicle: current, vehicles: bought }, tables)),
       energy,
       timeOfDay,
       timePlayed,

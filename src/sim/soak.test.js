@@ -15,7 +15,7 @@ describe('Sim: collider broad phase', () => {
     const [minX, maxX, minZ, maxZ] = [-30, 12, -20, 18];
     map.colliders.push({ kind: 'wide', minX, maxX, minZ, maxZ, points: [{ x: minX, z: minZ }, { x: maxX, z: minZ }, { x: maxX, z: maxZ }, { x: minX, z: maxZ }] });
     const sim = createSim(noCars, map, seeded(1));
-    const { length, width } = tables.vehicle;
+    const { length, width } = tables.fleet.truck;
     const [l, w] = [length / 2, width / 2];
     // Brute force, without the index: out of the map's bounds, or a side of any collider's outline running into the
     // truck's box (clipped to it in the truck's frame, touching isn't overlapping), or the box wholly inside an outline.
@@ -126,7 +126,7 @@ describe('Sim: traffic soak', () => {
       const { truck, traffic } = sim.state;
       const now = new Set();
       for (const [a, car] of traffic.entries()) {
-        if (vehiclesOverlap(car, car.size, truck, tables.vehicle)) now.add(car.id);
+        if (vehiclesOverlap(car, car.size, truck, tables.fleet.truck)) now.add(car.id);
         for (const other of traffic.slice(a + 1)) {
           const pair = `${Math.min(car.id, other.id)},${Math.max(car.id, other.id)}`;
           if ((car.x - other.x) ** 2 + (car.z - other.z) ** 2 < CAR.length ** 2 && vehiclesOverlap(car, car.size, other, other.size)) now.add(pair);
@@ -194,7 +194,7 @@ describe('Sim: traffic gridlock soak', () => {
   // s; "about 30" in #46, where right before left could hold a car up to ~36 s behind a steady stream from its right,
   // which then let it go; the gridlocks held cars 90–414 s.
   const limit = 40;
-  const { stopSpeed } = tables.vehicle;
+  const { stopSpeed } = tables.fleet.truck;
 
   // shortcut: "queued" is the first vehicle centre within 1.5 m of the car's route, sampled every 0.5 m up to 12 m
   // ahead (#77: a scooter stopped at the end of a turn, still facing round it, missed the car ahead along its heading),

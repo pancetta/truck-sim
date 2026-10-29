@@ -54,7 +54,15 @@ export const strings = {
   from: 'ab',
   upgrades: { motor: 'Motor', brakes: 'Bremsen', tyres: 'Reifen', suspension: 'Fahrwerk', cargoBed: 'Ladefläche', tank: 'Tank' },
   effects: { motor: 'Drehmoment', brakes: 'Bremskraft', tyres: 'Lenkung bei Tempo', suspension: 'Seitenneigung', cargoBed: 'Ladung bis', tank: 'Tankinhalt' },
-  // Why buyUpgrade(), buyVisual(), equipVisual(), buyService() or sleep() refused, by its reason.
+  // The Vehicles (tables.fleet) by id, and the Werkstatt's words for them.
+  fleet: { truck: 'Lkw', van: 'Transporter' },
+  fahrzeuge: 'Fahrzeuge',
+  choose: 'Fahren',
+  current: 'Im Einsatz',
+  litres: 'l',
+  looksTruckOnly: 'Aussehen gibt es nur für den Lkw',
+  // Why buyUpgrade(), buyVehicle(), chooseVehicle(), buyVisual(), equipVisual(), buyService() or sleep() refused, by its
+  // reason.
   refusals: {
     notIdle: 'Nur im Stand ohne Auftrag',
     notAtHome: 'Nur zu Hause',

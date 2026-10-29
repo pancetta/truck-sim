@@ -150,7 +150,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
   // The cheapest upgrade level the rank allows and the money (less the reserve) pays for, if any.
   const affordable = () =>
     Object.entries(tables.upgrades)
-      .map(([id, u]) => ({ id, level: u.levels[p().upgrades[id] ?? 0] }))
+      .map(([id, u]) => ({ id, level: u.levels[p().vehicles.truck[id] ?? 0] }))
       .filter(({ level }) => level && level.rank <= s.rank.tier && level.price <= p().money - reserve)
       .sort((a, b) => a.level.price - b.level.price)[0];
 
@@ -159,7 +159,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
     if (p().energy < nap && sim.sleep().ok) r.sleeps++;
     for (let next; (next = affordable()); ) {
       if (!sim.buyUpgrade(next.id).ok) return;
-      r.upgrades.push({ id: next.id, level: p().upgrades[next.id], hours: p().timePlayed / 3600 });
+      r.upgrades.push({ id: next.id, level: p().vehicles.truck[next.id], hours: p().timePlayed / 3600 });
       r.upgradeCost += next.level.price;
     }
   }
@@ -183,7 +183,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
     else if (affordable()) driveTo(tables.osm.home) && shop();
     else deliver();
   }
-  return { ...r, money: p().money, stars: p().stars, baseTank: tables.fuel.tank };
+  return { ...r, money: p().money, stars: p().stars, baseTank: tables.fleet.truck.tank };
 }
 
 // The run's totals as a few lines of text.

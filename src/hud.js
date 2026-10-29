@@ -28,8 +28,6 @@ export const playedText = (s, strings) => `${strings.timePlayed} ${Math.floor(s 
 export const starsText = ({ stars, next }) => `★ ${stars}${next === null ? '' : `/${next}`}`;
 
 export function createHud(root, tables, strings) {
-  const { idleRpm, upshiftRpm, torqueCurve } = tables.vehicle;
-  const maxRpm = torqueCurve.at(-1)[0];
   root.className = 'dash';
   root.innerHTML = `
     <div class="dash-speed"><b></b><small>${strings.kmh}</small></div>
@@ -97,6 +95,8 @@ export function createHud(root, tables, strings) {
     speed.classList.toggle('over', kmh > speedLimit);
     set(limit, String(speedLimit));
     set(gear, String(truck.gear));
+    const { idleRpm, upshiftRpm, torqueCurve } = tables.fleet[profile.vehicle];
+    const maxRpm = torqueCurve.at(-1)[0];
     const fill = ((truck.rpm - idleRpm) / (maxRpm - idleRpm)).toFixed(2);
     if (fill !== shownBar) bar.style.transform = `scaleX(${(shownBar = fill)})`;
     bar.classList.toggle('high', truck.rpm > upshiftRpm);

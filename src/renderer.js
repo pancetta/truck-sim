@@ -463,7 +463,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Dock bays, our own boxes, from each dock's bay: a dock edge (a low dark platform, on the Sim's platform collider,
   // wall or not), and painted lines on either side of the bay, as far apart as the docking check allows. They stand a
   // little above the kerb so they show over the pavement too.
-  const bayHalf = tables.vehicle.width / 2 + tables.orders.dockCentre;
+  const bayHalf = tables.fleet.truck.width / 2 + tables.orders.dockCentre;
   const { dock } = tables.buildings;
   const bayLines = [];
   const dockEdges = [];
@@ -776,9 +776,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const painted = { body: [], cab: [] }; // vertex indices
   loads.push(loadModel(TRUCK, { ...palette, green: MARKS.body, wall: MARKS.cab }).then((geometry) => {
     const { min, max } = geometry.boundingBox;
-    const height = ((max.y - min.y) * tables.vehicle.width) / (max.x - min.x); // as tall as its width makes it; read before unitBox() rescales the box
+    const { width, length } = tables.fleet.truck;
+    const height = ((max.y - min.y) * width) / (max.x - min.x); // as tall as its width makes it; read before unitBox() rescales the box
     exterior.geometry = unitBox(geometry);
-    exterior.scale.set(tables.vehicle.width, height, tables.vehicle.length);
+    exterior.scale.set(width, height, length);
     const colour = geometry.getAttribute('color');
     const c = new THREE.Color();
     for (const [part, hex] of Object.entries(MARKS)) {
@@ -815,11 +816,24 @@ export function createRenderer(canvas, tables, map, onProgress) {
     parts.show(ids);
   }
 
-  // Cab interior (cab.js) with the cab gimmick, shown only in the cab view.
-  const cab = createCab(tables, strings);
-  const { interior } = cab;
-  interior.add(parts.cab);
-  truck.add(interior);
+  // Each Vehicle (tables.fleet) in the `truck` group: its outside, and its cab interior (cab.js), which only the cab view
+  // shows, moved by its `cab` offset. The truck is the kit's with the visual items, its interior with the cab gimmick;
+  // the others are built from code (vehicles.js), in their own paint. Only the current one shows (see showVehicle()).
+  const bodies = {};
+  for (const [id, v] of Object.entries(tables.fleet)) {
+    let outside = [exterior, parts.exterior];
+    if (v.body) {
+      const { fitted, near } = carGeometries({ [id]: v.body }, v)[id];
+      const paint = new THREE.MeshStandardMaterial({ map: skinTexture(fitted), color: v.paint, roughness: 0.35, metalness: 0.5 });
+      outside = [new THREE.Mesh(near.body, paint), new THREE.Mesh(near.details, detailMaterial)];
+    }
+    const cab = createCab(tables, strings, v);
+    cab.interior.position.fromArray(v.cab);
+    if (v.looks) cab.interior.add(parts.cab);
+    truck.add(...outside, cab.interior);
+    bodies[id] = { outside, cab };
+  }
+  let body = bodies.truck; // the one shown
   scene.add(truck);
 
   // The headlights at night (tables.lighting.headlights), and the reversing lights in gear R: a round glow stretched
@@ -827,11 +841,25 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // than starting at an edge.
   const beam = lighting.headlights;
   const beamMaterial = glowMaterial(beam.colour, beam.glow);
-  const glowOut = (width, length, side) =>
-    new THREE.Mesh(new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2).translate(0, beam.height, side * (tables.vehicle.length / 2 + length / 3)), beamMaterial);
+  // Out from the middle of the current Vehicle's bumper (see showVehicle()).
+  const glowOut = (width, length, side) => new THREE.Mesh(new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2).translate(0, beam.height, (side * length) / 3), beamMaterial);
   const headlights = glowOut(beam.width, beam.length, 1);
   const reversingLights = glowOut(...beam.reversing, -1);
   truck.add(headlights, reversingLights);
+
+  // Shows Vehicle `id`, its outside and (in render()) its interior from the cab, and moves the lights to its bumpers. The
+  // warm-up frame (see warmUp) shows every Vehicle, so each one's shaders are ready for a switch.
+  let shownVehicle = null;
+  function showVehicle(id) {
+    body = bodies[id];
+    shownVehicle = warmUp ? null : id;
+    for (const [k, b] of Object.entries(bodies)) {
+      for (const o of b.outside) o.visible = warmUp || k === id;
+      b.cab.interior.visible = warmUp;
+    }
+    headlights.position.z = tables.fleet[id].length / 2;
+    reversingLights.position.z = -headlights.position.z;
+  }
 
   // Rain streaks (tables.weather.streaks): `drops` thin crossed quads, each falling through a box round the camera. The
   // vertex shader wraps each drop's place into the box about the camera, so the drops stay put in the world (bar their
@@ -954,8 +982,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const { x, z, heading, roll } = state.truck;
     truck.position.set(x, 0, z);
     truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
+    const vehicle = tables.fleet[state.profile.vehicle];
+    if (shownVehicle !== state.profile.vehicle) showVehicle(state.profile.vehicle);
     // The wheel at the same angle as the on-screen one; positive is clockwise from the driver's seat.
-    cab.update(state, input.steer * tables.controls.wheelLock);
+    body.cab.update(state, input.steer * tables.controls.wheelLock);
     showLook(look);
     parts.sway(roll, dt);
 
@@ -990,13 +1020,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
     chased = !showroom && !inCab;
     // From the seat the outside of the truck isn't drawn, but it still casts its shadow. Visual items' parts are
     // built on first show, so they are set up here too.
-    for (const outside of [exterior, parts.exterior]) {
+    for (const outside of body.outside) {
       outside.traverse((mesh) => {
         mesh.layers.set(inCab ? SHADOW_ONLY : 0);
         mesh.castShadow = mesh.receiveShadow = true;
       });
     }
-    interior.visible = inCab;
+    body.cab.interior.visible = inCab;
     shift(!!showroom);
     if (!showroom) [orbit, arm] = [0, tables.showroom.radius];
     if (showroom === 'orbit') {
@@ -1011,8 +1041,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.lookAt(x, lookHeight, z);
     } else if (inCab) {
       // Truck-space points, so the camera follows anything that moves the truck.
-      camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye)));
-      camera.lookAt(truck.localToWorld(lookAt.fromArray(showroom ? cam.gimmickLook : cam.cabLook)));
+      camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye).add(body.cab.interior.position)));
+      camera.lookAt(truck.localToWorld(lookAt.fromArray(showroom ? cam.gimmickLook : cam.cabLook).add(body.cab.interior.position)));
     } else {
       // Chase camera: behind and above the truck, pulled in before a building in the way (as after reversing
       // into a dock) and raised as it does so the truck doesn't fill the view; quickly but not at once, and eases
@@ -1028,8 +1058,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
     drawingRear = rear || warmRear;
     if (drawingRear) {
-      rearCamera.position.copy(truck.localToWorld(eye.fromArray(cam.rearEye)));
-      rearCamera.lookAt(truck.localToWorld(lookAt.fromArray(cam.rearLook)));
+      rearCamera.position.copy(truck.localToWorld(eye.fromArray(vehicle.rearEye)));
+      rearCamera.lookAt(truck.localToWorld(lookAt.set(0, 0, vehicle.rearEye[2] - cam.rearLook)));
     }
     // The time of day: the sun or moon and the sky, and at night the headlights and street lights.
     // The Werkstatt shows the truck at noon, so its paint can be seen.
@@ -1086,11 +1116,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     if (drawingRear) {
       // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
       // The truck from outside (SHADOW_ONLY in the cab), so its back edge shows at the bottom as a guide.
-      interior.visible = false;
+      body.cab.interior.visible = false;
       renderer.setRenderTarget(rearTarget);
       renderer.render(scene, rearCamera);
       renderer.setRenderTarget(null);
-      interior.visible = inCab;
+      body.cab.interior.visible = inCab;
       if (rear) {
         const autoClear = renderer.autoClear;
         renderer.autoClear = false;

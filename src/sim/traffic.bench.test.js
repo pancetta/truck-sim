@@ -37,6 +37,7 @@ function drive(steps) {
 // The traffic step at 100 cars, replaying `frames` (truck and light phases per step) against `lights`.
 function bench(frames, lights) {
   const traffic = createTraffic(tables, map, seeded(1));
+  traffic.setTruck(tables.fleet.truck);
   const truck = { ...frames[0].truck };
   const held = new Set();
   // A quarter of the zebra crossings with someone at them, a different quarter every 5 s (about one crossing's time),

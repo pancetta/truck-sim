@@ -84,10 +84,10 @@ function strut(a, b, w, d) {
   return g.translate(...from.add(to).multiplyScalar(0.5).toArray());
 }
 
-// The interior group, and update() to set the wheel turn (degrees, positive clockwise from the seat) and the
-// instruments from the Sim's state.
-export function createCab(tables, strings) {
-  const { palette, camera, vehicle, cab, fuel } = tables;
+// The interior group of a Vehicle (a tables.fleet entry, whose engine the RPM dial shows), and update() to set the wheel
+// turn (degrees, positive clockwise from the seat) and the instruments from the Sim's state.
+export function createCab(tables, strings, vehicle) {
+  const { palette, camera, cab, fuel } = tables;
   const sweep = THREE.MathUtils.degToRad(cab.sweep);
   const rpmMax = vehicle.torqueCurve.at(-1)[0];
   const dash = material(palette.dashboard, 0.75);

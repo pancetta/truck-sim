@@ -1,7 +1,16 @@
 // All tunables live here (see spec #1: "Tables").
 import { strings } from './strings.js';
 
-export const vehicle = {
+// The Vehicles (#88) the player can own, by id (names in strings.fleet). The truck is the starter, which every profile
+// owns; the others are bought in the Werkstatt from Rank tier `rank` for `price` €. Each drives by its own constants;
+// `maxCargo` (t) is the heaviest cargo offered to it without a Ladefläche upgrade (heavier is a 'heavy' offer), `tank`
+// the litres it holds and `thirst` scales tables.fuel.perKm. The renderer draws the truck from the kit and the others
+// from code (vehicles.js `body`, painted `paint`); `cab` (m, x left, y up, z forward) moves the cab interior
+// (cab.js) and camera.cabEye from where they sit in the truck, and `rearEye` is the reversing camera's place (see
+// camera.rearEye). `looks`: the Werkstatt's visual items fit it (only the truck's, spec #76).
+const truck = {
+  rank: 0,
+  price: 0,
   emptyMass: 8000, // kg
   // Engine torque (Nm) by RPM, linear in between; zero past the last point (rev limiter,
   // also the top of the dashboard RPM gauge).
@@ -31,6 +40,56 @@ export const vehicle = {
   maxRoll: 0.12, // rad
   length: 8, // m, footprint for collisions, centred on the truck's position
   width: 2.5, // m
+  maxCargo: 10, // t
+  tank: 400, // l
+  thirst: 1,
+  cab: [0, 0, 0],
+  rearEye: [0, 3.6, -3.95],
+  looks: true,
+};
+export const fleet = {
+  truck,
+  // Quicker, lighter, smaller loads: a high-roof panel van with a car-like engine and gearbox.
+  van: {
+    ...truck,
+    rank: 1,
+    price: 5000,
+    emptyMass: 2800,
+    torqueCurve: [
+      [800, 160],
+      [1500, 330],
+      [2800, 330],
+      [3800, 220],
+      [4200, 0],
+    ],
+    idleRpm: 800,
+    gearRatios: [17, 10, 6.6, 4.8, 3.7, 3],
+    reverseRatio: 17,
+    upshiftRpm: 3300,
+    downshiftRpm: 1500,
+    wheelRadius: 0.34,
+    brakeForce: 21000,
+    drag: 1.6,
+    wheelbase: 3.7,
+    steerFadeSpeed: 10,
+    rollPerAccel: 0.006,
+    maxRoll: 0.1,
+    length: 5.6,
+    width: 2.05,
+    maxCargo: 5,
+    tank: 150,
+    thirst: 0.35,
+    cab: [0, -0.3, -1.1],
+    rearEye: [0, 2.45, -2.75],
+    looks: false,
+    // Side profile from the rear (x, y in m), as tables.vehicles.types: tall box, short bonnet, sliding door.
+    body: {
+      body: [[0, 0.4], [0, 2.45], [0.08, 2.55], [4.2, 2.55], [4.55, 2.3], [5.0, 1.35], [5.5, 1.05], [5.6, 0.45]],
+      glass: [[4.0, 1.4], [4.0, 2.2], [4.5, 2.2], [4.95, 1.4]],
+      axles: [1.0, 4.65], wheel: 0.34, pillar: null, doors: [[2.6, 3.9], [3.95, 4.85]],
+    },
+    paint: 0xe9e6dc,
+  },
 };
 
 export const orders = {
@@ -51,7 +110,6 @@ export const orders = {
   brakeDamage: 0.005, // per m/s of speed shed while braking hard: ~0.07 for a full stop from 50 km/h
   hitDamage: 0.2, // per new collision at hitSpeed or faster
   hitSpeed: 1.5, // m/s; slower touches, e.g. while manoeuvring, do no damage
-  maxCargo: 10, // t, heaviest cargo offered without a Ladefläche upgrade; heavier is a 'heavy' offer
   // Dock bonus: a share of the pay when unloading at a dock (osm.docks) ends with the truck reversed into the
   // bay, facing out of it within dockHeading, centred on it within dockCentre and its rear within dockDepth.
   dockBonus: 0.25,
@@ -104,16 +162,16 @@ export const rank = {
 };
 
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
-// rank tier that may buy a level. `factor` scales a base vehicle constant: motor the torque curve, brakes
-// brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and fragile damage, tank fuel.tank. cargoBed's `maxCargo`
-// replaces orders.maxCargo.
+// rank tier that may buy a level. `factor` scales a constant of the current Vehicle (tables.fleet), whose own levels
+// they are: motor the torque curve, brakes brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and fragile damage,
+// tank its tank, cargoBed its maxCargo.
 // The save module drops ids not listed here.
 export const upgrades = {
   motor: { levels: [{ price: 1200, rank: 0, factor: 1.15 }, { price: 3000, rank: 1, factor: 1.3 }, { price: 6000, rank: 3, factor: 1.45 }] },
   brakes: { levels: [{ price: 800, rank: 0, factor: 1.2 }, { price: 2000, rank: 1, factor: 1.4 }, { price: 4500, rank: 3, factor: 1.6 }] },
   tyres: { levels: [{ price: 800, rank: 0, factor: 1.25 }, { price: 2000, rank: 1, factor: 1.5 }, { price: 4500, rank: 3, factor: 1.8 }] },
   suspension: { levels: [{ price: 700, rank: 0, factor: 0.8 }, { price: 1800, rank: 1, factor: 0.6 }, { price: 4000, rank: 3, factor: 0.45 }] },
-  cargoBed: { levels: [{ price: 1500, rank: 0, maxCargo: 14 }, { price: 3500, rank: 2, maxCargo: 18 }, { price: 7000, rank: 4, maxCargo: 24 }] },
+  cargoBed: { levels: [{ price: 1500, rank: 0, factor: 1.4 }, { price: 3500, rank: 2, factor: 1.8 }, { price: 7000, rank: 4, factor: 2.4 }] },
   tank: { levels: [{ price: 1000, rank: 0, factor: 1.25 }, { price: 2500, rank: 1, factor: 1.5 }, { price: 5000, rank: 3, factor: 1.75 }] },
 };
 // Werkstatt visual items by id (names in strings.visuals, slot names in strings.visualSlots), bought with
@@ -205,11 +263,10 @@ export const weather = {
   streaks: { box: [30, 14, 30], drops: 1500, size: [0.02, 0.8], fall: 11, opacity: 0.5, near: [1.5, 4], colour: 0xc8d0d8, floor: 0.12 },
 };
 
-// The fuel tank (profile.fuel, litres), `tank` litres before the Werkstatt's tank upgrade; a new profile starts full. A
-// full tank lasts about 4–5 average deliveries: the economy run (#58, scripts/economy.js) burns about 87 L a delivery.
+// The fuel tank (profile.fuel, litres) holds the Vehicle's `tank` (tables.fleet) before the Werkstatt's tank upgrade; a
+// new profile starts full. The truck's full tank lasts about 4–5 average deliveries: the economy run (#58, scripts/economy.js) burns about 87 L a delivery.
 export const fuel = {
-  tank: 400,
-  // Litres per km driven, times (1 + perTonne × tonnes of cargo) and (1 + perPedal × the driving pedal, 0..1); a test
+  // Litres per km driven (times the Vehicle's thirst), times (1 + perTonne × tonnes of cargo) and (1 + perPedal × the driving pedal, 0..1); a test
   // that drives far with the real tables sets perKm to 0, so the tank never empties.
   perKm: 40,
   perTonne: 0.02,
@@ -616,11 +673,11 @@ export const camera = {
   cabEye: [0.55, 1.95, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the headliner (cab.js)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
   gimmickLook: [0.2, 1.75, 2.35], // where it aims in the Werkstatt to show the cab gimmick
-  // Reversing camera on the roof's back edge, inside the footprint so it never ends up in the wall it backs up to.
-  // It shows in an inset (renderer.js) while the gear is R and `rearHold` s after, so stops while reversing don't
-  // make it flicker. Aimed down so the bottom of the picture is straight down: at the dock the bay edge shows.
-  rearEye: [0, 3.6, -3.95],
-  rearLook: [0, 0, -6],
+  // Reversing camera on the roof's back edge (the Vehicle's rearEye, tables.fleet), inside the footprint so it never
+  // ends up in the wall it backs up to. It shows in an inset (renderer.js) while the gear is R and `rearHold` s after,
+  // so stops while reversing don't make it flicker. Aimed down, at the ground `rearLook` m behind it, so the bottom of
+  // the picture is straight down: at the dock the bay edge shows.
+  rearLook: 2.05,
   rearFov: 70, // degrees, vertical; wide, as reversing cameras are
   rearFar: 60, // m it draws to: it looks down, and the short far plane leaves most of the city out of its draw
   rearHold: 1.5, // s

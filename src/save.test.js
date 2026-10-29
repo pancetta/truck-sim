@@ -24,11 +24,12 @@ function fakeStorage(items = {}) {
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
 const valid = {
-  version: 5,
+  version: 6,
   money: 1234,
   stars: 4,
   distance: 5678.9,
-  upgrades: { motor: 2 },
+  vehicle: 'truck',
+  vehicles: { truck: { motor: 2 } },
   owned: ['red', 'dice'],
   equipped: { paint: 'red', gimmick: 'dice' },
   fuel: 123.4,
@@ -36,9 +37,12 @@ const valid = {
   timeOfDay: 1300.5,
   timePlayed: 3600.25,
 };
-// The same progress as saved by the earlier versions: 4, with rank points before Stars (#81), 3, before fuel, energy
-// and the clock (#48), and the grid city's 1, before the distance counter, and 2 (#67: no migration).
-const { stars, ...v5Fields } = valid;
+// The same progress as saved by the earlier versions: 5, with the truck's upgrades before Vehicles (#88), 4, with rank
+// points before Stars (#81), 3, before fuel, energy and the clock (#48), and the grid city's 1, before the distance
+// counter, and 2 (#67: no migration).
+const { vehicle, vehicles, ...v6Fields } = valid;
+const v5 = { ...v6Fields, upgrades: { motor: 2 }, version: 5 };
+const { stars, ...v5Fields } = v5;
 const v4 = { ...v5Fields, rankPoints: 47, version: 4 };
 const { distance, fuel, energy, timeOfDay, timePlayed, ...v1Fields } = v4;
 const v3 = { ...v1Fields, distance, version: 3 };
@@ -51,7 +55,10 @@ describe('save module', () => {
     const save = createSave(storage, tables);
     const profile = save.load();
     profile.money = 980;
-    profile.upgrades.motor = 1;
+    profile.vehicles.truck.motor = 1;
+    profile.vehicles.van = { brakes: 3 };
+    profile.vehicle = 'van';
+    profile.fuel = 99;
     save.save(profile);
     expect(createSave(storage, tables).load()).toEqual(profile);
     expect(stored(valid)).toEqual(valid);
@@ -62,8 +69,9 @@ describe('save module', () => {
     expect(createSave(fakeStorage({ [KEY]: '{not json' }), tables).load()).toEqual(fresh);
     for (const bad of [null, 42, 'x', [], { ...valid, money: '1234' }, { ...valid, money: -5 }, { ...valid, money: NaN },
       { ...valid, stars: null }, { ...valid, stars: 1.5 }, { ...valid, stars: -1 }, { ...v4, rankPoints: null },
-      { ...v4, rankPoints: '40' }, { ...valid, upgrades: [] }, { ...valid, upgrades: { motor: 4 } },
-      { ...valid, upgrades: { motor: 1.5 } }, { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
+      { ...v4, rankPoints: '40' }, { ...v5, upgrades: [] }, { ...v5, upgrades: { motor: 4 } }, { ...valid, vehicles: [] },
+      { ...valid, vehicles: { truck: { motor: 4 } } }, { ...valid, vehicles: { truck: {}, van: { motor: 1.5 } } },
+      { ...valid, vehicles: { truck: {}, van: null } }, { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
       { ...valid, distance: -1 }, { ...valid, distance: '12' }, { ...valid, distance: Infinity }, v1Fields,
       { ...valid, fuel: -1 }, { ...valid, fuel: '400' }, { ...valid, fuel: undefined }, { ...valid, energy: 1.01 },
       { ...valid, energy: -0.1 }, { ...valid, energy: null }, { ...valid, timeOfDay: 1440 }, { ...valid, timeOfDay: -1 },
@@ -77,8 +85,12 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 4 save loads as version 5 with all progress kept and a Star for every 10 rank points, rounded down', () => {
-    expect(fresh.version).toBe(5);
+  test('a version 5 save loads as version 6: the truck, with its upgrades, is the one owned Vehicle and the current one', () => {
+    expect(fresh.version).toBe(6);
+    expect(stored(v5)).toEqual(valid);
+  });
+
+  test('a version 4 save goes through both steps, with all progress kept and a Star for every 10 rank points, rounded down', () => {
     expect(stored(v4)).toEqual(valid); // 47 points: 4 Stars
   });
 
@@ -92,8 +104,8 @@ describe('save module', () => {
     }
   });
 
-  test('a version 3 save goes through both steps: a full tank, a rested driver, 08:00, no time played, and Stars', () => {
-    expect(stored(v3)).toEqual({ ...valid, fuel: baseTables.fuel.tank, energy: 1, timeOfDay: 8 * 60, timePlayed: 0 });
+  test('a version 3 save goes through every step: a full tank, a rested driver, 08:00, no time played, and Stars', () => {
+    expect(stored(v3)).toEqual({ ...valid, fuel: baseTables.fleet.truck.tank, energy: 1, timeOfDay: 8 * 60, timePlayed: 0 });
   });
 
   test('a version 1 or 2 save (the grid city) loads as a fresh profile of the current version', () => {
@@ -102,7 +114,7 @@ describe('save module', () => {
   });
 
   test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
-    const newer = JSON.stringify({ ...valid, version: 6 });
+    const newer = JSON.stringify({ ...valid, version: 7 });
     const storage = fakeStorage({ [KEY]: newer });
     const save = createSave(storage, tables);
     const profile = save.load();
@@ -116,24 +128,31 @@ describe('save module', () => {
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 6, '5', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 7, '6', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 
   test('fuel over the tank is cut back to a full tank', () => {
-    expect(stored({ ...valid, fuel: baseTables.fuel.tank + 50 })).toEqual({ ...valid, fuel: baseTables.fuel.tank });
-    const upgraded = { ...valid, upgrades: { tank: 2 }, fuel: 10000 };
-    expect(stored(upgraded).fuel).toBe(baseTables.fuel.tank * baseTables.upgrades.tank.levels[1].factor);
+    expect(stored({ ...valid, fuel: baseTables.fleet.truck.tank + 50 })).toEqual({ ...valid, fuel: baseTables.fleet.truck.tank });
+    const upgraded = { ...valid, vehicles: { truck: { tank: 2 } }, fuel: 10000 };
+    expect(stored(upgraded).fuel).toBe(baseTables.fleet.truck.tank * baseTables.upgrades.tank.levels[1].factor);
+    expect(stored({ ...valid, vehicles: { truck: { tank: 2 }, van: {} }, vehicle: 'van', fuel: 10000 }).fuel).toBe(baseTables.fleet.van.tank); // the current one's
   });
 
   test('unknown ids are dropped, and so is an equipped item not owned or in the wrong slot', () => {
     const profile = stored({
       ...valid,
-      upgrades: { motor: 2, turbo: 9 },
+      vehicles: { truck: { motor: 2, turbo: 9 }, rocket: { motor: 1 } },
       owned: ['red', 'gold', 'dice'],
       equipped: { paint: 'blue', gimmick: 'red', roof: 'gold' },
     });
     expect(profile).toEqual({ ...valid, equipped: {} });
+  });
+
+  test('the truck is always owned, and a current Vehicle the tables no longer have gives way to it', () => {
+    expect(stored({ ...valid, vehicles: { van: { motor: 1 } }, vehicle: 'van' })).toEqual({ ...valid, vehicles: { truck: {}, van: { motor: 1 } }, vehicle: 'van', fuel: 123.4 });
+    expect(stored({ ...valid, vehicle: 'rocket' })).toEqual(valid);
+    expect(stored({ ...valid, vehicle: 'van' })).toEqual(valid); // not owned
   });
 
   test('save writes only when the profile changed, counting the distance in whole 100 m and the clock in 15 minutes', () => {

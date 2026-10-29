@@ -3,7 +3,7 @@ import * as tables from './tables.js';
 import { createSim } from './sim/sim.js';
 import { monti, undrained } from './sim/fixtures.js';
 import { createAutopilot } from './autopilot.js';
-import { seeded } from './sim/sim.js';
+import { freshProfile, seeded } from './sim/sim.js';
 
 const map = monti(tables);
 const { step } = tables.loop;
@@ -59,10 +59,13 @@ describe('the autopilot into the docks', () => {
   // shortcut: the legs start at spot A, the start before home (#51): from home the autopilot scrapes a corner on the way to F
   // and H (its known limit, #64); start from tables.osm.start again once it picks its lane per corner.
   const from = 'A';
-  test.each(tables.osm.docks)('drives from spot A into dock %s, and backs into its bay from the street for the dock bonus', (id) => {
+  // Every Vehicle takes dock offers, so each is docked (#88): a switch at the start drives it.
+  const cases = Object.keys(tables.fleet).flatMap((vehicle) => tables.osm.docks.map((id) => [vehicle, id]));
+  test.each(cases)('drives the %s from spot A into dock %s, and backs into its bay from the street for the dock bonus', (vehicle, id) => {
     const dock = spot(id);
+    const { length } = tables.fleet[vehicle];
     // Forwards along the legal route, service lanes included, into the bay.
-    const sim = createSim(empty, map, seeded(1));
+    const sim = createSim(empty, map, seeded(1), { ...freshProfile(), vehicles: Object.fromEntries(Object.keys(tables.fleet).map((k) => [k, {}])), vehicle });
     const there = createAutopilot(sim, map, empty, [from, id], false);
     there.place();
     expect(run(sim, there.update, () => inZone(sim.state.truck, dock), 200)).toEqual({ done: true, contacts: 0 });
@@ -72,7 +75,8 @@ describe('the autopilot into the docks', () => {
     // from that side of the street exists, not that the autopilot could find one; give the autopilot a reverse mode if
     // docking itself comes under test.
     const { x, z, heading } = dock.bay;
-    const docked = { x: x + (Math.sin(heading) * tables.vehicle.length) / 2, z: z + (Math.cos(heading) * tables.vehicle.length) / 2, heading };
+    const docked = { x: x + (Math.sin(heading) * length) / 2, z: z + (Math.cos(heading) * length) / 2, heading };
+    expect(inZone(docked, dock)).toBe(true); // the dock's zone holds its middle when docked
     const out = createAutopilot(sim, map, empty, [id, from], false);
     Object.assign(sim.state.truck, docked, { speed: 0 });
     const trail = [];

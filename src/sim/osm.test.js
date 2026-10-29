@@ -40,8 +40,8 @@ describe('OSM map: drivable network', () => {
     const kerb = classes.residential.width / 2 + pavement;
     const state = driveFrom(map, 0, 0, 0);
     expect(state.collision).toBe(true);
-    expect(state.truck.z + tables.vehicle.length / 2).toBeLessThan(kerb);
-    expect(state.truck.z + tables.vehicle.length / 2).toBeGreaterThan(kerb - 1);
+    expect(state.truck.z + tables.fleet.truck.length / 2).toBeLessThan(kerb);
+    expect(state.truck.z + tables.fleet.truck.length / 2).toBeGreaterThan(kerb - 1);
   });
 
   test('bollards close a pedestrian square along the road it borders, and nowhere on the road', () => {
@@ -60,7 +60,7 @@ describe('OSM map: drivable network', () => {
     expect(map.colliders.filter((c) => c.kind === 'barrier')).toHaveLength(1);
     const state = driveFrom(map, 50, -classes.residential.lane, Math.PI / 2); // east, in the right-hand lane
     expect(state.collision).toBe(true);
-    expect(state.truck.x + tables.vehicle.length / 2).toBeLessThan(bounds.maxX - tables.osm.barrier / 2);
+    expect(state.truck.x + tables.fleet.truck.length / 2).toBeLessThan(bounds.maxX - tables.osm.barrier / 2);
   });
 
   test("an edge exit's road runs on along the way past the map's edge, then straight out from that side into the haze", () => {
@@ -304,13 +304,13 @@ describe('OSM map: spots', () => {
     const [d] = dockMap.spots;
     expect(d.dock).toBe(true);
     expect(d.bay).toEqual({ x: -40, z: -20, heading: 0 });
-    expect(centre(d)).toEqual({ x: -40, z: -20 + tables.vehicle.length / 2 });
+    expect(centre(d)).toEqual({ x: -40, z: -20 + tables.fleet.truck.length / 2 });
     // Backing north up the bay, heading south: stopped with its rear at the dock edge.
     const sim = createSim(docks, dockMap);
     Object.assign(sim.state.truck, { x: -40, z: -10, heading: 0, speed: -2 });
     for (let i = 0; i < 300 && !sim.state.collision; i++) sim.step(1 / 60, { steer: 0, gas: 0, brake: 1 });
     expect(sim.state.collision).toBe(true);
-    expect(sim.state.truck.z - tables.vehicle.length / 2).toBeCloseTo(-20, 0);
+    expect(sim.state.truck.z - tables.fleet.truck.length / 2).toBeCloseTo(-20, 0);
   });
 
   test("parked cars keep clear of a dock's street ends", () => {
@@ -339,7 +339,7 @@ describe('OSM map: the paved area (#94)', () => {
     for (const [heading, edge] of [[0, kerb], [Math.PI, -kerb]]) {
       const state = driveFrom(map, -35, 0, heading);
       expect(state.collision).toBe(true);
-      expect(state.truck.z + Math.cos(heading) * (tables.vehicle.length / 2)).toBeCloseTo(edge, 0);
+      expect(state.truck.z + Math.cos(heading) * (tables.fleet.truck.length / 2)).toBeCloseTo(edge, 0);
     }
   });
 
@@ -351,7 +351,7 @@ describe('OSM map: the paved area (#94)', () => {
     const heading = Math.PI / 4;
     const state = driveFrom(map, 80, 0, heading);
     expect(state.collision).toBe(true);
-    const reach = state.truck.z + (Math.cos(heading) * tables.vehicle.length + Math.sin(heading) * tables.vehicle.width) / 2;
+    const reach = state.truck.z + (Math.cos(heading) * tables.fleet.truck.length + Math.sin(heading) * tables.fleet.truck.width) / 2;
     expect(reach).toBeCloseTo(kerb, 0);
   });
 
@@ -413,7 +413,7 @@ describe('OSM map: the paved area (#94)', () => {
     const at = ({ x, z }) => reached.has(key(Math.round(x / step), Math.round(z / step)));
     for (const s of map.spots) expect(at(s.lane), s.id).toBe(true);
     for (const { id, bay } of map.spots.filter((s) => s.bay)) {
-      const docked = { x: bay.x + (Math.sin(bay.heading) * tables.vehicle.length) / 2, z: bay.z + (Math.cos(bay.heading) * tables.vehicle.length) / 2 };
+      const docked = { x: bay.x + (Math.sin(bay.heading) * tables.fleet.truck.length) / 2, z: bay.z + (Math.cos(bay.heading) * tables.fleet.truck.length) / 2 };
       expect(at(docked), id).toBe(true);
     }
   }, 30_000); // builds Monti and floods it: over 5 s on a loaded CI runner
@@ -564,7 +564,7 @@ describe('OSM map: traffic (#63)', () => {
     const sim = createSim(t, map, seeded(1), { ...freshProfile(), money: 500 });
     const light = sim.state.lights.find((l) => l.dx === 1);
     // Standing 3 m before the eastbound stop line until its light has been red past the grace.
-    Object.assign(sim.state.truck, { x: light.x - 3 - tables.vehicle.length / 2, z: light.z, heading: Math.PI / 2, speed: 0 });
+    Object.assign(sim.state.truck, { x: light.x - 3 - tables.fleet.truck.length / 2, z: light.z, heading: Math.PI / 2, speed: 0 });
     let red = 0;
     for (let s = 0; s < 60 && red < tables.lights.redGrace + 0.5; s += 1 / 60) {
       sim.step(1 / 60, IDLE);
@@ -662,7 +662,7 @@ describe('OSM map: traffic (#63)', () => {
       const first = parked.map(centre).sort((a, b) => a.x - b.x)[0];
       const state = driveFrom(map, first.x - 10, first.z, Math.PI / 2); // on the paving round the street's dead end
       expect(state.collision).toBe(true);
-      expect(state.truck.x + tables.vehicle.length / 2).toBeCloseTo(first.x - car.length / 2, 0);
+      expect(state.truck.x + tables.fleet.truck.length / 2).toBeCloseTo(first.x - car.length / 2, 0);
     });
   });
 });

@@ -15,8 +15,9 @@ export const DIRS = [
   [-1, 0],
 ];
 
-// Half the width of a dock's edge: the bay the docking check allows, and 0.5 m each side.
-export const dockHalf = (tables) => tables.vehicle.width / 2 + tables.orders.dockCentre + 0.5;
+// Half the width of a dock's edge: the bay the docking check allows for the truck, the widest Vehicle that docks, and
+// 0.5 m each side.
+export const dockHalf = (tables) => tables.fleet.truck.width / 2 + tables.orders.dockCentre + 0.5;
 
 // A building's look: its `floors` and `height`, `wall` (index into tables.buildings.walls), `tint`, `brightness`,
 // `offset` (m, of the wall texture) and `seed` (for its facades), drawn from `random`.

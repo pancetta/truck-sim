@@ -57,12 +57,12 @@ describe('Sim: home', () => {
 
   test('away from home the Werkstatt is closed and its purchases refuse with notAtHome', () => {
     const [id] = Object.entries(tables.visuals).find(([, v]) => v.price > 0);
-    const sim = casa(rich({ owned: [id] }));
+    const sim = casa(rich({ owned: [id], stars: 1000 }));
     away(sim);
     sim.step(DT, IDLE);
     expect(sim.state.garageAvailable).toBe(false);
     const before = structuredClone(sim.state.profile);
-    for (const [command, item] of [['buyUpgrade', 'motor'], ['buyVisual', id], ['equipVisual', id]]) {
+    for (const [command, item] of [['buyUpgrade', 'motor'], ['buyVisual', id], ['equipVisual', id], ['buyVehicle', 'van'], ['chooseVehicle', 'truck']]) {
       expect(sim[command](item), command).toEqual({ ok: false, reason: 'notAtHome' });
     }
     expect(sim.state.profile).toEqual(before);
@@ -86,7 +86,7 @@ describe('Sim: tank upgrade', () => {
     // A thirsty truck, so a tank lasts a few hundred metres.
     const thirsty = { ...tables, fuel: { ...tables.fuel, perKm: 2000 } };
     const range = (level) => {
-      const profile = { ...freshProfile(), upgrades: { tank: level } };
+      const profile = { ...freshProfile(), vehicles: { truck: { tank: level } } };
       const sim = createSim(thirsty, undefined, Math.random, { ...profile, fuel: tankOf(profile, thirsty) });
       timeUntil(sim, GAS, () => sim.state.fuel === 0, 120);
       return sim.state.profile.distance;
@@ -94,14 +94,14 @@ describe('Sim: tank upgrade', () => {
     const base = range(0);
     expect(base).toBeGreaterThan(0);
     levels.forEach(({ factor }, i) => {
-      expect(tankOf({ upgrades: { tank: i + 1 } }, tables)).toBe(tables.fuel.tank * factor);
+      expect(tankOf({ vehicle: 'truck', vehicles: { truck: { tank: i + 1 } } }, tables)).toBe(tables.fleet.truck.tank * factor);
       expect(range(i + 1) / base).toBeCloseTo(factor, 1);
     });
   });
 
   test('a fill-up fills the upgraded tank', () => {
-    const sim = casa(rich({ upgrades: { tank: 2 }, fuel: 100 }));
-    const tank = tables.fuel.tank * levels[1].factor;
+    const sim = casa(rich({ vehicles: { truck: { tank: 2 } }, fuel: 100 }));
+    const tank = tables.fleet.truck.tank * levels[1].factor;
     atS(sim);
     sim.step(DT, IDLE);
     expect(sim.state.serviceOffer[0]).toEqual({ id: 'fuel', price: Math.ceil((tank - 100) * tables.fuel.price) });

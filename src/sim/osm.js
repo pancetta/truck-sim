@@ -306,14 +306,15 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     const forward = e.oneWay ? Math.sign((b.x - a.x) * u[0] + (b.z - a.z) * u[1]) || 1 : side; // along u, or against it
     const heading = Math.atan2(u[0] * forward, u[1] * forward);
     // A dock's bay: the middle of its dock edge and the heading a truck docked in it faces; its zone is where that
-    // truck stands, so the dock bonus can be earned while unloading.
+    // truck stands, so the dock bonus can be earned while unloading. The bay is the starter truck's (tables.fleet), and
+    // the zone wide enough to hold any Vehicle's middle when it docks (osm.test.js).
     const bay = t.bay && { x: t.bay[0], z: t.bay[1], heading: (t.bay[2] * Math.PI) / 180 };
     const f = bay && [Math.sin(bay.heading), Math.cos(bay.heading)];
     // The dock edge's platform (the renderer's, tables.buildings.dock.depth deep and as wide as buildings.js dockHalf)
     // is solid, so a truck can't back past the edge where no wall stands behind it.
     const { depth } = tables.buildings.dock;
-    if (bay) colliders.push({ kind: 'dock', ...outline(rect({ x: bay.x - (f[0] * depth) / 2, z: bay.z - (f[1] * depth) / 2 }, f, depth / 2, tables.vehicle.width / 2 + tables.orders.dockCentre + 0.5)) });
-    const centre = bay ? { x: bay.x + (f[0] * tables.vehicle.length) / 2, z: bay.z + (f[1] * tables.vehicle.length) / 2 } : kerb;
+    if (bay) colliders.push({ kind: 'dock', ...outline(rect({ x: bay.x - (f[0] * depth) / 2, z: bay.z - (f[1] * depth) / 2 }, f, depth / 2, tables.fleet.truck.width / 2 + tables.orders.dockCentre + 0.5)) });
+    const centre = bay ? { x: bay.x + (f[0] * tables.fleet.truck.length) / 2, z: bay.z + (f[1] * tables.fleet.truck.length) / 2 } : kerb;
     const r = o.zone / 2;
     const zone = { minX: centre.x - r, maxX: centre.x + r, minZ: centre.z - r, maxZ: centre.z + r };
     // A petrol station's pump island or the restaurant's terrace (solid): on the middle of the pavement beside its zone,

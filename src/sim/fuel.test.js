@@ -3,7 +3,8 @@ import { freshProfile, inside } from './sim.js';
 import * as tables from '../tables.js';
 import { BRAKE, DT, GAS, IDLE, build, createSim, drive, mapOf, monti, seeded, timeUntil, way, withSpots } from './fixtures.js';
 
-const { tank, perKm, perTonne, perPedal, price, fillTime, towFee, towTime, emergency } = tables.fuel;
+const { perKm, perTonne, perPedal, price, fillTime, towFee, towTime, emergency } = tables.fuel;
+const { tank } = tables.fleet.truck;
 
 // Via Pompa: a two-way street 200 m north–south, with the petrol stations S (60 m in from its north end) and T (180 m
 // in), and the order spots A and B. A new game starts in S's kerb lane, facing south.
@@ -32,6 +33,14 @@ describe('Sim: fuel', () => {
     [fuel, distance] = [sim.state.fuel, sim.state.profile.distance];
     drive(sim, 2, GAS);
     expect(used(sim, fuel)).toBeCloseTo(((sim.state.profile.distance - distance) / 1000) * perKm * (1 + 10 * perTonne) * (1 + perPedal), 6);
+  });
+
+  test("the van burns its thirst's share of what the truck burns on the same metres", () => {
+    const sim = createSim(tables, undefined, Math.random, { ...freshProfile(), vehicles: { truck: {}, van: {} } });
+    sim.chooseVehicle('van');
+    const fuel = sim.state.fuel;
+    drive(sim, 10, GAS);
+    expect(used(sim, fuel)).toBeCloseTo((sim.state.profile.distance / 1000) * perKm * tables.fleet.van.thirst * (1 + perPedal), 6);
   });
 
   test('worked example: 1 km at full gas with 10 t loaded burns 72 L; a standing truck burns none', () => {

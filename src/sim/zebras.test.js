@@ -99,7 +99,7 @@ describe('zebra crossings: the truck', () => {
   const map = build(ways, withSpots([spot('A', 10), spot('B', 170)]));
   const [zebra] = map.zebras;
   // The truck standing in Vicolo's northbound lane, its front bumper `gap` m short of the strip.
-  const before = (gap) => ({ x: classes.residential.lane, z: zebra.z + depth / 2 + gap + base.vehicle.length / 2, heading: Math.PI, speed: 0 });
+  const before = (gap) => ({ x: classes.residential.lane, z: zebra.z + depth / 2 + gap + base.fleet.truck.length / 2, heading: Math.PI, speed: 0 });
 
   // Waits with the truck standing 4 m short of the strip until a pedestrian is a metre out on it (if `crossing`), then
   // takes an order and drives through, with a police car coming along Via A (if `witness`), which sees it. Returns the
@@ -116,14 +116,14 @@ describe('zebra crossings: the truck', () => {
     sim.acceptOrder(sim.requestOffers()[0].id);
     let [fines, overlaps] = [[], 0];
     const [entered, kerbed] = [pedestrians.filter(onStrip), new Set()];
-    for (let s = 0; s < 20 && truck.z > zebra.z - depth / 2 - base.vehicle.length / 2; s += DT) {
+    for (let s = 0; s < 20 && truck.z > zebra.z - depth / 2 - base.fleet.truck.length / 2; s += DT) {
       const last = sim.state.lastFine;
       sim.step(DT, GAS);
       if (sim.state.lastFine !== last) fines.push(sim.state.lastFine.reason);
-      overlaps += pedestrians.filter((q) => vehiclesOverlap(q, PERSON, truck, base.vehicle)).length;
+      overlaps += pedestrians.filter((q) => vehiclesOverlap(q, PERSON, truck, base.fleet.truck)).length;
       for (const q of entered) if (!onStrip(q)) kerbed.add(q);
     }
-    return { fines, faults: sim.state.order.faults, overlaps, entered, kerbed, through: truck.z < zebra.z - depth / 2 - base.vehicle.length / 2 };
+    return { fines, faults: sim.state.order.faults, overlaps, entered, kerbed, through: truck.z < zebra.z - depth / 2 - base.fleet.truck.length / 2 };
   }
 
   test('entering a zebra a pedestrian is on, with a Witness, is one fine per pass and costs the clean Star; the pedestrian steps back off the strip', () => {
@@ -210,11 +210,11 @@ describe('zebra crossings: the truck', () => {
     steps(sim, 6, BRAKE, () => {
       if (sim.state.lastFine) fines.push(sim.state.lastFine.reason);
       came ||= zebras[0].people > 0;
-      for (const q of pedestrians) if (onStrip(q) && waiting.has(q.id) && Math.abs(truck.speed) > base.vehicle.stopSpeed) setOut++;
+      for (const q of pedestrians) if (onStrip(q) && waiting.has(q.id) && Math.abs(truck.speed) > base.fleet.truck.stopSpeed) setOut++;
       for (const q of pedestrians) if (q.waiting) waiting.add(q.id);
     });
     expect(came).toBe(true); // someone came to the kerb as it drove in
-    expect(truck.z - base.vehicle.length / 2).toBeLessThan(zebra.z + depth / 2); // it couldn't stop short
+    expect(truck.z - base.fleet.truck.length / 2).toBeLessThan(zebra.z + depth / 2); // it couldn't stop short
     expect(setOut).toBe(0);
     expect(fines).toEqual([]);
   }, 30_000);
@@ -225,13 +225,13 @@ describe('zebra crossings: the truck', () => {
     const sim = createSim(t, map, seeded(1), { ...freshProfile(), money: 1000 });
     const { truck, pedestrians } = sim.state;
     Object.assign(truck, before(4));
-    const inLane = (q) => onStrip(q) && Math.abs(q.x - truck.x) < base.vehicle.width / 2;
+    const inLane = (q) => onStrip(q) && Math.abs(q.x - truck.x) < base.fleet.truck.width / 2;
     for (let s = 0; s < 120 && !pedestrians.some(inLane); s += DT) sim.step(DT, IDLE);
     expect(pedestrians.some(inLane)).toBe(true);
     let [stopped, overlaps] = [false, 0];
     steps(sim, 3, GAS, () => {
       stopped ||= sim.state.collision;
-      overlaps += pedestrians.filter((q) => vehiclesOverlap(q, PERSON, truck, base.vehicle)).length;
+      overlaps += pedestrians.filter((q) => vehiclesOverlap(q, PERSON, truck, base.fleet.truck)).length;
     });
     expect(stopped).toBe(true);
     expect(overlaps).toBe(0);

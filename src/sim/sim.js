@@ -4,34 +4,37 @@
 import { createCells } from './cells.js';
 import { boxesOverlap, createTraffic } from './traffic.js';
 import { createPedestrians } from './pedestrians.js';
-import { clock as dayClock, fuel } from '../tables.js';
+import { clock as dayClock, fleet } from '../tables.js';
 
 const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
-// migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), and the grid city's v1 and v2 start fresh.
-// stars: the Stars earned in total, which make the Rank; distance: m driven in total; upgrades: id → level;
-// equipped: slot → visual id; fuel: litres in the tank; energy: the driver's, 0..1; timeOfDay: game minutes since
-// midnight; timePlayed: s of play in total.
+// migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), v6 with Vehicles (#88), and the grid
+// city's v1 and v2 start fresh.
+// stars: the Stars earned in total, which make the Rank; distance: m driven in total; vehicle: the current Vehicle's id
+// (tables.fleet); vehicles: each owned Vehicle's id → its upgrades (id → level), the truck always among them;
+// equipped: slot → visual id; fuel: litres in the current Vehicle's tank; energy: the driver's, 0..1; timeOfDay: game
+// minutes since midnight; timePlayed: s of play in total.
 // The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
   return {
-    version: 5,
+    version: 6,
     money: 0,
     stars: 0,
     distance: 0,
-    upgrades: {},
+    vehicle: 'truck',
+    vehicles: { truck: {} },
     owned: [],
     equipped: {},
-    fuel: fuel.tank,
+    fuel: fleet.truck.tank,
     energy: 1,
     timeOfDay: dayClock.start,
     timePlayed: 0,
   };
 }
 
-// Litres the profile's tank holds: tables.fuel.tank, times the Werkstatt's tank upgrade.
-export const tankOf = (profile, tables) => tables.fuel.tank * (tables.upgrades.tank.levels[(profile.upgrades.tank ?? 0) - 1]?.factor ?? 1);
+// Litres the profile's current Vehicle's tank holds: its `tank`, times its Werkstatt tank upgrade.
+export const tankOf = ({ vehicle, vehicles }, tables) => tables.fleet[vehicle].tank * (tables.upgrades.tank.levels[(vehicles[vehicle].tank ?? 0) - 1]?.factor ?? 1);
 
 // `map` comes from buildOsmMap() (osm.js); without one the truck drives on an open plane with nothing to hit
 // (and resetToRoad() and requestOffers() have nowhere to go). `random` returns floats in [0, 1);
@@ -40,8 +43,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const o = tables.orders;
   const lt = tables.lights;
   const cycle = 2 * (lt.green + lt.amber + lt.allRed);
-  // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right.
-  const base = tables.vehicle;
+  // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right. `base` is the
+  // current Vehicle's table (tables.fleet), `v` the same with its upgrades (see useVehicle()).
+  let base = tables.fleet[profile.vehicle];
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
   // 'fragile', 'dock', 'fragileDock', 'express' or 'oversized' (see requestOffers()). `order` is the active offer plus its phase ('pickup' or 'dropoff'),
@@ -71,6 +75,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `street` that edge's name ('' for none).
   // `rank` is { tier, title, stars (profile.stars), next (the Stars the next tier needs, null at the top), progress 0..1
   // to it }; `garageAvailable` is whether the Werkstatt may sell: at home (see atHome()), standing, with no active order.
+  // The truck is the current Vehicle, whichever that is (profile.vehicle).
   // `timeOfDay` is the game clock, profile.timeOfDay (game minutes since midnight); `fuel` profile.fuel (litres) and
   // `tank` the litres it holds (tankOf());
   // `energy` profile.energy (0..1), `tired` and `exhausted` whether it is below tables.energy's thresholds.
@@ -143,6 +148,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let speedingFined = -Infinity; // clock at the last speeding fine
   const traffic = map ? createTraffic(tables, map, random) : null;
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
+  traffic?.setTruck(v);
   if (traffic) state.traffic = traffic.cars;
   const pedestrians = map ? createPedestrians(tables, map, seeded(tables.pedestrians.seed)) : null;
   if (pedestrians) state.pedestrians = pedestrians.people;
@@ -343,7 +349,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function burn(metres, pedal) {
     const f = tables.fuel;
     const cargo = (truck.mass - v.emptyMass) / 1000;
-    const litres = (metres / 1000) * f.perKm * (1 + f.perTonne * cargo) * (1 + f.perPedal * pedal);
+    const litres = (metres / 1000) * f.perKm * v.thirst * (1 + f.perTonne * cargo) * (1 + f.perPedal * pedal);
     state.profile.fuel = Math.max(0, state.profile.fuel - litres);
   }
 
@@ -805,9 +811,25 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.rank = { tier, title: tiers[tier].title, stars, next, progress };
   }
 
-  // The profile's bought level of an upgrade (undefined while it has none).
+  // The current Vehicle's upgrades (id → level), and its bought level of one (undefined while it has none).
+  function upgrades() {
+    return state.profile.vehicles[state.profile.vehicle];
+  }
   function levelOf(id) {
-    return tables.upgrades[id].levels[(state.profile.upgrades[id] ?? 0) - 1];
+    return tables.upgrades[id].levels[(upgrades()[id] ?? 0) - 1];
+  }
+
+  // Makes profile.vehicle the truck: its constants with its upgrades, standing empty at idle, with no more fuel than its
+  // tank holds, and traffic's view of the truck's size; the offers go, as they were for the old one's load.
+  // shortcut: one fuel level shared by the fleet, cut to the new tank on a switch; keep fuel per Vehicle if players
+  // switch to top up.
+  function useVehicle() {
+    base = tables.fleet[state.profile.vehicle];
+    v = upgradedVehicle();
+    Object.assign(truck, { mass: v.emptyMass, rpm: v.idleRpm });
+    traffic?.setTruck(v);
+    state.profile.fuel = Math.min(state.profile.fuel, state.tank);
+    state.offers = [];
   }
 
   // Effective vehicle constants: the base table with the bought upgrades applied.
@@ -858,15 +880,41 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (!Object.hasOwn(tables.upgrades, id)) return refuse('unknown');
     if (!atHome()) return refuse('notAtHome');
     if (!state.garageAvailable) return refuse('notIdle');
-    const level = state.profile.upgrades[id] ?? 0;
+    const level = upgrades()[id] ?? 0;
     const next = tables.upgrades[id].levels[level];
     if (!next) return refuse('maxLevel');
     if (state.rank.tier < next.rank) return refuse('rankTooLow');
     if (state.profile.money < next.price) return refuse('noMoney');
     state.profile.money -= next.price;
-    state.profile.upgrades[id] = level + 1;
+    upgrades()[id] = level + 1;
     v = upgradedVehicle();
     state.offers = []; // the orders panel then asks again, with what the new Ladefläche carries
+    return OK;
+  }
+
+  // Buys a Vehicle (tables.fleet) and drives it from now on, with no upgrades yet. Returns { ok, reason }; a refusal
+  // changes nothing.
+  function buyVehicle(id) {
+    if (!Object.hasOwn(tables.fleet, id)) return refuse('unknown');
+    if (!atHome()) return refuse('notAtHome');
+    if (!state.garageAvailable) return refuse('notIdle');
+    if (state.profile.vehicles[id]) return refuse('owned');
+    const { rank, price } = tables.fleet[id];
+    if (state.rank.tier < rank) return refuse('rankTooLow');
+    if (state.profile.money < price) return refuse('noMoney');
+    state.profile.money -= price;
+    state.profile.vehicles[id] = {};
+    return chooseVehicle(id);
+  }
+
+  // Drives an owned Vehicle from now on (see useVehicle()). Returns { ok, reason }; a refusal changes nothing.
+  function chooseVehicle(id) {
+    if (!Object.hasOwn(tables.fleet, id)) return refuse('unknown');
+    if (!atHome()) return refuse('notAtHome');
+    if (!state.garageAvailable) return refuse('notIdle');
+    if (!state.profile.vehicles[id]) return refuse('notOwned');
+    state.profile.vehicle = id;
+    useVehicle();
     return OK;
   }
 
@@ -903,7 +951,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
   const typeOf = (cargo, to) =>
-    to?.dock ? (cargo.fragile ? 'fragileDock' : 'dock') : cargo.fragile ? 'fragile' : cargo.weight > o.maxCargo ? 'heavy' : 'normal';
+    to?.dock ? (cargo.fragile ? 'fragileDock' : 'dock') : cargo.fragile ? 'fragile' : cargo.weight > base.maxCargo ? 'heavy' : 'normal';
 
   // New offers between distinct spots, paid by the road route length; none while an order is active. Service spots
   // are never a pickup or a drop-off.
@@ -918,7 +966,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
-    const maxCargo = levelOf('cargoBed')?.maxCargo ?? o.maxCargo;
+    const maxCargo = base.maxCargo * (levelOf('cargoBed')?.factor ?? 1);
     const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && o.types[typeOf(c)] <= state.rank.tier);
     for (let i = 0; i < o.offerCount; i++) {
       const draw = random();
@@ -1048,7 +1096,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVisual, equipVisual, owns, buyService, sleep };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVehicle, chooseVehicle, buyVisual, equipVisual, owns, buyService, sleep };
 }
 
 // A seeded random (mulberry32): for the Sim under ?auto, so every run meets the same traffic and offers, and for the

@@ -11,7 +11,8 @@ The headless simulation of the city, the truck, the traffic and the rules; every
 _Avoid_: engine, game loop, world
 
 **Profile**:
-The player's lasting progress: money, **Stars**, distance driven, bought upgrades and visuals. It is what the **Save** stores.
+The player's lasting progress: money, **Stars**, distance driven, the owned **Vehicles** with their **Upgrades**, and
+visuals. It is what the **Save** stores.
 _Avoid_: account, player data
 
 **Save** ("Spielstand"):
@@ -37,8 +38,8 @@ The player's standing: the total of **Stars**, and the **Tier** that total reach
 _Avoid_: level (that word belongs to **Upgrades**), XP
 
 **Tier**:
-One step of the **Rank** ladder with its own title, reached at a number of **Stars**; it unlocks **Upgrade** levels,
-**Order types** and more traffic.
+One step of the **Rank** ladder with its own title, reached at a number of **Stars**; it unlocks **Vehicles**, **Upgrade**
+levels, **Order types** and more traffic.
 
 **Money** ("Kontostand"):
 The player's euros, earned by deliveries and spent in the **Werkstatt** or on **Fines**; it never goes below 0.
@@ -135,17 +136,29 @@ A **Spot** with a **Dock bay** the truck can back into.
 The bay of a **Dock**; reversing straight into it at the **Drop-off** earns the **Dock bonus**.
 _Avoid_: ramp (in English), loading bay
 
+**Vehicle** ("Fahrzeug"):
+What the player drives: the truck ("Lkw"), which every **Profile** owns, or one bought in the **Werkstatt** from a
+**Tier** on. Each has its own size, mass, engine, maximum cargo and tank, and its own **Upgrades**; the player switches
+between them at **Home**. "The truck" in this glossary is the current one.
+_Avoid_: car (that is an **AI car**), fleet member
+
+**Transporter**:
+A **Vehicle**: a high-roof van, quicker and lighter than the truck, carrying smaller loads.
+_Avoid_: Van (in the UI), Sprinter (a brand)
+
 **Werkstatt**:
-The garage at **Home** where the player buys **Upgrades** and **Visuals**; open only while the truck stands still in
-**Home**'s **Zone** with no **Order**.
+The garage at **Home** where the player buys and switches **Vehicles** and buys **Upgrades** and **Visuals**; open only
+while the truck stands still in **Home**'s **Zone** with no **Order**.
 _Avoid_: garage, shop, showroom (the showroom is only its camera)
 
 **Upgrade** ("Technik"):
-A bought improvement to how the truck drives (motor, brakes, tyres, suspension, cargo bed), in levels ("Stufe").
+A bought improvement to how a **Vehicle** drives (motor, brakes, tyres, suspension, cargo bed, tank), in levels
+("Stufe"); each **Vehicle** keeps its own.
 _Avoid_: tuning, part
 
 **Visual** ("Aussehen"):
-A bought cosmetic item for one slot of the truck: paint, livery, light bar, lucky charm, rims or chrome.
+A bought cosmetic item for one slot of the Lkw: paint, livery, light bar, lucky charm, rims or chrome. The other
+**Vehicles** keep their own look.
 _Avoid_: skin, cosmetic
 
 ### Traffic and rules

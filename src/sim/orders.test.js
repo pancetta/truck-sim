@@ -43,7 +43,7 @@ function ring() {
 
 describe('Sim: orders', () => {
   const { loadTime, basePay, payPerKm } = tables.orders;
-  const { emptyMass } = tables.vehicle;
+  const { emptyMass } = tables.fleet.truck;
 
   test('requestOffers() gives about three offers between distinct spots, the same for the same seed', () => {
     const map = monti();
@@ -109,7 +109,7 @@ describe('Sim: orders', () => {
     expect(sim.state.progress).toBeGreaterThan(0.4);
 
     // Held past the reverse delay, the brake rolls the truck back.
-    drive(sim, tables.vehicle.reverseDelay + 0.5, BRAKE);
+    drive(sim, tables.fleet.truck.reverseDelay + 0.5, BRAKE);
 
     expect(sim.state.truck.speed).toBeLessThan(0);
     expect(sim.state.progress).toBe(0);
@@ -122,7 +122,7 @@ describe('Sim: orders', () => {
     parkAt(sim, 'B');
 
     for (let t = 0; t < loadTime + 0.5; t += 0.5) {
-      drive(sim, tables.vehicle.reverseDelay * 0.8, BRAKE);
+      drive(sim, tables.fleet.truck.reverseDelay * 0.8, BRAKE);
       drive(sim, 0.1, IDLE);
     }
 
@@ -260,7 +260,8 @@ describe('Sim: time bonus', () => {
 });
 
 describe('Sim: fragile cargo', () => {
-  const { loadTime, fragilePremium, maxCargo, types } = tables.orders;
+  const { loadTime, fragilePremium, types } = tables.orders;
+  const { maxCargo } = tables.fleet.truck;
   const fragileTier = { ...freshProfile(), stars: tables.rank.tiers[types.fragile].stars };
   const glass = { name: 'Glas', weight: 4, fragile: true };
   // Every offer is fragile, so runs with the same driving carry the same mass.
@@ -290,7 +291,7 @@ describe('Sim: fragile cargo', () => {
   });
 
   test('cargo heavier than the base Ladefläche carries is a heavy offer', () => {
-    const sim = laneSim(1, { ...fragileTier, upgrades: { cargoBed: 1 } });
+    const sim = laneSim(1, { ...fragileTier, vehicles: { truck: { cargoBed: 1 } } });
     for (let i = 0; i < 50; i++) {
       for (const o of sim.requestOffers()) if (!o.cargo.fragile && o.type !== 'express') expect(o.type).toBe(o.cargo.weight > maxCargo ? 'heavy' : 'normal');
     }
@@ -337,7 +338,7 @@ describe('Sim: fragile cargo', () => {
 
   test('a higher Fahrwerk level means less damage for the same braking', () => {
     function brakingDamage(suspension) {
-      const sim = longSim({ ...fragileTier, upgrades: suspension ? { suspension } : {} });
+      const sim = longSim({ ...fragileTier, vehicles: { truck: suspension ? { suspension } : {} } });
       loadAtA(sim);
       drive(sim, 4, GAS);
       timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
@@ -416,7 +417,7 @@ describe('Sim: docking', () => {
 
   // How far the middle of the truck's rear is from A's dock edge, the north wall's face, facing south.
   const { wall } = lane();
-  const rearGap = (sim) => sim.state.truck.z - tables.vehicle.length / 2 + wall;
+  const rearGap = (sim) => sim.state.truck.z - tables.fleet.truck.length / 2 + wall;
 
   // Reverses north until rearGap() is at most `gap`: at full speed while far, then in short bursts at a crawl,
   // braked out of at once (each waits out the reverse delay again), so it never hits the wall, which would harm

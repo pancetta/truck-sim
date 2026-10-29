@@ -49,8 +49,11 @@ export function createTraffic(tables, map, random) {
   }
   const room = size.length + t.followGap; // m of lane a car takes up in a queue
   const lineBack = tables.lights.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
-  const truckSize = { length: tables.vehicle.length, width: tables.vehicle.width };
-  const truckRadius = Math.hypot(truckSize.length, truckSize.width) / 2;
+  // The player's truck: the current Vehicle's footprint (setTruck()), and the largest Vehicle's radius, so the junction
+  // boxes' reach (see around()) holds whichever it is.
+  const truckSize = { length: 0, width: 0 };
+  const truckRadius = Math.max(...Object.values(tables.fleet).map((f) => Math.hypot(f.length, f.width) / 2));
+  const { stopSpeed } = tables.fleet.truck; // the same for every Vehicle
   const cars = [];
   let nextId = 1;
   let now = 0; // step count; a crossing's or junction's per-step fields are valid while their `stamp` is `now`
@@ -609,7 +612,7 @@ export function createTraffic(tables, map, random) {
 
     // The truck in a crossing or light junction (holding a crossing for nobody while it moves, see truckBlocks),
     // or driving towards a crossing within `giveWay` along the road.
-    const moving = Math.abs(truck.speed) > tables.vehicle.stopSpeed;
+    const moving = Math.abs(truck.speed) > stopSpeed;
     for (let i = 0; i < groups.length; i++) {
       const g = groups[i];
       if (!truckIn(g, truck)) continue;
@@ -814,7 +817,6 @@ export function createTraffic(tables, map, random) {
   }
   // Whether the truck drives forwards, or (if `still` counts) stands.
   function truckGoing(truck, still) {
-    const { stopSpeed } = tables.vehicle;
     return truck.speed > stopSpeed || (still && Math.abs(truck.speed) <= stopSpeed);
   }
 
@@ -909,7 +911,7 @@ export function createTraffic(tables, map, random) {
   // front. A truck moving in a box blocks every way through.
   const pathSize = { length: size.length + t.followGap, width: size.width + 2 * t.sideGap };
   function truckBlocks(car, i, truck) {
-    if (Math.abs(truck.speed) > tables.vehicle.stopSpeed) return true;
+    if (Math.abs(truck.speed) > stopSpeed) return true;
     for (let j = i; car.route[j] && boxOf(car.route[j]) === boxOf(car.route[i]); j++) {
       const p = car.route[j];
       const n = Math.ceil(p.length);
@@ -1086,7 +1088,7 @@ export function createTraffic(tables, map, random) {
     if (police < tables.police.count) spawn(truck, true);
 
     now++;
-    truckStill = Math.abs(truck.speed) > tables.vehicle.stopSpeed ? 0 : truckStill + dt;
+    truckStill = Math.abs(truck.speed) > stopSpeed ? 0 : truckStill + dt;
     for (let i = 0; i < cars.length; i++) {
       if (!cars[i].prim) {
         // added from outside (the tests do), a car unless they say
@@ -1135,7 +1137,12 @@ export function createTraffic(tables, map, random) {
     return out;
   }
 
-  return { cars, step, touching: touchingCars };
+  // Sets the truck's footprint ({ length, width }, m) to a Vehicle's.
+  function setTruck({ length, width }) {
+    Object.assign(truckSize, { length, width });
+  }
+
+  return { cars, step, touching: touchingCars, setTruck };
 }
 
 // Whether `at` is out of the truck's view: `distance` m away or more and off the lines along and across the truck by

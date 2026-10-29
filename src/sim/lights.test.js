@@ -92,13 +92,13 @@ describe('Sim: traffic lights', () => {
   const across = (sim) => sim.state.truck.x > 14;
 
   // The eastbound truck's front bumper, and Via B's near kerb, where the junction it drives into begins.
-  const frontX = (sim) => sim.state.truck.x + tables.vehicle.length / 2;
+  const frontX = (sim) => sim.state.truck.x + tables.fleet.truck.length / 2;
   const EDGE = -secondary.width / 2;
 
   // Eastbound in its lane at 5 m/s from 0.5 m short of the stop line, over it with gas, then braked to a standstill
   // before the junction and the brake let go (held, it would engage reverse); returns the fines taken.
   function overTheLine(sim) {
-    Object.assign(sim.state.truck, { x: eastbound(sim).x - 0.5 - tables.vehicle.length / 2, z: LANE, heading: EAST, speed: 5 });
+    Object.assign(sim.state.truck, { x: eastbound(sim).x - 0.5 - tables.fleet.truck.length / 2, z: LANE, heading: EAST, speed: 5 });
     const fines = driveThrough(sim, () => frontX(sim) > eastbound(sim).x + 0.5) + finesUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
     expect(frontX(sim)).toBeLessThan(EDGE);
     return fines;
@@ -114,7 +114,7 @@ describe('Sim: traffic lights', () => {
     const map = build(ways, quiet, undefined, { minX: -100, minZ: -100, maxX: 100, maxZ: 200 });
     const sim = createSim(quiet, map, seeded(1));
     const { hint } = tables.signs;
-    const front = tables.vehicle.length / 2;
+    const front = tables.fleet.truck.length / 2;
     const [light, cross] = [[0, 0], [0, 100]].map(([x, z]) => map.graph.nodes.find((n) => n.x === x && n.z === z).radius);
     // The rule the truck sees standing in its lane at z, facing south or north.
     const ruleAt = (z, heading) => {
@@ -247,7 +247,7 @@ describe('Sim: traffic lights', () => {
       timeUntil(sim, IDLE, () => eastbound(sim).phase === 'amber', 60);
       timeUntil(sim, IDLE, () => eastbound(sim).phase === 'red', 10);
       timeUntil(sim, IDLE, () => false, wait);
-      Object.assign(sim.state.truck, { x: eastbound(sim).x - 0.2 - tables.vehicle.length / 2, z: LANE, heading: EAST, speed: 12 });
+      Object.assign(sim.state.truck, { x: eastbound(sim).x - 0.2 - tables.fleet.truck.length / 2, z: LANE, heading: EAST, speed: 12 });
       witness(sim);
       expect(sim.state.policeSees).toBe(true);
       let entered = null;
@@ -274,7 +274,7 @@ describe('Sim: traffic lights', () => {
     expect(eastbound(sim).phase).toBe('red');
     expect(overTheLine(sim)).toBe(0);
     // Edged up to 0.2 m short of the junction, then rolling in at 3 m/s once red and amber shows.
-    sim.state.truck.x = EDGE - 0.2 - tables.vehicle.length / 2;
+    sim.state.truck.x = EDGE - 0.2 - tables.fleet.truck.length / 2;
     timeUntil(sim, IDLE, () => eastbound(sim).phase === 'redAmber', 30);
     witness(sim);
     sim.state.truck.speed = 3;
@@ -312,7 +312,7 @@ describe('Sim: traffic lights', () => {
     // Eastbound on red at 5 m/s, a police car behind, from just short of the line: none to just short of the edge,
     // one at the edge.
     const sim = crossingSim();
-    Object.assign(sim.state.truck, { x: eastbound(sim).x - 0.5 - tables.vehicle.length / 2, z: LANE, heading: EAST, speed: 5 });
+    Object.assign(sim.state.truck, { x: eastbound(sim).x - 0.5 - tables.fleet.truck.length / 2, z: LANE, heading: EAST, speed: 5 });
     witness(sim);
     expect(eastbound(sim).phase).toBe('red');
     expect(driveThrough(sim, () => frontX(sim) > EDGE - 0.5)).toBe(0);
@@ -367,7 +367,7 @@ describe('Sim: traffic lights', () => {
     function runRed(police, radius = tables.police.radius) {
       const t = { ...quiet, police: { ...quiet.police, radius } };
       const sim = createSim(t, build(STREETS, t, undefined, area), seeded(1), profile);
-      Object.assign(sim.state.truck, { x: eastbound(sim).x - tables.vehicle.length / 2 - 0.5, z: LANE, heading: EAST, speed: 5 });
+      Object.assign(sim.state.truck, { x: eastbound(sim).x - tables.fleet.truck.length / 2 - 0.5, z: LANE, heading: EAST, speed: 5 });
       addCar(sim, 99, police, true);
       expect(eastbound(sim).phase).toBe('red');
       const sees = sim.state.policeSees;
@@ -406,11 +406,11 @@ describe('Sim: traffic lights', () => {
     const post = map.lights.find((l) => Math.round(l.dx) === 1).post;
     const sim = createSim(quiet, map, seeded(1), profile);
     // Driving east along the kerb, its right side just over the post's line.
-    placeAt(sim, -30, post.z - tables.vehicle.width / 2 + 0.05, EAST);
+    placeAt(sim, -30, post.z - tables.fleet.truck.width / 2 + 0.05, EAST);
 
     timeUntil(sim, GAS, () => sim.state.collision, 10);
 
     expect(sim.state.collision).toBe(true);
-    expect(sim.state.truck.x + tables.vehicle.length / 2).toBeLessThanOrEqual(post.x - 0.1 + 0.5);
+    expect(sim.state.truck.x + tables.fleet.truck.length / 2).toBeLessThanOrEqual(post.x - 0.1 + 0.5);
   });
 });
