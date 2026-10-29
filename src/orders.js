@@ -1,5 +1,5 @@
 // Money counter, orders button and panel, goal banner, load/unload and service progress bar, a service spot's service
-// buttons, the Stars banner, payment, fine, tow and surprise notices. Reads Sim state each frame; changes it only through the
+// buttons, the Stars banner, payment, fine, tow, surprise and thank-you notices. Reads Sim state each frame; changes it only through the
 // Sim's order and service commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
@@ -8,7 +8,7 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div><div class="paid surprised" hidden></div></div>`;
+    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div><div class="paid surprised" hidden></div><div class="paid thanked" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
@@ -18,6 +18,7 @@ export function createOrders(root, sim, map, tables, strings) {
   const fined = root.querySelector('.fined');
   const towed = root.querySelector('.towed');
   const surprised = root.querySelector('.surprised');
+  const thanked = root.querySelector('.thanked');
   const services = root.querySelector('.services');
   const goal = root.querySelector('.goal');
   const [arrow, goalText, hint, damage] = goal.children;
@@ -34,8 +35,13 @@ export function createOrders(root, sim, map, tables, strings) {
   // normal offer's tag, which says nothing more.
   const tagOf = (o, twist = strings.cargoKinds[o.cargo.kind]?.twist) =>
     [strings.offerTypes[o.type], twist && o.type === 'normal' ? null : strings.offerTags[o.type], twist].filter(Boolean).join(' · ');
+  // A Client's Reputation: its level in hearts, then the level's name.
+  const top = tables.reputation.levels.length - 1;
+  const standing = (level) => `${strings.reputation} ${'♥'.repeat(level)}${'♡'.repeat(top - level)} ${strings.reputationLevels[level]}`;
+  const kindOf = (id) => strings.spotKinds[map.spots.find((s) => s.id === id).kind];
   const offerHtml = (o) =>
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${[o.pickup, ...o.drops.map((d) => d.spot)].map(place).join(' → ')}</small><br>` +
+    `<small class="client">${[kindOf(o.pickup), standing(o.reputation)].filter(Boolean).join(' · ')}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
     `<small class="tag">${tagOf(o)}</small><strong>${eur(o.pay)}</strong>`;
   const stop = (order) => (order.drops.length > 1 && order.phase === 'dropoff' ? ` ${order.drop + 1}/${order.drops.length}` : '');
@@ -46,6 +52,7 @@ export function createOrders(root, sim, map, tables, strings) {
   let lastFine = sim.state.lastFine;
   let lastTow = sim.state.lastTow;
   let lastSurprise = sim.state.lastSurprise;
+  let lastReputation = sim.state.lastReputation;
   let shownServices = null;
   const timers = new Map();
   // Writes to the DOM only when a shown value changes, not every frame. It compares with what it last wrote,
@@ -70,7 +77,7 @@ export function createOrders(root, sim, map, tables, strings) {
   // Hides the notices at once: the Werkstatt panel opening over them would cover them (#orders is a stacking
   // context of its own, under the Werkstatt).
   function dismissNotices() {
-    for (const el of [starsBanner, paid, fined, towed, surprised]) {
+    for (const el of [starsBanner, paid, fined, towed, surprised, thanked]) {
       if (el.hidden) continue;
       clearTimeout(timers.get(el));
       el.hidden = true;
@@ -105,7 +112,7 @@ export function createOrders(root, sim, map, tables, strings) {
     return [t.x - truck.x, t.z - truck.z];
   }
 
-  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, lastSurprise: surprise, serviceOffer, service, order, offers, progress: p, truck, route }) {
+  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, lastSurprise: surprise, lastReputation: thanks, serviceOffer, service, order, offers, progress: p, truck, route }) {
     if (profile.money !== lastMoney) {
       lastMoney = profile.money;
       money.textContent = eur(lastMoney);
@@ -137,6 +144,12 @@ export function createOrders(root, sim, map, tables, strings) {
       lastSurprise = surprise;
       const s = strings.surprises;
       notify(surprised, surprise.kind === 'closed' ? `${[s.closed, surprise.street].filter(Boolean).join(': ')} · ${s.newRoute}` : `${s.dropoff} ${place(surprise.spot)} · ${strings.payLines.umweg} +${eur(surprise.umweg)}`);
+    }
+
+    if (thanks !== lastReputation) {
+      lastReputation = thanks;
+      const { name, kind } = map.spots.find((s) => s.id === thanks.client);
+      notify(thanked, `${name}: „${strings.thanks[kind] ?? ''}“\n${standing(thanks.level)}`);
     }
 
     if (serviceOffer !== shownServices) {

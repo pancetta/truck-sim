@@ -20,7 +20,8 @@
 //   Props: the furniture's trees, bollards, fountains and waste baskets, solid (kinds
 //     'tree', 'bollard', 'fountain' and 'bin'); none reaching into the road.
 //   Parked cars: along the kerbs of the streets that leave room for them beside their lane (see parkedCars).
-//   Spots: from the spot table (tables.osm.spots), each with its zone on the kerb lane, a dock's in its bay, and its
+//   `id`: the map's id (tables.osm.id).
+//   Spots: from the spot table (tables.osm.spots), each with its `kind`, its zone on the kerb lane, a dock's in its bay, and its
 //     kerb `lane` pose; a petrol station (tables.osm.stations) has its pump island (`pumps`, solid, kind 'station') on
 //     the pavement beside its zone, the restaurant (tables.osm.restaurant) its terrace (`terrace`, solid, kind
 //     'restaurant'), and home (tables.osm.home) its `garage` pose there, on which the renderer draws its doors.
@@ -371,7 +372,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     const kerbLane = { ...kerb, heading };
     const home = o.home === t.id;
     const [pumps, terrace, garage] = [station ? beside : null, restaurant ? beside : null, home ? beside : null];
-    spots.push({ id: t.id, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, restaurant, home, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps, terrace, garage });
+    spots.push({ id: t.id, kind: t.kind, name: t.name, street: t.street, dock: o.docks.includes(t.id), station, restaurant, home, zone, pose: graph.nearest(centre.x, centre.z), bay, lane: kerbLane, pumps, terrace, garage });
     if (t.id === o.start) start = kerbLane;
   }
   colliders.push(...parkedCars(graph, spots, tables));
@@ -410,7 +411,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       zebras.push({ edge: e.id, s, x: mid.x, z: mid.z, dx, dz, half: e.width / 2, kerbs, strip });
     }
   });
-  return { bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras, exits };
+  return { id: o.id, bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras, exits };
 }
 
 // The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.

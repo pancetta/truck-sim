@@ -11,16 +11,17 @@ import { clock as dayClock, fleet } from '../tables.js';
 const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
-// migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), v6 with Vehicles (#88), and the grid
-// city's v1 and v2 start fresh.
+// migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), v6 with Vehicles (#88), v7 with
+// Reputation (#86), and the grid city's v1 and v2 start fresh.
 // stars: the Stars earned in total, which make the Rank; distance: m driven in total; vehicle: the current Vehicle's id
 // (tables.fleet); vehicles: each owned Vehicle's id → its upgrades (id → level), the truck always among them;
 // equipped: slot → visual id; fuel: litres in the current Vehicle's tank; energy: the driver's, 0..1; timeOfDay: game
-// minutes since midnight; timePlayed: s of play in total.
+// minutes since midnight; timePlayed: s of play in total; reputation: map id → spot id → the Stars earned on that
+// Client's orders (see tables.reputation).
 // The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
   return {
-    version: 6,
+    version: 7,
     money: 0,
     stars: 0,
     distance: 0,
@@ -32,6 +33,7 @@ export function freshProfile() {
     energy: 1,
     timeOfDay: dayClock.start,
     timePlayed: 0,
+    reputation: {},
   };
 }
 
@@ -67,7 +69,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // when `reasons` is empty, else missed for them: 'late'; the order's faults, plus 'damage' over
   // tables.rank.cleanDamage; 'notDocked';
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine; `lastSurprise` on every
-  // surprise: { kind: 'closed', street (the closed edge's name) } or { kind: 'dropoff', spot (the new one), umweg (€) }.
+  // surprise: { kind: 'closed', street (the closed edge's name) } or { kind: 'dropoff', spot (the new one), umweg (€) };
+  // `lastReputation` ({ client (spot id), level }) whenever a delivery raises its Client's Reputation to a new level.
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber', 'red' or 'redAmber');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
@@ -106,6 +109,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lastPayment: null,
     lastFine: null,
     lastSurprise: null,
+    lastReputation: null,
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
     lightsVersion: 0,
     traffic: [],
@@ -817,8 +821,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         { star: 'clean', reasons: order.damage > tables.rank.cleanDamage && !kind?.spoil ? [...order.faults, 'damage'] : order.faults },
       ];
       if (to.dock) stars.push({ star: 'dock', reasons: docked ? [] : ['notDocked'] });
-      state.profile.stars += stars.filter((x) => !x.reasons.length).length;
+      const earned = stars.filter((x) => !x.reasons.length).length;
+      state.profile.stars += earned;
       state.lastPayment = { amount, lines, stars };
+      // The Client is the pickup's business; a round counts once, with its Stars.
+      const client = order.pickup;
+      const before = standing(client);
+      const known = (state.profile.reputation[map.id] ??= {});
+      known[client] = (known[client] ?? 0) + earned;
+      if (standing(client) > before) state.lastReputation = { client, level: standing(client) };
       state.order = null;
       updateRank();
     }
@@ -987,6 +998,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const schwer = (cargo) => cargo.weight > o.schwertransport;
   const wideLoad = (type) => type === 'oversized' || type === 'schwertransport';
   const spot = (id) => map.spots.find((s) => s.id === id);
+  // A Client's Reputation level (tables.reputation) on this map, by its spot id.
+  const standing = (id) => tables.reputation.levels.findLastIndex((l) => (state.profile.reputation[map.id]?.[id] ?? 0) >= l.stars);
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
   const typeOf = (cargo, to) =>
@@ -1007,6 +1020,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // first drop, its distance, pay and expected time are the whole order's. Spots on pedestrian edges only take orders
   // in a narrow Vehicle, of their own type ('pedestrian'), never a special one; docks only in a Vehicle that fits their
   // bays.
+  // Each offer carries its Client's (the pickup's) Reputation level (`reputation`) and pays its level's `pay` times as
+  // much; one more offer comes from a Client of level 1 or more, express from a level that has it (tables.reputation).
   function requestOffers() {
     state.offers = [];
     const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()) && (!s.dock || fitsBays()));
@@ -1019,17 +1034,29 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const draw = random();
       let share = 0;
       const drawn = Object.keys(o.shares).find((type) => draw < (share += o.shares[type]));
-      const special = drawn && o.types[drawn] <= state.rank.tier && (drawn !== 'schwertransport' || cargoes.some(schwer)) ? drawn : null;
+      addOffer(drawn && o.types[drawn] <= state.rank.tier && (drawn !== 'schwertransport' || cargoes.some(schwer)) ? drawn : null);
+    }
+    const regulars = places.filter((s) => standing(s.id));
+    if (regulars.length) {
+      const client = pick(regulars);
+      addOffer(tables.reputation.levels[standing(client.id)].express && !client.pose.edge.pedestrian ? 'express' : null, client);
+    }
+    return state.offers;
+
+    // An offer of type `special` (or one from its cargo and drop-off where null), from `client` or a place at random.
+    function addOffer(special, client) {
       const width = wideLoad(special) ? o.oversizedWidth : 0;
       const cargo = pick(cargoes.filter((c) => schwer(c) === (special === 'schwertransport') && (wideLoad(special) ? !c.kind : !special || c.kind !== 'fragile')));
       const wide = places.filter((s) => s.pose.edge.width >= width && !(special && s.pose.edge.pedestrian));
       const stops = [];
       for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)
-        stops.push(pick(wide.filter((s) => !stops.includes(s) && (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier))));
-      const from = pick(wide.filter((s) => !stops.includes(s)));
+        stops.push(pick(wide.filter((s) => s !== client && !stops.includes(s) && (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier))));
+      const from = client ?? pick(wide.filter((s) => !stops.includes(s)));
       const legs = from && stops.every(Boolean) && tour(from, stops, width);
-      if (!legs) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
-      const { time, pay: factor } = special === 'express' ? o.express : { time: 1, pay: 1 };
+      if (!legs) return; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
+      const { time, pay: express } = special === 'express' ? o.express : { time: 1, pay: 1 };
+      const reputation = standing(from.id);
+      const factor = express * tables.reputation.levels[reputation].pay;
       let driven = routeFrom(here, here.d <= here.edge.width / 2, from.pose)?.length ?? 0;
       const drops = legs.map(({ stop, distance }, k) => ({
         spot: stop.id,
@@ -1040,9 +1067,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const sum = (key) => drops.reduce((total, d) => total + d[key], 0);
       const { expectedTime } = drops.at(-1);
       const pedestrian = [from, ...stops].some((s) => s.pose.edge.pedestrian);
-      state.offers.push({ id: nextOfferId++, type: special ?? (pedestrian ? 'pedestrian' : typeOf(cargo, stops[0])), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime });
+      state.offers.push({ id: nextOfferId++, type: special ?? (pedestrian ? 'pedestrian' : typeOf(cargo, stops[0])), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime, reputation });
     }
-    return state.offers;
   }
 
   // The legs ({ stop, distance }) from spot `from` through every spot of `stops`, each time on to the nearest one left by
@@ -1109,7 +1135,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // Moves the last drop-off to another place like it (a dock for a dock, in a pedestrian street for one there; for an
   // oversized load or a schwertransport, one a wide route leads to from the pickup, as for its offer), farther from here
-  // by road but by at most `detour` m, at random. The drop pays for the extra way (its `umweg`), and it is added to the drop's and the
+  // by road but by at most `detour` m, at random among those of its kind where there are any. The drop pays for the extra way (its `umweg`), and it is added to the drop's and the
   // order's distance and, at reference speed (an express order's shortened, as its offer's), their expected times.
   function changeDropoff(here) {
     const order = state.order;
@@ -1126,7 +1152,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       .map((s) => ({ s, extra: way(s) - now }))
       .filter(({ extra }) => extra > 0 && extra <= sp.detour);
     if (!options.length) return null;
-    const { s, extra } = options[Math.floor(chance() * options.length)];
+    const alike = options.filter(({ s }) => s.kind === old.kind);
+    const pool = alike.length ? alike : options;
+    const { s, extra } = pool[Math.floor(chance() * pool.length)];
     const time = (extra / o.referenceSpeed) * (order.type === 'express' ? o.express.time : 1);
     Object.assign(drop, { spot: s.id, distance: drop.distance + extra, expectedTime: drop.expectedTime + time, umweg: Math.round((o.payPerKm * extra) / 1000) });
     Object.assign(order, { dropoff: s.id, distance: order.distance + extra, expectedTime: order.expectedTime + time });

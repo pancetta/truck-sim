@@ -11,8 +11,8 @@ The headless simulation of the city, the truck, the traffic and the rules; every
 _Avoid_: engine, game loop, world
 
 **Profile**:
-The player's lasting progress: money, **Stars**, distance driven, the owned **Vehicles** with their **Upgrades**, and
-visuals. It is what the **Save** stores.
+The player's lasting progress: money, **Stars**, distance driven, the owned **Vehicles** with their **Upgrades**,
+visuals, and each map's **Reputations**, by the map's id. It is what the **Save** stores.
 _Avoid_: account, player data
 
 **Save** ("Spielstand"):
@@ -61,7 +61,7 @@ steering and brake lag behind the controls, more the lower the **Energy**.
 ### Orders
 
 **Offer**:
-A proposed delivery the player may accept, with its **Order type** and that type's tag line (what is special about it, and its **Cargo kind**'s twist), cargo, **Pickup**, **Drop-off**, pay and **Expected time**.
+A proposed delivery the player may accept, with its **Order type** and that type's tag line (what is special about it, and its **Cargo kind**'s twist), cargo, **Pickup**, **Drop-off**, pay, **Expected time**, and its **Client**'s **Kind** and **Reputation**.
 _Avoid_: job, mission, quest
 
 **Order** ("Auftrag"):
@@ -99,8 +99,19 @@ _Avoid_: source/target, from/to
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
 **Surprise** ("Überraschung"):
-Something that changes an **Order** on the drive to its last **Drop-off**, at most one per **Order**: a street on the route ahead becomes a **Closed street** and the route goes round it, or the Client (the **Pickup**'s business) calls and moves the **Drop-off** to another place like it, paying the **Umweg** and extending the **Expected time** by the extra way.
+Something that changes an **Order** on the drive to its last **Drop-off**, at most one per **Order**: a street on the route ahead becomes a **Closed street** and the route goes round it, or the **Client** calls and moves the **Drop-off** to another place like it (of its **Kind**, where there is one), paying the **Umweg** and extending the **Expected time** by the extra way.
 _Avoid_: twist (that's a **Cargo kind**'s), random event
+
+**Client** ("Kunde"):
+The business whose **Order** it is: the **Pickup**'s. It keeps a **Reputation** of the player.
+_Avoid_: customer, sender, shipper
+
+**Reputation** ("Ruf"):
+What a **Client** thinks of the player, per map: the **Stars** earned on its **Orders**. It rises through levels ("Neu",
+"Bekannt", "Geschätzt", "Vertraut", "Unverzichtbar", shown as hearts); each rise brings a thank-you notice with the
+**Client**'s line for its **Kind**. From level "Bekannt" on, the **Client**'s **Offers** pay more and every request for
+**Offers** brings one more from such a **Client**, an **Express** one from "Geschätzt" on, whatever the **Tier**.
+_Avoid_: loyalty, standing, affinity
 
 **Umweg**:
 The **Pay line** for the extra way to a **Drop-off** a **Surprise** moved, at the distance pay's rate.
@@ -127,6 +138,11 @@ _Avoid_: cargo type (an Order type is something else)
 **Spot**:
 A place in the city where cargo is loaded or unloaded, or a **Service spot**, with a **Zone** on the road beside it.
 _Avoid_: location, stop
+
+**Kind**:
+What sort of place a **Spot** is ("Bäckerei", "Café", "Laden", "Lager", "Tankstelle", "Zuhause"…). Content (a **Client**'s
+thank-you, a moved **Drop-off**, Story chains) refers to Kinds, never to a map's own **Spots**, so it carries over to other maps.
+_Avoid_: category, spot type
 
 **Zone**:
 The patch of road at a **Spot** where the truck must stand still while loading, unloading or at a **Service**.

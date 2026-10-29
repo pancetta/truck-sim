@@ -275,6 +275,21 @@ export const rank = {
   ].map((tier, i) => ({ ...tier, title: strings.rankTitles[i] })),
 };
 
+// Reputation (#86): what a Client, the business an order is picked up at, thinks of the driver: the Stars earned on its
+// orders, per map and spot. A level is reached at its `stars` (names in strings.reputationLevels) and makes the Client's
+// offers pay `pay` times as much; each request for offers adds one more from a Client of level 1 or more, an express
+// one, whatever the Tier, from a level with `express`. A delivery earns 2–4 Stars, so the first clean one on time brings
+// level 1, and the top one, about eight deliveries for the Client, opens its Story chain (#87).
+export const reputation = {
+  levels: [
+    { stars: 0, pay: 1 },
+    { stars: 3, pay: 1.1 },
+    { stars: 8, pay: 1.2, express: true },
+    { stars: 15, pay: 1.3, express: true },
+    { stars: 24, pay: 1.5, express: true },
+  ],
+};
+
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
 // rank tier that may buy a level. `factor` scales a constant of the current Vehicle (tables.fleet), whose own levels
 // they are: motor the torque curve, brakes brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and cargo damage,
@@ -644,6 +659,7 @@ export const city = {
 // `npm run maps`: the roads and buildings, the street furniture (trees, bollards, fountains, waste baskets), and the
 // real buildings round the map for its skyline.
 export const osm = {
+  id: 'monti', // the map's id, which keys the profile's data of this map (Reputation)
   file: 'maps/monti.json',
   furniture: 'maps/monti-furniture.json',
   ring: 'maps/monti-ring.json',
@@ -678,38 +694,39 @@ export const osm = {
   parked: { classes: ['residential', 'unclassified', 'service'], density: 0.6, gap: 1.2, kerb: 0.2, junction: 8, spot: 6, dock: 20 },
   zone: 10, // m, side of a spot's square zone
   // The spot table (the glossary's), hand-picked on the part of the network every one-way leads back into: per spot its
-  // letter (`id`), a made-up business name (never a real one), the real street, the OSM way it stands on with `at` m
+  // letter (`id`), its `kind` (a key of strings.spotKinds: what sort of place it is, which content refers to instead of
+  // the spot, so it carries over to other maps), a made-up business name (never a real one), the real street, the OSM way it stands on with `at` m
   // along it (from the way's first point) and the `side` of the way it is on ('left' or 'right' of the way's own
   // direction). Its zone is on the kerb lane there. A dock's `bay` is [x, z, heading in degrees]: the middle of its
   // dock edge and the way a truck reversed into it faces (as the Sim's heading: 0 faces +z, 90 faces +x); its zone is
   // where that truck stands.
   // The docks are at the ends of dead-end streets, which a truck backs down from the street it passes them on.
   spots: [
-    { id: 'A', name: 'Spedizioni Gatto Blu', street: 'Via Urbana', way: 189465655, at: 160, side: 'right' },
-    { id: 'B', name: 'Forno della Luna', street: 'Via dei Serpenti', way: 232940101, at: 91, side: 'right' },
-    { id: 'C', name: 'Magazzino Ventaglio', street: 'Via San Giuseppe Labre', way: 182930018, at: 36, side: 'right', bay: [-62, -56.3, -8] },
-    { id: 'D', name: 'Libreria Tre Gufi', street: 'Via in Selci', way: 23569690, at: 144, side: 'right' },
-    { id: 'E', name: "Ferramenta Chiodo d'Oro", street: 'Via Giovanni Lanza', way: 189558676, at: 260, side: 'right' },
-    { id: 'F', name: 'Cantina Volpe Rossa', street: 'Via dei Ciancaleoni', way: 190639862, at: 55, side: 'right', bay: [48.2, -96, 132] },
-    { id: 'G', name: 'Tipografia Fulmine', street: 'Via Cavour', way: 189465651, at: 60, side: 'right' },
-    { id: 'H', name: 'Drogheria Mezzaluna', street: 'Via delle Vasche', way: 23327917, at: 16, side: 'right', bay: [214.2, -145.6, -124] },
-    { id: 'I', name: 'Fioraio Pettirosso', street: 'Via Vittorino da Feltre', way: 50602036, at: 87, side: 'right' },
-    { id: 'J', name: 'Caffè Lanterna', street: 'Via del Colosseo', way: 42752307, at: 56, side: 'right' },
-    { id: 'K', name: 'Bottega del Rame', street: 'Via Cimarra', way: 202737280, at: 159, side: 'right' },
-    { id: 'L', name: 'Tessuti Arcobaleno', street: 'Via Caprareccia', way: 113687408, at: 66, side: 'right' },
-    { id: 'M', name: 'Pasticceria Nuvola', street: 'Via degli Zingari', way: 206908813, at: 57, side: 'right' },
+    { id: 'A', kind: 'depot', name: 'Spedizioni Gatto Blu', street: 'Via Urbana', way: 189465655, at: 160, side: 'right' },
+    { id: 'B', kind: 'bakery', name: 'Forno della Luna', street: 'Via dei Serpenti', way: 232940101, at: 91, side: 'right' },
+    { id: 'C', kind: 'warehouse', name: 'Magazzino Ventaglio', street: 'Via San Giuseppe Labre', way: 182930018, at: 36, side: 'right', bay: [-62, -56.3, -8] },
+    { id: 'D', kind: 'shop', name: 'Libreria Tre Gufi', street: 'Via in Selci', way: 23569690, at: 144, side: 'right' },
+    { id: 'E', kind: 'shop', name: "Ferramenta Chiodo d'Oro", street: 'Via Giovanni Lanza', way: 189558676, at: 260, side: 'right' },
+    { id: 'F', kind: 'cellar', name: 'Cantina Volpe Rossa', street: 'Via dei Ciancaleoni', way: 190639862, at: 55, side: 'right', bay: [48.2, -96, 132] },
+    { id: 'G', kind: 'workshop', name: 'Tipografia Fulmine', street: 'Via Cavour', way: 189465651, at: 60, side: 'right' },
+    { id: 'H', kind: 'grocer', name: 'Drogheria Mezzaluna', street: 'Via delle Vasche', way: 23327917, at: 16, side: 'right', bay: [214.2, -145.6, -124] },
+    { id: 'I', kind: 'florist', name: 'Fioraio Pettirosso', street: 'Via Vittorino da Feltre', way: 50602036, at: 87, side: 'right' },
+    { id: 'J', kind: 'cafe', name: 'Caffè Lanterna', street: 'Via del Colosseo', way: 42752307, at: 56, side: 'right' },
+    { id: 'K', kind: 'workshop', name: 'Bottega del Rame', street: 'Via Cimarra', way: 202737280, at: 159, side: 'right' },
+    { id: 'L', kind: 'shop', name: 'Tessuti Arcobaleno', street: 'Via Caprareccia', way: 113687408, at: 66, side: 'right' },
+    { id: 'M', kind: 'bakery', name: 'Pasticceria Nuvola', street: 'Via degli Zingari', way: 206908813, at: 57, side: 'right' },
     // On pedestrian edges (#89): only the Dreirad gets through the bollard gates to them.
-    { id: 'S', name: 'Gelateria Tre Conchiglie', street: 'Piazza della Madonna dei Monti', way: 29702265, at: 28, side: 'right' },
-    { id: 'T', name: 'Erboristeria Riccio', street: 'Via dei Quattro Cantoni', way: 23328112, at: 12, side: 'right' },
-    { id: 'U', name: 'Merceria Ago Felice', street: 'Via Vittorino da Feltre', way: 24492032, at: 60, side: 'right' },
+    { id: 'S', kind: 'cafe', name: 'Gelateria Tre Conchiglie', street: 'Piazza della Madonna dei Monti', way: 29702265, at: 28, side: 'right' },
+    { id: 'T', kind: 'shop', name: 'Erboristeria Riccio', street: 'Via dei Quattro Cantoni', way: 23328112, at: 12, side: 'right' },
+    { id: 'U', kind: 'shop', name: 'Merceria Ago Felice', street: 'Via Vittorino da Feltre', way: 24492032, at: 60, side: 'right' },
     // Petrol stations (`stations`): service spots on wide two-way streets, never an order's pickup or drop-off.
-    { id: 'N', name: 'Carburanti Colibrì', street: 'Via Cavour', way: 232183086, at: 50, side: 'right' },
-    { id: 'O', name: 'Distributore Girasole', street: 'Via Cavour', way: 232183088, at: 45, side: 'right' },
-    { id: 'P', name: 'Benzina Ponte Verde', street: 'Largo Corrado Ricci', way: 190022892, at: 32, side: 'right' },
+    { id: 'N', kind: 'station', name: 'Carburanti Colibrì', street: 'Via Cavour', way: 232183086, at: 50, side: 'right' },
+    { id: 'O', kind: 'station', name: 'Distributore Girasole', street: 'Via Cavour', way: 232183088, at: 45, side: 'right' },
+    { id: 'P', kind: 'station', name: 'Benzina Ponte Verde', street: 'Largo Corrado Ricci', way: 190022892, at: 32, side: 'right' },
     // The restaurant (`restaurant`): a service spot on a main street, never an order's pickup or drop-off.
-    { id: 'Q', name: 'Osteria Due Lucciole', street: 'Via Panisperna', way: 23694979, at: 40, side: 'right' },
+    { id: 'Q', kind: 'trattoria', name: 'Osteria Due Lucciole', street: 'Via Panisperna', way: 23694979, at: 40, side: 'right' },
     // Home (`home`): the driver's own house and garage on a quiet street, never an order's pickup or drop-off.
-    { id: 'R', name: 'Casa', street: 'Via dei Capocci', way: 95509138, at: 100, side: 'right' },
+    { id: 'R', kind: 'home', name: 'Casa', street: 'Via dei Capocci', way: 95509138, at: 100, side: 'right' },
   ],
   docks: ['C', 'F', 'H'], // spot ids with a loading dock
   bayLength: 10, // m of a dock bay's painted lines out from its dock edge; a longer Vehicle gets no dock offers (#90)

@@ -472,8 +472,10 @@ body:has(.rear-inset:not([hidden])) .goal {
   white-space: nowrap;
 }
 
-/* Business and street names (Monti) and the offer type's tag line wrap, so the pay and the button stay in the panel. */
+/* Business and street names (Monti), the Client's kind and Reputation and the offer type's tag line wrap, so the pay
+   and the button stay in the panel. */
 .orders-panel .places,
+.orders-panel .client,
 .orders-panel .tag {
   white-space: normal;
 }
@@ -857,6 +859,11 @@ body:has(.rear-inset:not([hidden])) .goal {
 .towed,
 .surprised {
   color: #fff;
+}
+
+/* A Client's thank-you when its Reputation rises (#86): its line, then the hearts of its new level. */
+.thanked {
+  color: #ffc2cf;
 }
 
 /* A service spot's services, while the truck stands in its zone, as buttons over the notices; hidden while the orders

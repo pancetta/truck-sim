@@ -24,7 +24,7 @@ function fakeStorage(items = {}) {
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
 const valid = {
-  version: 6,
+  version: 7,
   money: 1234,
   stars: 4,
   distance: 5678.9,
@@ -36,11 +36,15 @@ const valid = {
   energy: 0.42,
   timeOfDay: 1300.5,
   timePlayed: 3600.25,
+  reputation: { monti: { B: 9, J: 0 }, laterMap: { A: 3 } }, // a map that comes later keeps its own
 };
-// The same progress as saved by the earlier versions: 5, with the truck's upgrades before Vehicles (#88), 4, with rank
-// points before Stars (#81), 3, before fuel, energy and the clock (#48), and the grid city's 1, before the distance
-// counter, and 2 (#67: no migration).
-const { vehicle, vehicles, ...v6Fields } = valid;
+// The same progress as saved by the earlier versions: 6, before Reputation (#86), 5, with the truck's upgrades before
+// Vehicles (#88), 4, with rank points before Stars (#81), 3, before fuel, energy and the clock (#48), and the grid city's
+// 1, before the distance counter, and 2 (#67: no migration). Migrated, they come with no Reputation.
+const { reputation, ...v7Fields } = valid;
+const v6 = { ...v7Fields, version: 6 };
+const migrated = { ...valid, reputation: {} };
+const { vehicle, vehicles, ...v6Fields } = v6;
 const v5 = { ...v6Fields, upgrades: { motor: 2 }, version: 5 };
 const { stars, ...v5Fields } = v5;
 const v4 = { ...v5Fields, rankPoints: 47, version: 4 };
@@ -59,6 +63,7 @@ describe('save module', () => {
     profile.vehicles.van = { brakes: 3 };
     profile.vehicle = 'van';
     profile.fuel = 99;
+    profile.reputation.monti = { C: 15 };
     save.save(profile);
     expect(createSave(storage, tables).load()).toEqual(profile);
     expect(stored(valid)).toEqual(valid);
@@ -71,7 +76,9 @@ describe('save module', () => {
       { ...valid, stars: null }, { ...valid, stars: 1.5 }, { ...valid, stars: -1 }, { ...v4, rankPoints: null },
       { ...v4, rankPoints: '40' }, { ...v5, upgrades: [] }, { ...v5, upgrades: { motor: 4 } }, { ...valid, vehicles: [] },
       { ...valid, vehicles: { truck: { motor: 4 } } }, { ...valid, vehicles: { truck: {}, van: { motor: 1.5 } } },
-      { ...valid, vehicles: { truck: {}, van: null } }, { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
+      { ...valid, vehicles: { truck: {}, van: null } }, { ...valid, reputation: null }, { ...valid, reputation: { monti: [] } },
+      { ...valid, reputation: { monti: { B: -1 } } }, { ...valid, reputation: { monti: { B: 2.5 } } }, { ...valid, reputation: { monti: { B: '3' } } },
+      { ...v7Fields, version: 7 }, { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
       { ...valid, distance: -1 }, { ...valid, distance: '12' }, { ...valid, distance: Infinity }, v1Fields,
       { ...valid, fuel: -1 }, { ...valid, fuel: '400' }, { ...valid, fuel: undefined }, { ...valid, energy: 1.01 },
       { ...valid, energy: -0.1 }, { ...valid, energy: null }, { ...valid, timeOfDay: 1440 }, { ...valid, timeOfDay: -1 },
@@ -85,13 +92,17 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 5 save loads as version 6: the truck, with its upgrades, is the one owned Vehicle and the current one', () => {
-    expect(fresh.version).toBe(6);
-    expect(stored(v5)).toEqual(valid);
+  test('a version 6 save loads as version 7, with all progress kept and no Reputation yet', () => {
+    expect(fresh.version).toBe(7);
+    expect(stored(v6)).toEqual(migrated);
   });
 
-  test('a version 4 save goes through both steps, with all progress kept and a Star for every 10 rank points, rounded down', () => {
-    expect(stored(v4)).toEqual(valid); // 47 points: 4 Stars
+  test('a version 5 save goes through both steps: the truck, with its upgrades, is the one owned Vehicle and the current one', () => {
+    expect(stored(v5)).toEqual(migrated);
+  });
+
+  test('a version 4 save goes through every step, with all progress kept and a Star for every 10 rank points, rounded down', () => {
+    expect(stored(v4)).toEqual(migrated); // 47 points: 4 Stars
   });
 
   // Past the top one's next Tier (in Stars) they move up into the new Tiers, as a player who earned that many Stars would.
@@ -105,7 +116,7 @@ describe('save module', () => {
   });
 
   test('a version 3 save goes through every step: a full tank, a rested driver, 08:00, no time played, and Stars', () => {
-    expect(stored(v3)).toEqual({ ...valid, fuel: baseTables.fleet.truck.tank, energy: 1, timeOfDay: 8 * 60, timePlayed: 0 });
+    expect(stored(v3)).toEqual({ ...migrated, fuel: baseTables.fleet.truck.tank, energy: 1, timeOfDay: 8 * 60, timePlayed: 0 });
   });
 
   test('a version 1 or 2 save (the grid city) loads as a fresh profile of the current version', () => {
@@ -114,7 +125,7 @@ describe('save module', () => {
   });
 
   test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
-    const newer = JSON.stringify({ ...valid, version: 7 });
+    const newer = JSON.stringify({ ...valid, version: 8 });
     const storage = fakeStorage({ [KEY]: newer });
     const save = createSave(storage, tables);
     const profile = save.load();
@@ -128,7 +139,7 @@ describe('save module', () => {
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 7, '6', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 8, '7', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 

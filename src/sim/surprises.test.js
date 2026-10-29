@@ -18,8 +18,8 @@ const quiet = (surprises) => ({
 // A ladder: two residential streets 80 m apart (north at z -40, south at z 40) from x -80 to 80, joined at the ends and
 // by a middle rung M along x 0. A is on the north street 10 m west of the rung, B and C on the south one, 10 and 50 m
 // west of it: A to B is 100 m by M, A to C 140 m. With `stub`, D is on a residential dead end south of the street, 30 m west of the rung, that
-// only a service lane (4 m) leads to: no oversized load reaches it.
-function ladder(t, stub = false) {
+// only a service lane (4 m) leads to: no oversized load reaches it. `kinds` gives spots their kind, by id.
+function ladder(t, stub = false, kinds = {}) {
   const north = way('residential', [[-80, -40], [0, -40], [80, -40]], { name: 'Nord' });
   const south = way('residential', [[-80, 40], [-30, 40], [0, 40], [80, 40]], { name: 'Süd' }); // -30: where the stub joins
   const rung = way('residential', [[0, -40], [0, 40]], { name: 'Mitte' });
@@ -32,7 +32,7 @@ function ladder(t, stub = false) {
     { id: 'B', name: 'Süd', street: 'Süd', way: south.id, at: 70, side: 'right' },
     { id: 'C', name: 'Süd West', street: 'Süd', way: south.id, at: 30, side: 'right' },
   ];
-  const tables = withSpots(spots, [], null, t);
+  const tables = withSpots(spots.map((s) => ({ ...s, kind: kinds[s.id] })), [], null, t);
   const map = build(ways, tables);
   const M = map.graph.edges.find((e) => e.points.every((p) => p.x === 0)).id;
   return { tables, map, M };
@@ -136,6 +136,18 @@ describe('Sim: surprises on the way (#85)', () => {
       moved.add([sim.state.order.type, sim.state.order.dropoff].join());
     }
     expect([...moved]).toEqual(['schwertransport,C']);
+  });
+
+  test('the drop-off moves to a place of its kind where there is one (#86)', () => {
+    const { tables, map } = ladder(quiet({ closed: 0, dropoff: 1 }), true, { A: 'depot', B: 'bakery', C: 'shop', D: 'bakery' });
+    const seen = new Set();
+    for (let played = 0; played < 20; played++) {
+      const sim = createSim(tables, map, seeded(1), { ...freshProfile(), timePlayed: played });
+      loadAtoB(sim, map);
+      timeUntil(sim, IDLE, () => sim.state.lastSurprise, 5);
+      seen.add(sim.state.order.dropoff);
+    }
+    expect([...seen]).toEqual(['D']); // C is nearer, but a shop
   });
 
   test('surprises come at the table chances, at most one per order', () => {

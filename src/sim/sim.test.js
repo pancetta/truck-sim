@@ -299,7 +299,7 @@ describe('Sim: profile', () => {
 
   test('a fresh Sim starts with no money and no payment', () => {
     const sim = laneSim();
-    expect(sim.state.profile).toMatchObject({ version: 6, money: 0, stars: 0, distance: 0, fuel: tables.fleet.truck.tank, energy: 1 });
+    expect(sim.state.profile).toMatchObject({ version: 7, money: 0, stars: 0, distance: 0, fuel: tables.fleet.truck.tank, energy: 1, reputation: {} });
     expect(sim.state.lastPayment).toBe(null);
   });
 
@@ -313,6 +313,7 @@ describe('Sim: profile', () => {
       ...profile,
       money: 500 + offer.pay,
       stars: 5 + 2, // delivered and clean, but late
+      reputation: { [tables.osm.id]: { A: 2 } }, // A's, the Client's (see clients.test.js)
       distance: sim.state.profile.distance, // see 'Sim: distance'
       timeOfDay: sim.state.profile.timeOfDay, // see 'Sim: clock'
       timePlayed: sim.state.profile.timePlayed,

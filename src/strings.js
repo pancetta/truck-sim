@@ -47,6 +47,23 @@ export const strings = {
     delicate: { name: 'Empfindlich', meter: 'Schaden', twist: 'Empfindlich: sanft lenken und bremsen, nirgends anstoßen' },
     live: { name: 'Lebende Fracht', meter: 'Stress', twist: 'Lebende Fracht: sanft anfahren und sanft bremsen' },
   },
+  // What sort of place a spot is (tables.osm.spots' `kind`), shown with a Client on its offers.
+  spotKinds: { depot: 'Spedition', bakery: 'Bäckerei', warehouse: 'Lager', shop: 'Laden', cellar: 'Weinkeller', workshop: 'Handwerk', grocer: 'Feinkost', florist: 'Blumenladen', cafe: 'Café', station: 'Tankstelle', trattoria: 'Trattoria', home: 'Zuhause' },
+  // Reputation (tables.reputation): on offers, its level's name; the notice when it rises (state.lastReputation) quotes the
+  // Client's thank-you line, by its kind (only kinds that take orders have one).
+  reputation: 'Ruf',
+  reputationLevels: ['Neu', 'Bekannt', 'Geschätzt', 'Vertraut', 'Unverzichtbar'],
+  thanks: {
+    depot: 'Pünktlich wie ein Uhrwerk. So arbeiten wir gern!',
+    bakery: 'Für Sie liegt ab jetzt immer ein Cornetto bereit!',
+    warehouse: 'Sauber geliefert, sauber gestapelt. Danke!',
+    shop: 'Unsere Kundschaft fragt schon nach Ihnen. Grazie!',
+    cellar: 'Darauf stoßen wir an. Salute!',
+    workshop: 'Auf Sie ist Verlass. Danke für die gute Arbeit!',
+    grocer: 'Frisch und pünktlich, so mögen wir das. Grazie mille!',
+    florist: 'Die Blumen strahlen, und wir auch. Danke!',
+    cafe: 'Der nächste Espresso geht aufs Haus!',
+  },
   expectedTime: 'Soll-Zeit',
   bonusTime: 'Bonuszeit',
   rank: 'Rang',
