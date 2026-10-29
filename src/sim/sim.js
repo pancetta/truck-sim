@@ -49,8 +49,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let base = tables.fleet[profile.vehicle];
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
-  // 'fragile', 'dock', 'fragileDock', 'express' or 'oversized' (see requestOffers()). `order` is the active offer plus its phase ('pickup' or 'dropoff'),
-  // `elapsed` (s since it was accepted), `damage` (0..1, grows only on fragile cargo once loaded) and `faults`, what has
+  // 'fragile', 'dock', 'fragileDock', 'express', 'oversized' or 'round' (see requestOffers()). `order` is the active offer
+  // plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops` of the drop-off it heads for or unloads at, whose
+  // spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on fragile cargo once loaded) and `faults`, what has
   // cost it the clean Star so far: the reason of each fine taken since it was accepted ('collision' for a Contact the
   // truck made) and 'zebra' for a zebra crossing driven through, Witness or not, each once;
   // `progress` runs 0..1 while the truck stands in that phase's zone.
@@ -58,7 +59,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()); with an oversized
   // load on, over edges at least tables.orders.oversizedWidth wide where such a route leads there.
   // `lastPayment` ({ amount, lines: [{ label, amount }], stars: [{ star, reasons }] }, label a key of strings.payLines)
-  // is replaced by a new object on every payment, so the UI can tell each one apart. `stars` are the delivery's Stars in
+  // is replaced by a new object on every payment, so the UI can tell each one apart; a round pays each drop. `stars` are
+  // empty but for an order's last drop, where they are the delivery's Stars in
   // order, `star` a key of strings.stars ('delivered', 'onTime', 'clean', and 'dock' for a dock drop-off), each earned
   // when `reasons` is empty, else missed for them: 'late'; the order's faults, plus 'damage' over
   // tables.rank.cleanDamage; 'notDocked';
@@ -774,22 +776,30 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       truck.mass += order.cargo.weight * 1000;
       order.phase = 'dropoff';
     } else {
-      truck.mass = v.emptyMass;
-      // The time bonus shrinks from its full share at once to 0 at the expected time; late pays the base.
-      const timeShare = Math.max(0, order.expectedTime - order.elapsed) / order.expectedTime;
+      // Each drop unloads its share of the cargo and pays its part; the last one empties the truck and gives the Stars.
+      const drop = order.drops[order.drop];
+      const last = order.drop === order.drops.length - 1;
+      truck.mass = last ? v.emptyMass : truck.mass - (order.cargo.weight * 1000) / order.drops.length;
+      // The time bonus shrinks from its full share at once to 0 at the drop's expected time; late pays the base.
+      const timeShare = Math.max(0, drop.expectedTime - order.elapsed) / drop.expectedTime;
       const lines = [
-        { label: 'base', amount: order.pay },
-        { label: 'time', amount: Math.round(o.timeBonus * timeShare * order.pay) },
+        { label: 'base', amount: drop.pay },
+        { label: 'time', amount: Math.round(o.timeBonus * timeShare * drop.pay) },
       ];
       // Damage takes its share of the fragile premium and never more, so the pay never drops below the base.
-      if (order.cargo.fragile) lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * (1 - order.damage) * order.pay) });
+      if (order.cargo.fragile) lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * (1 - order.damage) * drop.pay) });
       const to = targetOf(order);
       const docked = to.dock && reversedInto(to.bay);
-      if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * order.pay) });
-      if (isNight(state.timeOfDay, tables.clock)) lines.push({ label: 'night', amount: Math.round(o.nightBonus * order.pay) });
-      if (state.weather.kind === 'rain' && state.weather.intensity >= w.rain.bonus) lines.push({ label: 'rain', amount: Math.round(o.rainBonus * order.pay) });
+      if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * drop.pay) });
+      if (isNight(state.timeOfDay, tables.clock)) lines.push({ label: 'night', amount: Math.round(o.nightBonus * drop.pay) });
+      if (state.weather.kind === 'rain' && state.weather.intensity >= w.rain.bonus) lines.push({ label: 'rain', amount: Math.round(o.rainBonus * drop.pay) });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
+      if (!last) {
+        state.lastPayment = { amount, lines, stars: [] };
+        order.dropoff = order.drops[++order.drop].spot;
+        return;
+      }
       const stars = [
         { star: 'delivered', reasons: [] },
         { star: 'onTime', reasons: order.elapsed <= order.expectedTime ? [] : ['late'] },
@@ -967,10 +977,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // New offers between distinct spots, paid by the road route length; none while an order is active. Service spots
   // are never a pickup or a drop-off.
   // Cargo is only what the Ladefläche carries, and cargo and drop-off make an offer type the rank tier allows; from
-  // their tiers, a share of offers is express or oversized instead (tables.orders.types). An oversized offer's spots
-  // and route keep to edges at least oversizedWidth wide, and it is not made where no such route leads.
-  // The expected time is the truck's route to the pickup plus the paid route, at reference speed, plus loading,
-  // unloading and slack; an express offer's is shorter and its pay higher, by tables.orders.express.
+  // their tiers, a share of offers is express, oversized or a round instead (tables.orders.types). An oversized offer's
+  // spots and route keep to edges at least oversizedWidth wide, and it is not made where no such route leads. A round
+  // has roundDrops drop-offs, driven nearest by road first, and is not made where one can't be reached.
+  // Each drop (`drops`: { spot, distance, pay, expectedTime }) pays base + distance of its own leg, and is expected
+  // after the truck's route to the pickup plus the legs to it at reference speed, plus loading, the unloadings up to it
+  // and slack; an express offer's is shorter and its pay higher, by tables.orders.express. The offer's `dropoff` is the
+  // first drop, its distance, pay and expected time are the whole order's.
   function requestOffers() {
     state.offers = [];
     const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home);
@@ -987,25 +1000,49 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const width = special === 'oversized' ? o.oversizedWidth : 0;
       const cargo = pick(special ? cargoes.filter((c) => !c.fragile) : cargoes);
       const wide = places.filter((s) => s.pose.edge.width >= width);
-      const to = pick(wide.filter((s) => (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier)));
-      const from = pick(wide.filter((s) => s !== to));
-      const path = from && to && map.graph.route(from.pose, to.pose, width, closed);
-      if (!path) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
-      const distance = path.length;
+      const stops = [];
+      for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)
+        stops.push(pick(wide.filter((s) => !stops.includes(s) && (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier))));
+      const from = pick(wide.filter((s) => !stops.includes(s)));
+      const legs = from && stops.every(Boolean) && tour(from, stops, width);
+      if (!legs) continue; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
       const { time, pay: factor } = special === 'express' ? o.express : { time: 1, pay: 1 };
-      const pay = Math.round(factor * (o.basePay + (o.payPerKm * distance) / 1000));
-      const toPickup = routeFrom(here, here.d <= here.edge.width / 2, from.pose)?.length ?? 0;
-      const expectedTime = time * ((toPickup + distance) / o.referenceSpeed + 2 * o.loadTime + o.slack);
-      state.offers.push({ id: nextOfferId++, type: special ?? typeOf(cargo, to), cargo, pickup: from.id, dropoff: to.id, distance, pay, expectedTime });
+      let driven = routeFrom(here, here.d <= here.edge.width / 2, from.pose)?.length ?? 0;
+      const drops = legs.map(({ stop, distance }, k) => ({
+        spot: stop.id,
+        distance,
+        pay: Math.round(factor * (o.basePay + (o.payPerKm * distance) / 1000)),
+        expectedTime: time * ((driven += distance) / o.referenceSpeed + (k + 2) * o.loadTime + o.slack),
+      }));
+      const sum = (key) => drops.reduce((total, d) => total + d[key], 0);
+      const { expectedTime } = drops.at(-1);
+      state.offers.push({ id: nextOfferId++, type: special ?? typeOf(cargo, stops[0]), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime });
     }
     return state.offers;
+  }
+
+  // The legs ({ stop, distance }) from spot `from` through every spot of `stops`, each time on to the nearest one left by
+  // road (over edges at least `width` wide, none closed); null where one can't be reached.
+  function tour(from, stops, width) {
+    const legs = [];
+    for (let at = from, left = stops; left.length; ) {
+      const [next] = left
+        .map((stop) => ({ stop, path: map.graph.route(at.pose, stop.pose, width, closed) }))
+        .filter((x) => x.path)
+        .sort((a, b) => a.path.length - b.path.length);
+      if (!next) return null;
+      legs.push({ stop: next.stop, distance: next.path.length });
+      at = next.stop;
+      left = left.filter((s) => s !== at);
+    }
+    return legs;
   }
 
   // Makes one of the current offers the active order; ignored while one is active or for an unknown id.
   function acceptOrder(id) {
     const offer = state.offers.find((x) => x.id === id);
     if (state.order || !offer) return;
-    state.order = { ...offer, phase: 'pickup', elapsed: 0, damage: 0, faults: [] };
+    state.order = { ...offer, phase: 'pickup', drop: 0, elapsed: 0, damage: 0, faults: [] };
     state.offers = [];
     updateRoute();
   }

@@ -65,12 +65,12 @@ A proposed delivery the player may accept, with its **Order type** and that type
 _Avoid_: job, mission, quest
 
 **Order** ("Auftrag"):
-An accepted **Offer** being driven: first to its **Pickup**, then to its **Drop-off**.
+An accepted **Offer** being driven: first to its **Pickup**, then to its **Drop-off** (each of a **Round**'s in turn).
 _Avoid_: active offer, job
 
 **Order type**:
 The kind of delivery: normal ("Normal"), heavy ("Schwerlast"), fragile ("Zerbrechlich"), dock ("Rampe"), fragile dock,
-**Express** or **Oversized**. Each comes from its **Tier** on.
+**Express**, **Oversized** or **Round** ("Tour"). Each comes from its **Tier** on.
 
 **Express**:
 An **Order type** with a shorter **Expected time** and higher pay, for a share of **Offers**.
@@ -78,6 +78,12 @@ An **Order type** with a shorter **Expected time** and higher pay, for a share o
 **Oversized** ("Übergröße"):
 An **Order type** whose load is too wide for narrow streets: its route, the pay distance and the route arrow keep to
 edges of at least a set width, and it is only offered between **Spots** such a route joins. Today's truck takes it.
+
+**Round** ("Tour"):
+An **Order type** with one **Pickup** and 2–3 **Drop-offs**, driven in turn, nearest by road first. Each drop unloads
+its share of the cargo and is paid on its own, by its own leg and its own **Expected time**; the **Stars** come once,
+after the last, judged on the whole Round. It is only offered between **Spots** the roads join.
+_Avoid_: multi-stop order
 
 **Pickup** ("Beladestelle") / **Drop-off** ("Entladestelle"):
 The **Spots** where an **Order**'s cargo is loaded and unloaded.

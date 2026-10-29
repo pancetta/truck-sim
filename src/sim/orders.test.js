@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { freshProfile } from './sim.js';
 import * as tables from '../tables.js';
-import { BRAKE, DT, GAS, IDLE, acceptFrom, box, build, createSim, deliver, drive, lane, monti, parkAt, seeded, timeUntil, way, withSpots } from './fixtures.js';
+import { BRAKE, DT, GAS, IDLE, acceptFrom, box, build, createSim, deliver, drive, lane, mapOf, monti, parkAt, seeded, timeUntil, way, withSpots } from './fixtures.js';
 
 const { classes } = tables.osm;
 const { lane: laneOffset, width } = classes.residential;
@@ -760,5 +760,122 @@ describe('Sim: express and oversized offers', () => {
     const t = withSpots([spot('A', 0), spot('B', 56)], [], null, only('oversized'));
     const sim = createSim(t, build([vicolo], t), seeded(1), atTier(types.oversized));
     for (let i = 0; i < 20; i++) expect(sim.requestOffers()).toEqual([]);
+  });
+});
+
+describe('Sim: rounds', () => {
+  const { types, shares, basePay, payPerKm, loadTime } = tables.orders;
+  const { emptyMass } = tables.fleet.truck;
+  const atTier = (tier) => ({ ...freshProfile(), stars: tables.rank.tiers[tier].stars });
+  const rounds = (roundDrops = [3]) => ({ ...tables.orders, shares: { round: 1 }, roundDrops });
+
+  // Vicolo, a 120 m north–south dead end: A at its north end, B, C and D 40 m apart south of it, A a dock. With `island`,
+  // E on a street of its own 60 m east, which no road joins.
+  function street(t = tables, island = false) {
+    const vicolo = way('residential', [[0, -60], [0, 60]], { name: 'Vicolo' });
+    const isola = way('residential', [[60, -30], [60, 30]], { name: 'Isola' });
+    const spot = (id, w, at, more) => ({ id, name: `Bottega ${id}`, street: w.tags.name, way: w.id, at, side: 'right', ...more });
+    const spots = [spot('A', vicolo, 0, { bay: [-laneOffset, -60 - width / 2 - tables.osm.pavement, 0] }), spot('B', vicolo, 40), spot('C', vicolo, 80), spot('D', vicolo, 120)];
+    if (island) spots.push(spot('E', isola, 30));
+    const withT = withSpots(spots, ['A'], null, t);
+    return { t: withT, map: build(island ? [vicolo, isola] : [vicolo], withT) };
+  }
+  const roundSim = ({ t, map }, profile = atTier(types.round)) => createSim(t, map, seeded(1), profile);
+  // Puts the truck at a standstill in spot `id`'s zone.
+  const standAt = (sim, id) => Object.assign(sim.state.truck, mapOf(sim).spots.find((s) => s.id === id).lane, { speed: 0 });
+  const unload = (sim, id) => {
+    standAt(sim, id);
+    drive(sim, loadTime + 0.1, IDLE);
+  };
+
+  test('a round leads from its pickup through each drop-off in order; each drop pays its leg and lightens the load, the last gives the Stars', () => {
+    const sim = roundSim(street({ ...tables, orders: rounds() }));
+    const offer = acceptFrom(sim, 'A');
+    expect(offer).toMatchObject({ type: 'round', dropoff: 'B' });
+    expect(offer.drops.map((d) => d.spot)).toEqual(['B', 'C', 'D']); // nearest by road first
+    expect(offer.drops[1].distance).toBeCloseTo(40, 0);
+    for (const d of offer.drops) expect(d.pay).toBe(Math.round(basePay + (payPerKm * d.distance) / 1000));
+    expect(offer.pay).toBe(offer.drops.reduce((sum, d) => sum + d.pay, 0));
+    expect(offer.expectedTime).toBe(offer.drops[2].expectedTime);
+    expect(offer.drops[2].expectedTime - offer.drops[1].expectedTime).toBeCloseTo(offer.drops[2].distance / tables.orders.referenceSpeed + loadTime, 6);
+
+    const load = offer.cargo.weight * 1000;
+    unload(sim, 'A');
+    expect(sim.state.truck.mass).toBe(emptyMass + load);
+    const { money, stars } = sim.state.profile;
+    let paid = 0;
+    for (const [k, id] of ['B', 'C', 'D'].entries()) {
+      expect(sim.state.order.dropoff).toBe(id);
+      unload(sim, id);
+      const payment = sim.state.lastPayment;
+      expect(payment.lines[0]).toEqual({ label: 'base', amount: offer.drops[k].pay });
+      paid += payment.amount;
+      if (k === 2) break;
+      expect(sim.state.order.drop).toBe(k + 1);
+      expect(sim.state.truck.mass).toBeCloseTo(emptyMass + (load * (2 - k)) / 3, 6);
+      expect(payment.stars).toEqual([]);
+      expect(sim.state.profile.stars).toBe(stars);
+      const next = mapOf(sim).spots.find((s) => s.id === ['C', 'D'][k]).lane;
+      expect(Math.hypot(sim.state.route.at(-1).x - next.x, sim.state.route.at(-1).z - next.z)).toBeLessThan(5); // the arrow leads on
+    }
+    expect(sim.state.order).toBe(null);
+    expect(sim.state.truck.mass).toBe(emptyMass);
+    expect(sim.state.profile.money).toBe(money + paid);
+    expect(starsOf(sim)).toEqual({ delivered: [], onTime: [], clean: [] });
+    expect(sim.state.profile.stars).toBe(stars + 3);
+  });
+
+  test("the on-time Star counts against the round's whole expected time, and a fault on any leg costs the clean Star", () => {
+    // Any speed is speeding, and a police car seen from anywhere fines it.
+    const t = { ...tables, orders: rounds(), police: { ...tables.police, count: 0, radius: 500 }, speeding: { tolerance: -classes.residential.limit - 1, cooldown: 0 } };
+    const sim = roundSim(street(t));
+    const offer = acceptFrom(sim, 'A');
+    standAt(sim, 'D'); // out of the pickup's zone, idling past the first drop's expected time
+    drive(sim, offer.drops[0].expectedTime + 0.5, IDLE);
+    unload(sim, 'A');
+    unload(sim, 'B');
+    expect(sim.state.lastPayment.lines.find((l) => l.label === 'time').amount).toBe(0); // the first drop is late
+
+    const run = mapOf(sim).graph.paths.find((p) => p.kind === 'run');
+    sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s: 0, police: true });
+    sim.step(DT, IDLE);
+    sim.state.traffic.length = 0;
+    unload(sim, 'C');
+    unload(sim, 'D');
+    expect(sim.state.order).toBe(null);
+    expect(starsOf(sim)).toEqual({ delivered: [], onTime: [], clean: ['speeding'] });
+  });
+
+  test('rounds come from their tier on, at their share, with 2–3 distinct drop-offs that are not docks and cargo that is not fragile', () => {
+    expect(typesOffered(roundSim(street(), atTier(types.round - 1))).has('round')).toBe(false);
+    const sim = roundSim(street());
+    const count = { all: 0, round: 0, 2: 0, 3: 0 };
+    for (let i = 0; i < 400; i++) {
+      for (const o of sim.requestOffers()) {
+        count.all++;
+        if (o.type !== 'round') continue;
+        count.round++;
+        count[o.drops.length]++;
+        const spots = o.drops.map((d) => d.spot);
+        expect(new Set([o.pickup, ...spots]).size).toBe(spots.length + 1);
+        expect(spots).not.toContain('A'); // the dock
+        expect(o.cargo.fragile).toBeFalsy();
+      }
+    }
+    expect(count.round / count.all).toBeCloseTo(shares.round, 1);
+    expect(count[2] + count[3]).toBe(count.round);
+    expect(count[2] && count[3]).toBeTruthy();
+  });
+
+  test('a round only visits places joined by road', () => {
+    const sim = roundSim(street({ ...tables, orders: rounds([2]) }, true));
+    let made = 0;
+    for (let i = 0; i < 100; i++) {
+      for (const o of sim.requestOffers()) {
+        made++;
+        expect([o.pickup, ...o.drops.map((d) => d.spot)]).not.toContain('E');
+      }
+    }
+    expect(made).toBeGreaterThan(0);
   });
 });

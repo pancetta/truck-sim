@@ -170,10 +170,11 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
     const [best] = offers;
     sim.acceptOrder(best.id);
     while (s.order && !done()) {
-      const target = s.order.phase === 'pickup' ? best.pickup : best.dropoff;
-      const phase = s.order.phase;
+      const target = s.order.phase === 'pickup' ? best.pickup : s.order.dropoff;
+      const { phase } = s.order;
+      const payment = s.lastPayment; // a round's drop pays and keeps the phase
       if (!driveTo(target)) continue;
-      wait(() => !s.order || s.order.phase !== phase, tables.orders.loadTime + 1);
+      wait(() => !s.order || s.order.phase !== phase || s.lastPayment !== payment, tables.orders.loadTime + 1);
     }
   }
 

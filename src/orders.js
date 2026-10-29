@@ -29,10 +29,12 @@ export function createOrders(root, sim, map, tables, strings) {
     const s = map.spots.find((s) => s.id === id);
     return `${s.name}, ${s.street}`;
   };
+  // A round's drop-offs are listed in the order they are driven.
   const offerHtml = (o) =>
-    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${place(o.pickup)} → ${place(o.dropoff)}</small><br>` +
+    `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${[o.pickup, ...o.drops.map((d) => d.spot)].map(place).join(' → ')}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
     `<small class="tag">${strings.offerTypes[o.type]} · ${strings.offerTags[o.type]}</small><strong>${eur(o.pay)}</strong>`;
+  const stop = (order) => (order.drops.length > 1 && order.phase === 'dropoff' ? ` ${order.drop + 1}/${order.drops.length}` : '');
   let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.profile.money;
   money.textContent = eur(lastMoney);
@@ -113,7 +115,7 @@ export function createOrders(root, sim, map, tables, strings) {
       const why = (reason) => strings.starReasons[reason] ?? strings[reason];
       starsLine.textContent = payment.stars.map((s) => (s.reasons.length ? '☆' : '★')).join(' ');
       missedLines.textContent = missed.map((s) => `☆ ${strings.stars[s.star]}: ${s.reasons.map(why).join(', ')}`).join('\n');
-      show(starsBanner);
+      if (payment.stars.length) show(starsBanner); // a round's drops before the last pay without Stars
     }
 
     if (fine !== lastFine) {
@@ -141,7 +143,8 @@ export function createOrders(root, sim, map, tables, strings) {
     }
 
     // Where to go: an arrow along the route to its next corner (or the active zone), turned by the truck's
-    // heading, and the straight-line distance to the zone.
+    // heading, and the straight-line distance to the zone; on a round, which drop-off of how many. The bonus time
+    // runs to the next drop's expected time, which its time bonus uses.
     set(goal, 'hidden', !order);
     if (order) {
       const pickup = order.phase === 'pickup';
@@ -157,8 +160,8 @@ export function createOrders(root, sim, map, tables, strings) {
       set(
         goalText,
         'textContent',
-        `${pickup ? strings.toPickup : strings.toDropoff} ${place(target)} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
-        `${strings.bonusTime} ${clock(Math.max(0, order.expectedTime - order.elapsed))}`,
+        `${pickup ? strings.toPickup : strings.toDropoff}${stop(order)} ${place(target)} · ${Math.round(Math.hypot(dx, dz) / 10) * 10} m · ` +
+        `${strings.bonusTime} ${clock(Math.max(0, order.drops[order.drop].expectedTime - order.elapsed))}`,
       );
       set(hint, 'textContent', pickup ? strings.stopToLoad : dock ? strings.stopToDock : strings.stopToUnload);
       // The damage meter, while fragile cargo is loaded.
@@ -172,12 +175,12 @@ export function createOrders(root, sim, map, tables, strings) {
     if (panel.hidden) return;
     // Fresh offers whenever the open panel has neither an order nor offers, e.g. right after a delivery.
     if (!order && offers.length === 0) offers = sim.requestOffers();
-    const now = order ? `${order.id} ${order.phase}` : offers.map((o) => o.id).join();
+    const now = order ? `${order.id} ${order.phase} ${order.drop}` : offers.map((o) => o.id).join();
     if (now === shown) return;
     shown = now;
     panel.innerHTML = order
       ? `<h2>${strings.activeOrder}</h2><p>${offerHtml(order)}</p>` +
-        `<p>${order.phase === 'pickup' ? strings.toPickup : strings.toDropoff}</p>`
+        `<p>${order.phase === 'pickup' ? strings.toPickup : `${strings.toDropoff}${stop(order)}`}</p>`
       : `<h2>${strings.orders}</h2><ul>${offers
           .map((o) => `<li><p>${offerHtml(o)}</p><button type="button" data-offer="${o.id}">${strings.accept}</button></li>`)
           .join('')}</ul>`;

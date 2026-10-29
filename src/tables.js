@@ -119,11 +119,12 @@ export const orders = {
   nightBonus: 0.15, // share of the pay for a delivery completed at night (clock.night)
   rainBonus: 0.2, // share of the pay for a delivery completed in rain (weather): rarer than night, and harder
   // Offer types by the lowest rank tier that offers them (names and tag lines in strings.offerTypes and offerTags). From
-  // its tier on, an offer is express or oversized at its `shares` (drawn first, each with cargo that isn't fragile to a
-  // drop-off that isn't a dock); otherwise the type comes from the drop-off and the cargo: dock or fragileDock to a dock,
-  // else fragile if marked so, heavy above maxCargo, or normal.
-  types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3 },
-  shares: { express: 0.2, oversized: 0.15 },
+  // its tier on, an offer is express, oversized or a round at its `shares` (drawn first, each with cargo that isn't
+  // fragile to drop-offs that aren't docks); otherwise the type comes from the drop-off and the cargo: dock or
+  // fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
+  types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3, round: 3 },
+  shares: { express: 0.2, oversized: 0.15, round: 0.15 },
+  roundDrops: [2, 3], // a round's number of drop-offs, one drawn per round offer
   // Factors on the expected time and the pay (base and distance). At 0.8 a 1.2 km express needs about 7.9 m/s on average,
   // a dash at the 30 km/h (8.3 m/s) limit of most streets; 0.7 would need 9.1 m/s, over it.
   express: { time: 0.8, pay: 1.5 },
