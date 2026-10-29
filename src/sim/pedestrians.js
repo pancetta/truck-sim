@@ -10,10 +10,11 @@
 // On the pavement (#100) one the truck or its trailer comes at jumps aside, away from it, or round its front or back to
 // its other side where a wall or anything solid stands on the way; with neither way free it stands still (`stuck`) and
 // walks on once the truck has gone. They are solid to the truck (sim.js); nothing else collides with them.
-// shortcut: only the place jumped to is checked against the colliders, and other pedestrians are no obstacle; check the
-// way there, or the crowd, if people are seen jumping through posts or each other.
+// shortcut: only the place jumped to is checked against the colliders (street events' barriers aren't), and other
+// pedestrians are no obstacle; check the way there, or the crowd, if people are seen jumping through posts or each other.
 // A pedestrian is { id, x, z, heading, walk, s (m along it), zebra (index, -1 for none), waiting, onRoad (off the
-// kerb, crossing), asideX, asideZ (m from its place on its walk, jumped aside), stuck, jumping } and its crossing's state. Walks are closed polylines { points, at, length } walked forwards: a
+// kerb, crossing), asideX, asideZ (m from its place on its walk, jumped aside), stuck, jumping } and its crossing's
+// state. Walks are closed polylines { points, at, length } walked forwards: a
 // ring line's two (along it and against it, each keeping right), an open line's one (along its right side, round its
 // end, back along the other side and round its start).
 // The step allocates nothing but a new pedestrian.

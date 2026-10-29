@@ -559,8 +559,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // Driving onto the pavement at a pedestrian (#100): the `moving` truck's or trailer's footprint within
   // tables.pedestrians.danger m of where one on the pavement walks (jumped aside or not), its point nearest them over the
-  // kerb (see overKerb) or right over that place, costs the order's clean Star, and a fine if the police see it, once per pass: the pass lasts,
-  // moving or standing, while any is that near.
+  // kerb (see overKerb) or right over that place, costs the order's clean Star, and a fine if the police see it, once per
+  // pass: the pass lasts, moving or standing, while any is that near.
   let endangering = false;
   const walked = { x: 0, z: 0 }; // the pedestrian's place on its walk
   function checkPavement(moving) {
