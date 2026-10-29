@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { freshProfile } from './sim.js';
 import * as base from '../tables.js';
-import { poseAt } from './lanes.js';
-import { way, build, withSpots, createSim, mapOf, drive, timeUntil, vehiclesOverlap, offRoad, seeded, DT, GAS, BRAKE, IDLE } from './fixtures.js';
+import { way, build, withSpots, createSim, mapOf, addCar, drive, timeUntil, vehiclesOverlap, offRoad, seeded, DT, GAS, BRAKE, IDLE } from './fixtures.js';
 
 // No pedestrian crosses at the zebra crossings the fixtures' junctions get, so these rules play out alone (zebras.test.js).
 const tables = { ...base, zebras: { ...base.zebras, use: 0 } };
@@ -18,38 +17,6 @@ const noPolice = { ...tables, police: { ...tables.police, count: 0 } };
 // No cars of their own either.
 const quiet = { ...noPolice, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
 
-// Adds a standing AI car (a police car if `police`) that starts on the lane run nearest `points[0]` that heads towards
-// `points[1]` there, and at each node it reaches that is one of `points` turns towards the point after it (points
-// [x, z] in m), of `kind` ('car' unless given). Then places it with a step that takes no time.
-function addCar(sim, id, points, police = false, kind = 'car') {
-  const { paths, nodes } = mapOf(sim).graph;
-  const [[x, z], [tx, tz]] = points;
-  const [dx, dz] = [tx - x, tz - z].map((d) => d / Math.hypot(tx - x, tz - z));
-  const pose = { x: 0, z: 0, heading: 0 };
-  let start = { d: Infinity, run: null, s: 0 };
-  for (const p of paths.filter((p) => p.kind === 'run')) {
-    for (let s = 0; s <= p.length; s += 0.25) {
-      poseAt(p, s, pose);
-      const d = Math.hypot(pose.x - x, pose.z - z);
-      if (d < start.d && Math.sin(pose.heading) * dx + Math.cos(pose.heading) * dz > 0.99) start = { d, run: p, s };
-    }
-  }
-  const route = [start.run];
-  for (;;) {
-    const node = nodes[route.at(-1).to];
-    const k = points.findIndex(([px, pz]) => Math.hypot(px - node.x, pz - node.z) < 1);
-    const next = k >= 0 && points[k + 1];
-    const toward = next && { x: next[0] - node.x, z: next[1] - node.z };
-    const turn = next && route.at(-1).next.find(({ out }) => out.startDir.x * toward.x + out.startDir.z * toward.z > 0.9 * Math.hypot(toward.x, toward.z));
-    if (!turn) break;
-    route.push(turn, turn.out);
-  }
-  const car = { id, kind, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: start.s, police };
-  sim.state.traffic.push(car);
-  sim.step(0, IDLE);
-  return car;
-}
-
 // The map's one four-arm junction node.
 const crossingOf = (sim) => mapOf(sim).graph.nodes.find((n) => n.arms.length === 4);
 
@@ -64,7 +31,7 @@ const CROSS = () => [way('residential', [[-90, 0], [0, 0], [90, 0]]), way('resid
 const LIGHT = () => [way('tertiary', [[0, -90], [0, 0], [0, 90]], { name: 'Via B' }), way('tertiary', [[-90, 0], [0, 0], [90, 0]], { name: 'Via A' })];
 
 describe('Sim: traffic', () => {
-  const { followGap, stopGap } = tables.traffic;
+  const { followGap, stopGap, truckGap } = tables.traffic;
   const { tiers } = tables.rank;
 
   const trafficSim = (map, seed = 1, profile) => createSim(tables, map, seeded(seed), profile);
@@ -82,7 +49,7 @@ describe('Sim: traffic', () => {
   });
 
   // The van is chosen after the Sim is built, so traffic's view of the truck's size follows a switch (#88).
-  test.each(['truck', 'van'])('AI cars stop behind the standing %s at the following distance and never drive into it', (id) => {
+  test.each(['truck', 'van'])('AI cars stop behind the standing %s at the truck gap (#110) and never drive into it', (id) => {
     // A ring road round a 180 × 80 m block; the truck stands in the middle of its north side, in the eastbound lane.
     const ring = build([way('residential', [[-90, -40], [90, -40], [90, 40], [-90, 40]]), way('residential', [[-90, 40], [-90, -40]])]);
     const sim = trafficSim(ring, 3, { ...freshProfile(), vehicles: { truck: {}, van: {} } });
@@ -104,7 +71,7 @@ describe('Sim: traffic', () => {
     expect(hits).toBe(0);
     expect(behind.length).toBeGreaterThan(0);
     expect(behind[0].speed).toBe(0);
-    expect(truck.x - size.length / 2 - (behind[0].x + CAR.length / 2)).toBeCloseTo(followGap, 1);
+    expect(truck.x - size.length / 2 - (behind[0].x + CAR.length / 2)).toBeCloseTo(truckGap, 1);
     // The next car keeps its distance to the first.
     if (behind[1]) expect(behind[0].x - behind[1].x - CAR.length).toBeGreaterThanOrEqual(followGap - 0.05);
   });
@@ -1069,7 +1036,7 @@ describe('Sim: traffic on the road graph', () => {
 });
 
 describe('Sim: two-wheelers (#77)', () => {
-  const { twoWheelers, followGap } = tables.traffic;
+  const { twoWheelers, followGap, truckGap } = tables.traffic;
 
   test('scooters and cyclists come at their share, each at its own size, scooters at the limit and cyclists at their top speed', () => {
     // No street events: their garbage trucks come on top of the shares.
@@ -1160,7 +1127,7 @@ describe('Sim: two-wheelers (#77)', () => {
     const { sim: carSim, other: car } = beside('car');
     timeUntil(carSim, IDLE, () => car.x > -30 && car.speed === 0, 60);
     expect(car.speed).toBe(0);
-    expect(carSim.state.truck.x - tables.fleet.truck.length / 2 - (car.x + CAR.length / 2)).toBeCloseTo(followGap, 1);
+    expect(carSim.state.truck.x - tables.fleet.truck.length / 2 - (car.x + CAR.length / 2)).toBeCloseTo(truckGap, 1);
   });
 
   // #102: on a tertiary street the truck driving along the centre line leaves room in the lane for a two-wheeler's

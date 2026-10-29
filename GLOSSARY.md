@@ -235,8 +235,15 @@ _Avoid_: skin, cosmetic
 ### Traffic and rules
 
 **AI car**:
-A vehicle of the city's traffic, driven by the **Sim**: a car, a **Two-wheeler** or a **Garbage truck**.
+A vehicle of the city's traffic, driven by the **Sim**: a car, a **Two-wheeler** or a **Garbage truck**. It never traps
+the truck: it stops a generous gap behind it, backs off slowly when the truck reverses towards it, and the **Safety net**
+clears any that box it in anyway.
 _Avoid_: NPC, bot, traffic car
+
+**Safety net**:
+What frees the truck when **AI cars** keep it from moving for a few seconds while the player drives it: they back off,
+drive on, and leave the city once out of the truck's view, never in it.
+_Avoid_: unstuck, despawn (as the player's word)
 
 **Two-wheeler** ("Zweirad"):
 An **AI car** of a smaller kind with its own size, speed and acceleration: a scooter ("Roller"), which rides at the road's limit, or a cyclist ("Radfahrer"), who rides slower, each rider in a bright helmet. They keep the same rules as cars. The cars behind a cyclist follow it; no **AI car** overtakes, not the truck either while it drives, but a two-wheeler rides past it standing where its lane leaves room.

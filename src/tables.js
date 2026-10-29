@@ -578,7 +578,20 @@ export const traffic = {
   accel: 2, // m/s²
   brake: 4, // m/s², planned braking for stop lines, corners and the car or truck ahead
   maxBrake: 8, // m/s²; a light that would need harder braking (it turned amber too late) is driven through
-  followGap: 2.5, // m between bumpers when stopped behind a car or the truck
+  followGap: 2.5, // m between bumpers when stopped behind a car
+  // m between bumpers when stopped behind the truck or its trailer while it is slower than `truckSlow` m/s (#110): room
+  // for it to back up a little and turn. Faster, the cars keep `followGap` from it, as from a car; one following it close
+  // as it slows past `truckSlow` stops nearer, and backs off should it reverse
+  truckGap: 6,
+  truckSlow: 3,
+  // A car stopped within `truckGap` of the truck backs off along its lane while the truck reverses towards it, and one
+  // stopped within `followGap` of a car backing off does too, while the lane behind it is free for `gap` m: at `ease`
+  // m/s for each m it is short of its gap, `speed` m/s at most
+  backOff: { speed: 1.5, ease: 2, gap: 1 },
+  // The safety net (#110): the truck kept from moving `time` s by AI cars (the player driving it, slower than `speed` m/s,
+  // with cars within `reach` m) clears them: they back off, drive on and leave once out of the truck's view, which
+  // takes in the chase camera's, `cone` rad either side of its heading
+  trap: { time: 3, speed: 0.5, reach: 2, cone: 1.1 },
   stopGap: 1.5, // m from the front bumper to the stop line
   sideGap: 0.3, // m each side of a car's path that must stay clear of the car or truck ahead
   lookAhead: 35, // m; stopping from cruise at `brake` takes 24 m, plus the gaps; also the room a new car needs

@@ -174,6 +174,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
   let held = Infinity; // s the hill hold still keeps the truck from rolling (see step()); placed, until it first moves
+  let boxedIn = 0; // s the AI cars have kept the truck from moving (see untrap)
   const felt = { gas: 0, steer: 0, brake: 0 }; // the input as the driver applies it (see feel())
   let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
@@ -353,6 +354,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const moved = Math.hypot(truck.x - x, truck.z - z);
     p.distance += moved;
     burn(moved, pedal, pedal > 0 ? ground.heightAt(truck.x, truck.z) - ground.heightAt(x, z) : 0); // coasting up costs none
+    if (traffic) untrap(dt, drive !== 0);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
     events?.step(dt, truck, clearOf);
     truckAtZebras(grip);
@@ -508,6 +510,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function updateTraffic(dt, pace) {
     const count = tables.rank.tiers[state.rank.tier].traffic;
     traffic?.step(dt, truck, state.lights, isNight(state.timeOfDay, tables.clock) ? Math.round(count * tables.traffic.night) : count, contacts, pace, state.zebras);
+  }
+
+  // The safety net (#110): while the player drives the truck (`trying`) and it barely moves with AI cars around it, for
+  // tables.traffic.trap.time s, those cars clear the way (traffic.js clear).
+  function untrap(dt, trying) {
+    const { time, speed, reach } = tables.traffic.trap;
+    const near = trying && Math.abs(truck.speed) < speed ? touching(truck, state.trailer, reach) : [];
+    boxedIn = near.length ? boxedIn + dt : 0;
+    if (boxedIn < time) return;
+    near.forEach(traffic.clear);
+    boxedIn = 0;
   }
 
   // A new contact with an AI car (`met`: the cars the truck touches after its move) costs a fine when the

@@ -1,7 +1,8 @@
 // AI cars (spec #12, "Traffic"; on the road graph since #61), part of the headless Sim. They drive the graph's lane paths
 // (lanes.js), turn at random at junctions, keep their distance to the car or truck ahead and stop at lights that aren't
-// green. They appear and vanish out of the truck's view, keeping the count the Sim asks for; one leaving the map drives
-// on through its edge exit's gate along the exit road until out of view or the haze (#95). On top of those,
+// green, and never trap the truck (#110: a gap behind it, backing off, the safety net; see backOff and clearWay). They
+// appear and vanish out of the truck's view, keeping the count the Sim asks for; one leaving the map drives on through
+// its edge exit's gate along the exit road until out of view or the haze (#95). On top of those,
 // tables.police.count police cars (`police: true`) drive the same rules anywhere in the city: they appear out of
 // view anywhere and leave only at a dead end, whereupon a new one appears.
 // A car's `route` is its way ahead as lane paths, `lane` the one it is on (route[0]), `s` the m driven along it and
@@ -447,7 +448,7 @@ export function createTraffic(tables, map, random) {
     extend(route);
     const id = nextId++;
     kind ??= kindOf(id);
-    const car = { id, kind, size: kinds[kind], x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null, halt: 0 };
+    const car = { id, kind, size: kinds[kind], x: 0, z: 0, heading: 0, speed: 0, lane: path, route, s, prev: null, police, prim: null, via: null, at: null, seen: -1, since: 0, first: 0, passed: new Int32Array(PASSED).fill(-1), turns: 0, stopped: null, halt: 0, clearing: false };
     place(car);
     cars.push(car);
     return car;
@@ -551,6 +552,7 @@ export function createTraffic(tables, map, random) {
   let truckSince = 0;
   let truckStill = 0; // s the truck has stood still
   let truckDriving = false; // whether it drives forwards this step
+  let gapToTruck = t.followGap; // m a car keeps from the truck this step: `truckGap` while it is slow (see behind)
   // The width of the path a car `width` wide keeps clear of the truck: a car's while the truck drives forwards (see behind).
   const truckRoom = (width) => (truckDriving ? Math.max(width, size.width) : width);
   // In steps, as `since` counts.
@@ -918,13 +920,14 @@ export function createTraffic(tables, map, random) {
   // m from the exit to the centre of a car that can be queued there: the far corner of the strip `room` long,
   // plus half the car's diagonal, plus 1 m to spare against rounding
   const queueReach = Math.hypot(room, size.width / 2 + t.sideGap) + Math.hypot(size.length, size.width) / 2 + 1;
-  const queued = (box, speed) => Math.abs(speed) < t.boxSpeed && aheadOf(exitPose, box, size.width) < room;
+  const queued = (box, speed, need = room) => Math.abs(speed) < t.boxSpeed && aheadOf(exitPose, box, size.width) < need;
+  const truckQueue = size.length + t.truckGap; // m a car needs past the box behind the truck
   function exitBlocked(car, i, truck) {
     let j = i;
     while (car.route[j] && boxOf(car.route[j]) === boxOf(car.route[i])) j++;
     if (!car.route[j]) return false;
     poseAt(car.route[j], 0, exitPose);
-    if (queued(truckBox, truck.speed) || (trailer && queued(trailerBox, truck.speed))) return true;
+    if (queued(truckBox, truck.speed, truckQueue) || (trailer && queued(trailerBox, truck.speed, truckQueue))) return true;
     for (let k = nearby(exitPose.x, exitPose.z, queueReach) - 1; k >= 0; k--) {
       const c = cars[found[k]];
       if (c !== car && queued(footprints[found[k]], c.speed)) return true;
@@ -934,9 +937,9 @@ export function createTraffic(tables, map, random) {
 
   // Whether the truck blocks the car's way through the box (crossing or light junction) that route path `i`
   // drives into, the truck standing in it: at some point along the car's paths in that box, sampled at most
-  // 1 m apart, the truck is in the room the car keeps (see behind): `sideGap` each side and `followGap` in
+  // 1 m apart, the truck is in the room the car keeps (see behind): `sideGap` each side and `truckGap` in
   // front. A truck moving in a box blocks every way through.
-  const pathSize = { length: size.length + t.followGap, width: size.width + 2 * t.sideGap };
+  const pathSize = { length: size.length + t.truckGap, width: size.width + 2 * t.sideGap };
   function truckBlocks(car, i, truck) {
     if (Math.abs(truck.speed) > stopSpeed) return true;
     for (let j = i; car.route[j] && boxOf(car.route[j]) === boxOf(car.route[i]); j++) {
@@ -944,8 +947,8 @@ export function createTraffic(tables, map, random) {
       const n = Math.ceil(p.length);
       for (let k = 0; k <= n; k++) {
         poseAt(p, n ? (k * p.length) / n : 0, pathPose);
-        pathPose.x += (Math.sin(pathPose.heading) * t.followGap) / 2;
-        pathPose.z += (Math.cos(pathPose.heading) * t.followGap) / 2;
+        pathPose.x += (Math.sin(pathPose.heading) * t.truckGap) / 2;
+        pathPose.z += (Math.cos(pathPose.heading) * t.truckGap) / 2;
         corners(pathPose, pathSize, pathBox);
         if (boxesOverlap(pathBox, truckBox) || (trailer && boxesOverlap(pathBox, trailerBox))) return true;
       }
@@ -974,6 +977,56 @@ export function createTraffic(tables, map, random) {
     behind(ci, car, 0);
     if (car.prim.r && !pastGate(car)) behindCurve(ci, car);
     behindTurnedOff(ci, car);
+    if (car.speed <= 0) backOff(ci, car, truck);
+  }
+
+  // #110: a car stopped within `truckGap` of the truck while it reverses towards the car, or within `followGap` of a
+  // car backing off, backs off along its lane while the lane behind it is free for `backOff.gap` and its rear stays on
+  // the lane: a queue backs off together, as far as its last car can. A cleared car (see clearWay) does so while the truck
+  // or a cleared car ahead is that near, standing or not; it may back into the path before, through a crossing that is
+  // free (see backsOn), and clears the car its rear meets, so the queue behind it makes room. Each backs off at a
+  // speed that eases to 0 as its gap opens again.
+  const backView = { x: 0, z: 0, heading: 0 };
+  let backing = 0; // cars that backed off last step
+  // Whether the car, cleared, may back into the path before, once: one longer than the car (the floor would put it past
+  // a shorter one's end), a run outside any box or a turn through an unsignalled crossing nobody else is in or too close
+  // to stop before (cross traffic let in wouldn't brake for it).
+  const backsOn = (car) =>
+    car.clearing && !!car.prev && car.prev.length > car.size.length && (!boxOf(car.prev) || (groupAt[car.prev.id] !== null && idle(groupAt[car.prev.id], car)));
+  function idle(g, self) {
+    if (g.truck === now) return false;
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i];
+      if (c === self) continue;
+      if (groupAt[c.lane.id] === g || (c.prev && c.s < c.size.length && groupAt[c.prev.id] === g)) return false;
+      if (c.route.length > 1 && groupAt[c.route[1].id] === g && !stoppable(c, c.lane.length - c.s - c.size.length / 2)) return false;
+    }
+    return true;
+  }
+  function backOff(ci, car, truck) {
+    const { length, width } = car.size;
+    if (car.s <= length / 2 && !backsOn(car)) return;
+    const fx = Math.sin(car.heading);
+    const fz = Math.cos(car.heading);
+    const towards = truck.speed < -stopSpeed && Math.sin(truck.heading) * fx + Math.cos(truck.heading) * fz > 0; // reversing at it
+    // m it is short of its gap, to the truck or a car ahead backing off
+    let short = towards || car.clearing ? t.truckGap - (aheadOfTruck(car, truckRoom(width)) - length / 2) : 0;
+    for (let k = backing || car.clearing ? nearby(car.x, car.z, reach) - 1 : -1; k >= 0; k--) {
+      const other = cars[found[k]];
+      if (found[k] === ci || !(other.speed < 0 || (car.clearing && other.clearing)) || !follows(car, other)) continue;
+      short = Math.max(short, t.followGap - (aheadOf(car, footprints[found[k]], width) - length / 2));
+    }
+    if (short <= 0) return;
+    backView.x = car.x;
+    backView.z = car.z;
+    backView.heading = car.heading + Math.PI;
+    if (aheadOfTruck(backView, width) - length / 2 < t.backOff.gap) return;
+    for (let k = nearby(car.x, car.z, reach) - 1; k >= 0; k--) {
+      if (found[k] === ci || aheadOf(backView, footprints[found[k]], width) - length / 2 >= t.backOff.gap) continue;
+      if (car.clearing) clearWay(cars[found[k]]);
+      return;
+    }
+    targets[ci] = -Math.min(t.backOff.speed, t.backOff.ease * short);
   }
 
   // Caps targets[ci] so cars[ci] can stop at `brake` before each stop line ahead it must stop at (see targetSpeed).
@@ -1071,9 +1124,9 @@ export function createTraffic(tables, map, random) {
     behind(ci, turnEnd, end - car.s);
   }
 
-  // Caps targets[ci] to keep `followGap` behind the car or truck ahead of `view`; `extra` is the lane from
-  // cars[ci] to that view. A two-wheeler rides past the standing truck in its own room, but keeps a car's from the truck
-  // driving forwards (#102: on a wide street they overtook it on the right along the centre line and cut in ahead).
+  // Caps targets[ci] to keep `followGap` behind the car ahead of `view`, or `truckGap` behind a slow truck (#110);
+  // `extra` is the lane from cars[ci] to that view. A two-wheeler rides past the standing truck in its own room, but
+  // keeps a car's from the truck driving forwards (#102: on a wide street they overtook it on the right along the centre line and cut in ahead).
   const reach = t.lookAhead + size.length;
   function behind(ci, view, extra) {
     const { length, width } = cars[ci].size;
@@ -1082,7 +1135,7 @@ export function createTraffic(tables, map, random) {
       if (found[k] === ci || (other.x - view.x) ** 2 + (other.z - view.z) ** 2 > reach ** 2 || !follows(view, other)) continue;
       targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, footprints[found[k]], width) - length / 2 - t.followGap));
     }
-    targets[ci] = Math.min(targets[ci], limit(extra + aheadOfTruck(view, truckRoom(width)) - length / 2 - t.followGap));
+    targets[ci] = Math.min(targets[ci], limit(extra + aheadOfTruck(view, truckRoom(width)) - length / 2 - gapToTruck));
   }
 
   // Caps targets[ci] to keep `followGap` behind a car that turned off the car's route less than a car's length ago,
@@ -1117,7 +1170,7 @@ export function createTraffic(tables, map, random) {
     for (let i = cars.length - 1; i >= 0; i--) {
       const c = cars[i];
       const past = pastGate(c);
-      if (c.gone || ((!c.police || past) && hidden(c, truck, t.despawnDistance)) || (past && (c.x - truck.x) ** 2 + (c.z - truck.z) ** 2 > haze ** 2)) cars.splice(i, 1);
+      if (c.gone || ((!c.police || past) && hidden(c, truck, t.despawnDistance)) || (past && (c.x - truck.x) ** 2 + (c.z - truck.z) ** 2 > haze ** 2) || (c.clearing && !inView(c, truck))) cars.splice(i, 1);
       else if (past || c.kind === 'garbage') leaving++;
       else if (c.police) police++;
     }
@@ -1127,6 +1180,7 @@ export function createTraffic(tables, map, random) {
     now++;
     truckStill = Math.abs(truck.speed) > stopSpeed ? 0 : truckStill + dt;
     truckDriving = truck.speed > stopSpeed;
+    gapToTruck = Math.abs(truck.speed) < t.truckSlow ? t.truckGap : t.followGap;
     for (let i = 0; i < cars.length; i++) {
       if (!cars[i].prim) {
         // added from outside (the tests do), a car unless they say
@@ -1144,11 +1198,25 @@ export function createTraffic(tables, map, random) {
     atJunctions(truck);
     if (targets.length < cars.length) targets = new Float64Array(cars.length * 2);
     for (let i = 0; i < cars.length; i++) targetSpeed(i, truck, lights);
+    backing = 0;
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       if (car.halt > 0) car.halt -= dt;
-      car.speed = held.has(car.id) || car.halt > 0 ? 0 : Math.min(targets[i], car.speed + car.size.accel * dt);
+      const accel = car.size.accel * dt;
+      if (held.has(car.id) || car.halt > 0) car.speed = 0;
+      else car.speed = targets[i] < 0 ? Math.max(targets[i], Math.min(car.speed, 0) - accel) : Math.min(targets[i], Math.max(car.speed, 0) + accel); // stops backing at once
+      if (car.speed < 0) backing++;
       car.s += car.speed * dt;
+      if (car.speed < 0 && car.s < 0 && backsOn(car)) {
+        car.route.unshift(car.prev);
+        car.lane = car.prev;
+        car.s += car.lane.length;
+        car.prev = null;
+      }
+      if (car.speed < 0 && car.s < car.size.length / 2 && !backsOn(car)) {
+        car.s = car.size.length / 2; // its rear at the lane's start
+        car.speed = 0;
+      }
       while (car.s >= (car.route.length === 1 ? leaveAt[car.lane.id] : car.lane.length)) {
         if (car.route.length === 1) {
           car.gone = true; // dead end or the end of an exit road
@@ -1175,6 +1243,26 @@ export function createTraffic(tables, map, random) {
     const out = [];
     for (const c of cars) if ((c.x - cx) ** 2 + (c.z - cz) ** 2 <= r ** 2 && boxesOverlap(box, corners(c, c.size ?? kinds[c.kind ?? 'car'], probe))) out.push(c);
     return out;
+  }
+
+  // The safety net (#110): car `c` makes way for the truck. It backs off from it (see backOff), drives on, a garbage truck
+  // too, and leaves once out of the truck's view (see inView).
+  function clearWay(c) {
+    c.clearing = true;
+    c.halt = 0;
+  }
+  // Whether the truck looks at `at`: it isn't hidden (on the lines along and across it, see hidden), or it is within the
+  // chase camera's view, `trap.cone` rad either side of the truck's heading from the camera, which stands
+  // camera.chaseDistance behind the truck (farther with the trailer). The cab camera sees less.
+  const chase = tables.camera.chaseDistance;
+  const coneTan = Math.tan(t.trap.cone);
+  function inView(at, truck) {
+    if (!hidden(at, truck, 0)) return true;
+    const fx = Math.sin(truck.heading);
+    const fz = Math.cos(truck.heading);
+    const along = (at.x - truck.x) * fx + (at.z - truck.z) * fz + chase + (trailer ? tables.camera.trailerChase[0] : 0);
+    const across = (at.x - truck.x) * fz - (at.z - truck.z) * fx;
+    return along > 0 && Math.abs(across) < along * coneTan;
   }
 
   // Sets the truck's footprint ({ length, width }, m) to a Vehicle's, and its trailer's body ({ x, z, heading }, which
@@ -1226,7 +1314,7 @@ export function createTraffic(tables, map, random) {
     return car;
   }
 
-  return { cars, step, touching: touchingCars, setTruck, closable, close, uses, addGarbage };
+  return { cars, step, touching: touchingCars, setTruck, closable, close, uses, addGarbage, clear: clearWay };
 }
 
 // Whether `at` is out of the truck's view: `distance` m away or more and off the lines along and across the truck by

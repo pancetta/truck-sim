@@ -5,6 +5,7 @@ import { expect } from 'vitest';
 import * as tables from '../tables.js';
 import { buildOsmMap } from './osm.js';
 import { createSim as newSim } from './sim.js';
+import { poseAt } from './lanes.js';
 
 export { seeded } from './sim.js';
 
@@ -58,6 +59,38 @@ export function createSim(t, map, ...rest) {
   return sim;
 }
 export const mapOf = (sim) => maps.get(sim);
+
+// Adds a standing AI car (a police car if `police`) that starts on the lane run nearest `points[0]` that heads towards
+// `points[1]` there, and at each node it reaches that is one of `points` turns towards the point after it (points
+// [x, z] in m), of `kind` ('car' unless given). Then places it with a step that takes no time.
+export function addCar(sim, id, points, police = false, kind = 'car') {
+  const { paths, nodes } = mapOf(sim).graph;
+  const [[x, z], [tx, tz]] = points;
+  const [dx, dz] = [tx - x, tz - z].map((d) => d / Math.hypot(tx - x, tz - z));
+  const pose = { x: 0, z: 0, heading: 0 };
+  let start = { d: Infinity, run: null, s: 0 };
+  for (const p of paths.filter((p) => p.kind === 'run')) {
+    for (let s = 0; s <= p.length; s += 0.25) {
+      poseAt(p, s, pose);
+      const d = Math.hypot(pose.x - x, pose.z - z);
+      if (d < start.d && Math.sin(pose.heading) * dx + Math.cos(pose.heading) * dz > 0.99) start = { d, run: p, s };
+    }
+  }
+  const route = [start.run];
+  for (;;) {
+    const node = nodes[route.at(-1).to];
+    const k = points.findIndex(([px, pz]) => Math.hypot(px - node.x, pz - node.z) < 1);
+    const next = k >= 0 && points[k + 1];
+    const toward = next && { x: next[0] - node.x, z: next[1] - node.z };
+    const turn = next && route.at(-1).next.find(({ out }) => out.startDir.x * toward.x + out.startDir.z * toward.z > 0.9 * Math.hypot(toward.x, toward.z));
+    if (!turn) break;
+    route.push(turn, turn.out);
+  }
+  const car = { id, kind, x: 0, z: 0, heading: 0, speed: 0, lane: route[0], route, s: start.s, police };
+  sim.state.traffic.push(car);
+  sim.step(0, IDLE);
+  return car;
+}
 
 export const DT = 1 / 60;
 export const GAS = { steer: 0, gas: 1, brake: 0 };
