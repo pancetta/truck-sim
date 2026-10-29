@@ -1,0 +1,22 @@
+src/sim/fuel.test.js
+  s_0d331847d58039::t_470d15be70917e 38-45
+src/werkstatt.js
+  s_0d331847d58039::t_470d15be70917e 2-4
+  s_0d331847d58039::t_7042de83d44255 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aea1bcd9d4498c85c8f90e49f5c287c150264033",
+  "prompts": {},
+  "sessions": {
+    "s_0d331847d58039": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fbedf324-7dfd-4af4-9baf-169af5764d94",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
