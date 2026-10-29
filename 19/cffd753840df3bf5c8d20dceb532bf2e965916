@@ -1,0 +1,24 @@
+src/sim/sim.js
+  s_d19bb0c1cc76d9::t_ccda3a6966ffbb 562,572-574
+src/sim/dodging.test.js
+  s_d19bb0c1cc76d9::t_d55f7d28d1af14 118-119
+  s_d19bb0c1cc76d9::t_ccda3a6966ffbb 117,120-122
+src/tables.js
+  s_d19bb0c1cc76d9::t_ccda3a6966ffbb 641-643,646
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19cffd753840df3bf5c8d20dceb532bf2e965916",
+  "prompts": {},
+  "sessions": {
+    "s_d19bb0c1cc76d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ee8c027-4787-4170-8348-4456694de0ad",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
