@@ -956,6 +956,20 @@ export function createTraffic(tables, map, random) {
     const car = cars[ci];
     curves(ci);
     limits(ci);
+    stopLines(ci, truck, lights);
+    if (zebras.length) atZebras(ci);
+    // Looking ahead along the heading; on a curve also from its end, so a queue just round the corner is seen
+    // before the car is half way round.
+    behind(ci, car, 0);
+    if (car.prim.r && !pastGate(car)) behindCurve(ci, car);
+    behindTurnedOff(ci, car);
+  }
+
+  // Caps targets[ci] so cars[ci] can stop at `brake` before each stop line ahead it must stop at (see targetSpeed).
+  // Apart from targetSpeed for the same reason as curves() (the bench allocated 9 KB a step more when V8 compiled it in
+  // the background, which inlined fewer of the helpers once targetSpeed held this loop too).
+  function stopLines(ci, truck, lights) {
+    const car = cars[ci];
     let speed = targets[ci];
     let dist = car.lane.length - car.s; // centre to the start of the next path
     for (let i = 1; i < car.route.length; i++) {
@@ -980,12 +994,6 @@ export function createTraffic(tables, map, random) {
       dist += p.length;
     }
     targets[ci] = speed;
-    if (zebras.length) atZebras(ci);
-    // Looking ahead along the heading; on a curve also from its end, so a queue just round the corner is seen
-    // before the car is half way round.
-    behind(ci, car, 0);
-    if (car.prim.r && !pastGate(car)) behindCurve(ci, car);
-    behindTurnedOff(ci, car);
   }
 
   // Sets targets[ci] to the fastest cars[ci] may go round the curves on its route: on the one it is on, and able
@@ -1230,7 +1238,7 @@ function separates(poly, sides, a, b) {
     const j = (i + 1) % poly.length;
     const nx = poly[j].z - poly[i].z; // normal of one side
     const nz = poly[i].x - poly[j].x;
-    const len = Math.hypot(nx, nz);
+    const len = Math.sqrt(nx * nx + nz * nz); // not Math.hypot, which V8 boxes (see graph.js closer)
     let minA = Infinity;
     let maxA = -Infinity;
     let minB = Infinity;

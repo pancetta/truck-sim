@@ -40,11 +40,14 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     const b = e.points[Math.min(k + 1, e.points.length - 1)];
     const dx = b.x - a.x;
     const dz = b.z - a.z;
-    const len = Math.hypot(dx, dz);
+    // Math.sqrt, not Math.hypot: V8 boxes hypot's result on every call (3 KB a step in the traffic bench)
+    const len = Math.sqrt(dx * dx + dz * dz);
     // m along the segment; divided once, so a point on a straight road lands on whole metres exactly
     const u = len ? Math.max(0, Math.min(len, ((x - a.x) * dx + (z - a.z) * dz) / len)) : 0;
     const t = len ? u / len : 0;
-    const d = Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
+    const ex = a.x + t * dx - x;
+    const ez = a.z + t * dz - z;
+    const d = Math.sqrt(ex * ex + ez * ez);
     if (d >= best.d) return;
     best.edge = e;
     best.k = k;

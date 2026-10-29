@@ -49,13 +49,15 @@ function bench(frames, lights) {
     for (let k = 0; k < zebras.length; k++) zebras[k].people = (k + Math.floor(i / 300)) % 4 === 0 ? 1 : 0;
     traffic.step(step, truck, lights, 100, held, 1, zebras);
   };
-  // Fills the city and warms up the JIT; new cars need `lookAhead` of room, so filling takes a while.
-  for (let i = 0; i < 1000; i++) play(i);
+  // Fills the city and warms up the JIT; new cars need `lookAhead` of room, so filling takes a while, and V8 still
+  // compiles the junction code in the background until cars first give way `patience` s (it measured 10 KB a step more
+  // from step 1000).
+  for (let i = 0; i < 1800; i++) play(i);
   expect(traffic.cars.length).toBeGreaterThan(90);
 
   const before = allocated();
   let ms = Infinity;
-  for (let i = 1000; i < 1800; i += 160) {
+  for (let i = 1800; i < 2600; i += 160) {
     const t0 = performance.now();
     for (let k = i; k < i + 160; k++) play(k);
     ms = Math.min(ms, (performance.now() - t0) / 160);
@@ -67,6 +69,6 @@ function bench(frames, lights) {
 }
 
 test('the traffic step at 100 cars is fast and allocates next to nothing', () => {
-  const { frames, lights } = drive(1800);
+  const { frames, lights } = drive(2600);
   bench(frames, lights);
 });
