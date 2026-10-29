@@ -435,6 +435,12 @@ The ground's height across a map, in m above sea level, from the map's height gr
 without one is flat at 0. On **Monti** it runs from about 21 m by the Fori to about 53 m on the Esquiline.
 _Avoid_: elevation model, DEM (the raw data it is resampled from), heightmap
 
+**Hill start** / **Hill hold**:
+How a **Vehicle** copes with a slope of the **Terrain**. Hill start: pulling away uphill, the gearbox crawls, so
+even the heaviest load starts on the steepest street, slowly. Hill hold: braking at a standstill and
+for a moment after the brake is let go, the **Vehicle** doesn't roll; then it rolls down the slope. While loading,
+unloading or at a **Service**, and from a new game or a reset until it first moves, it stays put.
+
 ## Relationships
 
 - An **Order** earns its **Stars** when it is delivered; a **Rule fine**, a **Contact** the truck made, a **Zebra

@@ -105,8 +105,12 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
     // The gain is the truck's; a shorter wheelbase turns quicker for the same lock, so it steers less to keep the line.
     input.steer = Math.max(-1, Math.min(1, -err * steerGain * (vehicle.wheelbase / tables.fleet.truck.wheelbase)));
     input.gas = !waiting && t.speed < target ? 1 : 0;
-    // Brakes off once stopped: holding the brake at a standstill engages reverse.
-    input.brake = (waiting && t.speed > vehicle.stopSpeed) || t.speed > target + 1 ? 0.6 : 0;
+    // Brakes off once stopped: holding the brake at a standstill engages reverse. A tap every other step there renews
+    // the hill hold (#105), so it never rolls back on a slope; downhill, where coasting doesn't slow it, it brakes nearer
+    // its target speed.
+    const tap = Math.abs(t.speed) < vehicle.stopSpeed && !input.gas && !input.brake;
+    const over = t.pitch < 0 ? 0.2 : 1;
+    input.brake = tap || (waiting && t.speed > vehicle.stopSpeed) || t.speed > target + over ? 0.6 : 0;
     stuck = Math.abs(t.speed) < 0.3 ? stuck + dt : 0;
     if (stuck > (waiting ? waitTime : stuckTime)) {
       stuck = 0;

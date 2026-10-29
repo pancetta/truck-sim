@@ -18,9 +18,9 @@ export const bounds = { minX: -100, minZ: -100, maxX: 100, maxZ: 100 };
 export const build = (ways, t = tables, furniture = { nodes: [] }, area = bounds) => buildOsmMap({ bounds: area, ways }, t, furniture);
 // Tables with `spots` (and their docks, start, petrol stations, restaurant and home) in place of the extract's.
 export const withSpots = (spots, docks = [], start = null, t = tables, stations = [], restaurant = null, home = null) => ({ ...t, osm: { ...t.osm, spots, docks, start, stations, restaurant, home } });
-// `t` with the fuel and energy drains off (fuel.perKm 0, energy.drive Infinity), so the tank never empties and the
-// driver never tires: for tests that drive far with the real tables.
-export const undrained = (t = tables) => ({ ...t, fuel: { ...t.fuel, perKm: 0 }, energy: { ...t.energy, drive: Infinity } });
+// `t` with the fuel and energy drains off (fuel.perKm and perClimb 0, energy.drive Infinity), so the tank never empties
+// and the driver never tires: for tests that drive far with the real tables.
+export const undrained = (t = tables) => ({ ...t, fuel: { ...t.fuel, perKm: 0, perClimb: 0 }, energy: { ...t.energy, drive: Infinity } });
 // A building over the box from (x0, z0) to (x1, z1).
 export const box = (x0, z0, x1, z1) => building([[x0, z0], [x1, z0], [x1, z1], [x0, z1]]);
 

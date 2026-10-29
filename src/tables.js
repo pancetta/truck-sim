@@ -33,6 +33,11 @@ const truck = {
   stopSpeed: 0.1, // m/s; slower than this counts as standing still
   reverseDelay: 0.5, // s of brake hold at a standstill before reverse engages
   reverseSpeed: 4, // m/s (~14 km/h) reverse cap
+  // Up to this many times first gear's (or reverse's) force pulling away uphill, so the heaviest loads start on a
+  // 12 % street (#105); never more than the slope pulls back, so the flat is unchanged.
+  hillStart: 3.5,
+  hillHold: 2, // s a standstill holds after the brake is let go, before it rolls on a slope
+  maxBank: 0.03, // rad; the most the ground across a street rolls a Vehicle (or its trailer)
   wheelbase: 5.0, // m
   maxSteerAngle: 0.6, // rad, front wheels at full lock when standing
   steerFadeSpeed: 8, // m/s at which the steering lock is halved
@@ -468,11 +473,12 @@ export const weather = {
 // The fuel tank (profile.fuel, litres) holds the Vehicle's `tank` (tables.fleet) before the Werkstatt's tank upgrade; a
 // new profile starts full. The truck's full tank lasts about 4–5 average deliveries: the economy run (#58, scripts/economy.js) burns about 87 L a delivery.
 export const fuel = {
-  // Litres per km driven (times the Vehicle's thirst), times (1 + perTonne × tonnes of cargo) and (1 + perPedal × the driving pedal, 0..1); a test
-  // that drives far with the real tables sets perKm to 0, so the tank never empties.
+  // Litres per km driven (times the Vehicle's thirst), times (1 + perTonne × tonnes of cargo) and (1 + perPedal × the driving pedal, 0..1),
+  // plus perClimb uphill; a test that drives far with the real tables sets perKm and perClimb to 0, so the tank never empties.
   perKm: 40,
   perTonne: 0.02,
   perPedal: 0.5,
+  perClimb: 0.05, // litres per m climbed per tonne of the Vehicle (with its trailer and cargo); downhill costs none
   low: 0.15, // share of the tank below which the HUD warns
   price: 1, // € per litre at a petrol station
   fillTime: 6, // s standing still in a petrol station's zone to fill up

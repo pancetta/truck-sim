@@ -6,6 +6,7 @@ import { boxesOverlap, createTraffic } from './traffic.js';
 import { createPedestrians } from './pedestrians.js';
 import { createEvents } from './events.js';
 import { segmentDistance } from './pavements.js';
+import { createTerrain } from './terrain.js';
 import { clock as dayClock, fleet } from '../tables.js';
 
 const G = 9.81; // m/s²
@@ -51,10 +52,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const o = tables.orders;
   const lt = tables.lights;
   const cycle = 2 * (lt.green + lt.amber + lt.allRed);
-  // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; roll > 0 leans the body right. `base` is the
+  // speed is signed (negative is reverse); gear is 'R', 'N' or 1..n; pitch > 0 raises the nose; roll > 0 leans the body
+  // right (both rad, from the ground under it and, for roll, cornering). `base` is the
   // current Vehicle's table (tables.fleet), `v` the same with its upgrades (see useVehicle()).
   let base = tables.fleet[profile.vehicle];
-  const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
+  const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, pitch: 0, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
   // 'fragile', 'dock', 'fragileDock', 'express', 'oversized', 'round', 'pedestrian' or 'schwertransport' (see
   // requestOffers()). `order` is the active offer plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops`
@@ -161,6 +163,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     },
   };
   const tr = tables.trailer;
+  const ground = map ?? createTerrain(null); // an open plane is flat
   let v = upgradedVehicle();
   truck.mass = v.emptyMass;
   if (profile.trailer.hitched) state.trailer = trailerBehind(truck, truck.heading);
@@ -169,6 +172,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let nextOfferId = 1;
   let reversing = false;
   let brakeHold = 0; // s the brake has been held at a standstill
+  let held = Infinity; // s the hill hold still keeps the truck from rolling (see step()); placed, until it first moves
   const felt = { gas: 0, steer: 0, brake: 0 }; // the input as the driver applies it (see feel())
   let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
@@ -225,11 +229,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   const ratioOf = (gear) => (gear === 'R' ? v.reverseRatio : v.gearRatios[gear - 1]);
 
-  // Engine RPM in a gear at the current speed, never below idle.
-  function rpmIn(gear) {
-    const ratio = ratioOf(gear);
-    return Math.max(v.idleRpm, (Math.abs(truck.speed) * ratio * 60) / (2 * Math.PI * v.wheelRadius));
-  }
+  // Engine RPM in a gear at the current speed, as the wheels turn it, and never below idle.
+  const wheelRpm = (gear) => (Math.abs(truck.speed) * ratioOf(gear) * 60) / (2 * Math.PI * v.wheelRadius);
+  const rpmIn = (gear) => Math.max(v.idleRpm, wheelRpm(gear));
+  // The RPM of the engine's most torque, by which a hill start has fully engaged.
+  const launchRpm = () => v.torqueCurve.reduce((best, point) => (point[1] > best[1] ? point : best))[0];
 
   // Force at the wheels with the throttle fully open, from the torque curve (zero past its end).
   function wheelForce(gear, rpm) {
@@ -276,6 +280,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       else if (rpm < v.downshiftRpm && truck.gear > 1) truck.gear--;
     }
     truck.rpm = truck.gear === 'N' ? v.idleRpm : rpmIn(truck.gear);
+    const pedal = reversing ? input.brake : input.gas;
 
     // In reverse the brake pedal drives backwards and releasing it brakes; otherwise the pedals do what they say.
     let drive = 0;
@@ -287,12 +292,26 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       drive = input.gas * wheelForce(truck.gear, truck.rpm);
     }
     if (p.fuel <= 0) drive = 0; // out of fuel: it coasts
-    const resist = brake * v.brakeForce * grip + v.rollingResistance * truck.mass * G + v.drag * truck.speed ** 2;
-    truck.speed += (drive / truck.mass) * dt;
+    // Gravity along the heading (N, positive forwards), from the ground under the truck and under the trailer for its
+    // own mass. shortcut: the cargo counts as on the truck, and the trailer's pull as along the truck; fine while the
+    // two stand on one street, upgrade if a trailer's cargo or a sharp hitch angle on a steep corner ever matters.
+    const own = state.trailer ? truck.mass - tr.emptyMass : truck.mass;
+    const fall = -G * (own * Math.sin(truck.pitch) + (state.trailer ? tr.emptyMass * Math.sin(state.trailer.pitch) : 0));
+    // Hill start: pulling away uphill in first or reverse, the gearbox crawls, up to hillStart times the force but never
+    // more than the slope pulls back, fading out by launchRpm. On the flat a launch is as before.
+    const launch = truck.gear === 1 || truck.gear === 'R' ? Math.max(0, 1 - wheelRpm(truck.gear) / launchRpm()) : 0;
+    drive += Math.sign(drive) * Math.min((v.hillStart - 1) * Math.abs(drive), Math.max(0, -Math.sign(drive) * fall)) * launch;
+    // Downhill the brakes take the slope's pull too, so a heavy load stops as it would on the flat, in the rain too.
+    const resist = brake * (v.brakeForce * grip + Math.max(0, Math.sign(truck.speed) * fall)) + v.rollingResistance * truck.mass * G + v.drag * truck.speed ** 2;
+    truck.speed += ((drive + fall) / truck.mass) * dt;
     // Resistance slows the truck towards zero but never pushes it the other way.
     const slow = (resist / truck.mass) * dt;
     truck.speed = Math.abs(truck.speed) <= slow ? 0 : truck.speed - Math.sign(truck.speed) * slow;
     truck.speed = Math.max(-v.reverseSpeed, truck.speed);
+    // Hill hold: braking, and at a standstill for hillHold s after the brake is let go, it never rolls but the way it
+    // drives; loading, unloading or at a service the parking brake holds it all along.
+    held = brake > 0 || state.progress > 0 || state.service ? v.hillHold : stopped ? Math.max(0, held - dt) : 0;
+    if (stopped && held > 0 && Math.sign(truck.speed) !== Math.sign(drive)) truck.speed = 0;
 
     // Bicycle model; positive steer turns right, which lowers the heading. Lock fades with speed².
     const angle = (input.steer * v.maxSteerAngle) / (1 + (truck.speed / (v.steerFadeSpeed * grip)) ** 2);
@@ -332,7 +351,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     damageCargo(dt, shed, Math.abs(yawRate * truck.speed), hit);
     const moved = Math.hypot(truck.x - x, truck.z - z);
     p.distance += moved;
-    burn(moved, reversing ? input.brake : input.gas);
+    burn(moved, pedal, pedal > 0 ? ground.heightAt(truck.x, truck.z) - ground.heightAt(x, z) : 0); // coasting up costs none
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
     events?.step(dt, truck, clearOf);
     truckAtZebras(grip);
@@ -351,7 +370,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
     // The body leans out of the turn with lateral acceleration, more when heavier.
     const lean = yawRate * truck.speed * v.rollPerAccel * (truck.mass / 1000);
-    truck.roll = Math.max(-v.maxRoll, Math.min(v.maxRoll, lean));
+    truck.roll = Math.max(-v.maxRoll, Math.min(v.maxRoll, lean)) + tilt(truck, v.wheelbase, v.width);
 
     if (state.order) {
       state.order.elapsed += dt;
@@ -397,11 +416,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return felt;
   }
 
-  // Burns the fuel for `metres` driven with the driving pedal at `pedal` (see tables.fuel).
-  function burn(metres, pedal) {
+  // Burns the fuel for `metres` driven with the driving pedal at `pedal`, climbing `rise` m (see tables.fuel).
+  function burn(metres, pedal, rise) {
     const f = tables.fuel;
     const cargo = (truck.mass - v.emptyMass) / 1000;
-    const litres = (metres / 1000) * f.perKm * v.thirst * (1 + f.perTonne * cargo) * (1 + f.perPedal * pedal);
+    const litres = (metres / 1000) * f.perKm * v.thirst * (1 + f.perTonne * cargo) * (1 + f.perPedal * pedal) + f.perClimb * (truck.mass / 1000) * Math.max(0, rise);
     state.profile.fuel = Math.max(0, state.profile.fuel - litres);
   }
 
@@ -1379,7 +1398,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // Puts the truck at `pose`, at a standstill in first gear, its trailer straight behind.
   function place(pose) {
-    Object.assign(truck, pose, { speed: 0, gear: 1, rpm: v.idleRpm, roll: 0 });
+    Object.assign(truck, pose, { speed: 0, gear: 1, rpm: v.idleRpm });
+    truck.roll = tilt(truck, v.wheelbase, v.width);
+    held = Infinity; // it stands until it first moves
     if (state.trailer) trailerBehind(truck, truck.heading, state.trailer);
     state.jackknifed = false;
     reversing = false;
@@ -1449,7 +1470,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     out.x = x - Math.sin(h) * tr.hitch - Math.sin(heading) * back;
     out.z = z - Math.cos(h) * tr.hitch - Math.cos(heading) * back;
     out.heading = heading;
+    out.roll = tilt(out, tr.length, tr.width);
     return out;
+  }
+
+  // Sets `body`'s pitch from the ground under it, `length` m along it, and returns the roll the ground gives it,
+  // `width` m across (rising to its left leans it right), at most maxBank: streets are graded nearly flat across, and
+  // the 10 m height grid across one is the hillside's.
+  function tilt(body, length, width) {
+    const [sin, cos] = [Math.sin(body.heading), Math.cos(body.heading)];
+    body.pitch = Math.atan(ground.slopeAt(body.x, body.z, sin, cos, length / 2));
+    const roll = Math.atan(ground.slopeAt(body.x, body.z, cos, -sin, width / 2));
+    return Math.max(-v.maxBank, Math.min(v.maxBank, roll));
   }
 
   // Moves the trailer after the truck's move, kinematically (#96): the middle of its axles, tr.axle m behind the hitch,

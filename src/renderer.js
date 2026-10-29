@@ -997,16 +997,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const dt = Math.min((now - lastFrame) / 1000, 0.1);
     if (ratio && !frame.hidden) measureInset();
     lastFrame = now;
-    const { x, z, heading, roll } = state.truck;
+    const { x, z, heading, pitch, roll } = state.truck;
     truck.position.set(x, 0, z);
-    truck.rotation.set(0, heading, roll); // XYZ order: roll about the truck's own forward axis
+    // YXZ order: the heading, then the pitch and the roll about the truck's own axes. The city is drawn flat until #106.
+    truck.rotation.set(-pitch, heading, roll, 'YXZ');
     const vehicle = tables.fleet[state.profile.vehicle];
     if (shownVehicle !== state.profile.vehicle) showVehicle(state.profile.vehicle);
     const hitched = state.trailer;
     trailerBody.visible = !!hitched || warmUp;
     if (hitched) {
       trailerBody.position.set(hitched.x, 0, hitched.z);
-      trailerBody.rotation.set(0, hitched.heading, 0);
+      trailerBody.rotation.set(-hitched.pitch, hitched.heading, hitched.roll, 'YXZ');
       trailerBody.updateMatrixWorld();
     }
     // The reversing lights at the back of the combination.

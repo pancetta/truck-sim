@@ -43,7 +43,7 @@ try {
 }
 const save = createSave(auto ? null : storage, tables);
 // The autopilot's drive never runs dry or tires, so a tow never breaks the loop and its steering never lags.
-let simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0 }, energy: { ...tables.energy, drive: Infinity } } : tables;
+let simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0, perClimb: 0 }, energy: { ...tables.energy, drive: Infinity } } : tables;
 // ?perf&weather=rain (or fog) brings only that weather, coming in over weather.ramp s, so it can be measured (#53).
 const only = perf && params.get('weather');
 if (only === 'rain' || only === 'fog') simTables = { ...simTables, weather: { ...tables.weather, clear: [0, 0], fog: only === 'fog' ? 1 : 0 } };
