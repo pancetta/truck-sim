@@ -93,8 +93,16 @@ _Avoid_: source/target, from/to
 **Expected time** ("Soll-Zeit"):
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
+**Surprise** ("Überraschung"):
+Something that changes an **Order** on the drive to its last **Drop-off**, at most one per **Order**: a street on the route ahead becomes a **Closed street** and the route goes round it, or the Client (the **Pickup**'s business) calls and moves the **Drop-off** to another place like it, paying the **Umweg** and extending the **Expected time** by the extra way.
+_Avoid_: twist (that's a **Cargo kind**'s), random event
+
+**Umweg**:
+The **Pay line** for the extra way to a **Drop-off** a **Surprise** moved, at the distance pay's rate.
+_Avoid_: detour bonus
+
 **Pay lines**:
-The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), the **Cargo kind**'s premium (fragile "Zerbrechlich-Prämie", perishable "Frische-Prämie", delicate "Sorgfalts-Prämie", live "Tierwohl-Prämie"), **Dock bonus** ("Rampenbonus"), the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
+The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), the **Cargo kind**'s premium (fragile "Zerbrechlich-Prämie", perishable "Frische-Prämie", delicate "Sorgfalts-Prämie", live "Tierwohl-Prämie"), **Dock bonus** ("Rampenbonus"), the **Umweg** for a changed **Drop-off**, the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
 _Avoid_: reward, payout
 
 **Damage** ("Schaden"):

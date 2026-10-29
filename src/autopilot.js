@@ -33,7 +33,9 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
     const { closed } = sim.state;
     shut = [...closed].join();
     const stops = from ? [from, corners.at(-1)] : corners;
-    const legs = stops.slice(0, loop ? stops.length : -1).flatMap((c, i) => map.graph.route(c, stops[(i + 1) % stops.length], 0, closed).points);
+    // Against one-ways where no legal way leads on (a pose snapped onto a one-way out of a junction, past closed streets).
+    const way = (c, to) => map.graph.route(c, to, 0, closed) ?? map.graph.towards(to, false, 0, closed)(c);
+    const legs = stops.slice(0, loop ? stops.length : -1).flatMap((c, i) => way(c, stops[(i + 1) % stops.length]).points);
     path = resample(radius ? rounded(legs, radius, laneAt) : legs, spacing);
     if (loop && Math.hypot(path[0].x - path.at(-1).x, path[0].z - path.at(-1).z) < spacing / 2) path.pop(); // the loop closes
     lanes = path.map(({ x, z }) => laneAt(x, z));

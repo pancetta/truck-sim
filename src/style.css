@@ -854,7 +854,8 @@ body:has(.rear-inset:not([hidden])) .goal {
   letter-spacing: 4px;
 }
 
-.towed {
+.towed,
+.surprised {
   color: #fff;
 }
 

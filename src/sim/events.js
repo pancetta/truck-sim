@@ -60,32 +60,49 @@ export function createEvents(tables, map, traffic, random) {
   // Whether edge e's ends and middle are out of the truck's view.
   const unseen = (e, truck) => [0, 0.5, 1].every((u) => outOfView(map.graph.pointAt(e, u * e.length), truck, ev.hidden, viewCos));
 
-  // An edge to close, out of the truck's view and with a way round it, at random; null for none.
-  function pickEdge(truck) {
+  // An edge to close where `wanted(e)`, with a way round it, at random; null for none.
+  function pickEdge(wanted) {
     const fits = candidates.filter((e) => {
-      if (closed.has(e.id) || !traffic.closable(e) || !unseen(e, truck)) return false;
+      if (closed.has(e.id) || !wanted(e) || !traffic.closable(e)) return false;
       return reaches(e.from, e.to, e) && (e.oneWay || reaches(e.to, e.from, e));
     });
     return fits.length ? fits[Math.floor(random() * fits.length)] : null;
   }
 
-  function open(truck) {
-    const kinds = Object.entries(ev.kinds);
+  // One of `kinds` ([[kind, table]]) drawn by weight.
+  function draw(kinds) {
     let u = random() * kinds.reduce((sum, [, k]) => sum + k.weight, 0);
-    const [kind, k] = kinds.find(([, k]) => (u -= k.weight) < 0) ?? kinds.at(-1);
+    return kinds.find(([, k]) => (u -= k.weight) < 0) ?? kinds.at(-1);
+  }
+
+  function open(truck) {
+    const [kind, k] = draw(Object.entries(ev.kinds));
     const left = lasting(k.duration);
     if (kind === 'garbage') {
       const car = traffic.addGarbage(truck, left);
       if (car) list.push({ id: nextId++, kind, left, car });
       return;
     }
-    const e = pickEdge(truck);
-    if (!e) return;
+    shut(pickEdge((e) => unseen(e, truck)), kind, left);
+  }
+
+  // Closes edge e (none for null) with an event of `kind` that lasts `left` s; returns the event.
+  function shut(e, kind, left) {
+    if (!e) return null;
     const ends = [nodes[e.from].radius + ev.back, e.length - nodes[e.to].radius - ev.back];
-    list.push({ id: nextId++, kind, left, edge: e.id, on: false, barriers: ends.map((s) => barrier(e, s)) });
+    const x = { id: nextId++, kind, left, edge: e.id, on: false, barriers: ends.map((s) => barrier(e, s)) };
+    list.push(x);
     closed.add(e.id);
     traffic.close(e.id);
     version++;
+    return x;
+  }
+
+  // A market or roadworks closing an edge where `wanted(e)`, seen by the truck or not, besides the schedule's (a
+  // surprise, #85); returns its event, or null where no edge fits.
+  function closeWhere(wanted) {
+    const [kind, k] = draw(Object.entries(ev.kinds).filter(([kind]) => kind !== 'garbage'));
+    return shut(pickEdge(wanted), kind, lasting(k.duration));
   }
 
   // Ends the events that are over, puts up the barriers of the ones whose edge is clear and out of the truck's view
@@ -115,6 +132,7 @@ export function createEvents(tables, map, traffic, random) {
     list,
     closed,
     step,
+    closeWhere,
     get version() {
       return version;
     },

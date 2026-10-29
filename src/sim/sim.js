@@ -54,7 +54,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // unloads at, whose spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
   // loaded, see damageCargo()) and `faults`, what has cost it the clean Star so far: the reason of each fine taken since
   // it was accepted ('collision' for a Contact the truck made) and 'zebra' for a zebra crossing driven through, Witness
-  // or not, each once;
+  // or not, each once; and `surprise`, the one it still has in store ({ kind, wait }, see springSurprise()) or null;
   // `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road route to that zone's place on the road graph, as points ({ x, z }) from the next one
   // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()); with an oversized
@@ -65,7 +65,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // order, `star` a key of strings.stars ('delivered', 'onTime', 'clean', and 'dock' for a dock drop-off), each earned
   // when `reasons` is empty, else missed for them: 'late'; the order's faults, plus 'damage' over
   // tables.rank.cleanDamage; 'notDocked';
-  // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine.
+  // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine; `lastSurprise` on every
+  // surprise: { kind: 'closed', street (the closed edge's name) } or { kind: 'dropoff', spot (the new one), umweg (€) }.
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber', 'red' or 'redAmber');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
@@ -103,6 +104,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     route: [],
     lastPayment: null,
     lastFine: null,
+    lastSurprise: null,
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
     lightsVersion: 0,
     traffic: [],
@@ -321,6 +323,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
     const here = map ? map.graph.nearest(truck.x, truck.z) : null;
     if (here) updateLimit(here);
+    if (state.order?.surprise) springSurprise(dt, here);
     if (map) checkSpeeding();
     if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
     serve(dt);
@@ -791,6 +794,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         { label: 'base', amount: drop.pay },
         { label: 'time', amount: Math.round(o.timeBonus * timeShare * drop.pay) },
       ];
+      if (drop.umweg) lines.push({ label: 'umweg', amount: drop.umweg });
       // Damage takes its share of the kind's premium and never more, so the pay never drops below the base.
       const kind = o.kinds[order.cargo.kind];
       if (kind) lines.push({ label: order.cargo.kind, amount: Math.round(kind.premium * (1 - order.damage) * drop.pay) });
@@ -1054,9 +1058,66 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   function acceptOrder(id) {
     const offer = state.offers.find((x) => x.id === id);
     if (state.order || !offer) return;
-    state.order = { ...offer, phase: 'pickup', drop: 0, elapsed: 0, damage: 0, faults: [] };
+    state.order = { ...offer, phase: 'pickup', drop: 0, elapsed: 0, damage: 0, faults: [], surprise: drawSurprise() };
     state.offers = [];
     updateRoute();
+  }
+
+  // Surprises (tables.surprises), from their own seeded random, so the offers' draws stay as they were: at most one per
+  // order, drawn as it is accepted ({ kind: 'closed' or 'dropoff', wait (s until it is due) }), or null.
+  const sp = tables.surprises;
+  const chance = seeded(sp.seed);
+  function drawSurprise() {
+    const u = chance();
+    const wait = sp.after[0] + (sp.after[1] - sp.after[0]) * chance();
+    const kind = u < sp.closed ? 'closed' : u < sp.closed + sp.dropoff ? 'dropoff' : null;
+    return kind && { kind, wait };
+  }
+
+  // Springs the order's surprise once it is due on the drive to the last drop-off; where none fits, it tries again
+  // tables.surprises.retry s later. `here` is the truck's nearest graph pose.
+  function springSurprise(dt, here) {
+    const order = state.order;
+    const s = order.surprise;
+    if (order.phase !== 'dropoff' || order.drop < order.drops.length - 1 || (s.wait -= dt) > 0) return;
+    s.wait = sp.retry;
+    const sprung = s.kind === 'closed' ? closeAhead(here) : changeDropoff(here);
+    if (!sprung) return;
+    order.surprise = null;
+    state.lastSurprise = sprung;
+  }
+
+  // Closes a street on the route, not the one the truck is on and `ahead` m or more from it; the route is then found
+  // anew round it.
+  function closeAhead(here) {
+    const far = (p) => Math.hypot(p.x - truck.x, p.z - truck.z) >= sp.ahead;
+    const onRoute = (e) => e !== here.edge && [0, e.length].every((s) => far(map.graph.pointAt(e, s))) && nearLine(state.route, map.graph.pointAt(e, e.length / 2));
+    const x = events?.closeWhere(onRoute);
+    return x && { kind: 'closed', street: map.graph.edges[x.edge].name };
+  }
+
+  // Moves the last drop-off to another place like it (a dock for a dock, in a pedestrian street for one there, wide enough for an oversized load), farther
+  // from here by road but by at most `detour` m, at random. The drop pays for the extra way (its `umweg`), and it is
+  // added to the drop's and the order's distance and, at reference speed, their expected times.
+  function changeDropoff(here) {
+    const order = state.order;
+    const drop = order.drops.at(-1);
+    const old = spot(drop.spot);
+    const onRoad = here.d <= here.edge.width / 2;
+    const width = order.type === 'oversized' ? o.oversizedWidth : 0;
+    const way = (to) => routeFrom(here, onRoad, to.pose, width)?.length ?? Infinity;
+    const now = way(old);
+    const taken = [order.pickup, ...order.drops.map((d) => d.spot)];
+    const options = map.spots
+      .filter((s) => !s.station && !s.restaurant && !s.home && !taken.includes(s.id) && !s.dock === !old.dock && !s.pose.edge.pedestrian === !old.pose.edge.pedestrian && s.pose.edge.width >= width)
+      .map((s) => ({ s, extra: way(s) - now }))
+      .filter(({ extra }) => extra > 0 && extra <= sp.detour);
+    if (!options.length) return null;
+    const { s, extra } = options[Math.floor(chance() * options.length)];
+    const time = extra / o.referenceSpeed;
+    Object.assign(drop, { spot: s.id, distance: drop.distance + extra, expectedTime: drop.expectedTime + time, umweg: Math.round((o.payPerKm * extra) / 1000) });
+    Object.assign(order, { dropoff: s.id, distance: order.distance + extra, expectedTime: order.expectedTime + time });
+    return { kind: 'dropoff', spot: s.id, umweg: drop.umweg };
   }
 
   // Puts the truck on the nearest free lane pose of the road points, facing along the road, at a standstill in first
@@ -1194,4 +1255,16 @@ export function inside(x, z, points) {
     if (a.z > z !== b.z > z && x < a.x + ((b.x - a.x) * (z - a.z)) / (b.z - a.z)) odd = !odd;
   }
   return odd;
+}
+
+// Whether point p lies within half a metre of the polyline `line`.
+function nearLine(line, p) {
+  return line.some((b, i) => {
+    const a = line[i - 1];
+    if (!a) return false;
+    const [dx, dz] = [b.x - a.x, b.z - a.z];
+    const l2 = dx * dx + dz * dz;
+    const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / l2)) : 0;
+    return Math.hypot(a.x + t * dx - p.x, a.z + t * dz - p.z) < 0.5;
+  });
 }

@@ -1,5 +1,5 @@
 // Money counter, orders button and panel, goal banner, load/unload and service progress bar, a service spot's service
-// buttons, the Stars banner, payment, fine and tow notices. Reads Sim state each frame; changes it only through the
+// buttons, the Stars banner, payment, fine, tow and surprise notices. Reads Sim state each frame; changes it only through the
 // Sim's order and service commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
@@ -8,7 +8,7 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div></div>`;
+    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div><div class="paid surprised" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
@@ -17,6 +17,7 @@ export function createOrders(root, sim, map, tables, strings) {
   const paid = root.querySelector('.paid:not(.stars-banner)');
   const fined = root.querySelector('.fined');
   const towed = root.querySelector('.towed');
+  const surprised = root.querySelector('.surprised');
   const services = root.querySelector('.services');
   const goal = root.querySelector('.goal');
   const [arrow, goalText, hint, damage] = goal.children;
@@ -44,6 +45,7 @@ export function createOrders(root, sim, map, tables, strings) {
   let lastPayment = sim.state.lastPayment;
   let lastFine = sim.state.lastFine;
   let lastTow = sim.state.lastTow;
+  let lastSurprise = sim.state.lastSurprise;
   let shownServices = null;
   const timers = new Map();
   // Writes to the DOM only when a shown value changes, not every frame. It compares with what it last wrote,
@@ -68,7 +70,7 @@ export function createOrders(root, sim, map, tables, strings) {
   // Hides the notices at once: the Werkstatt panel opening over them would cover them (#orders is a stacking
   // context of its own, under the Werkstatt).
   function dismissNotices() {
-    for (const el of [starsBanner, paid, fined, towed]) {
+    for (const el of [starsBanner, paid, fined, towed, surprised]) {
       if (el.hidden) continue;
       clearTimeout(timers.get(el));
       el.hidden = true;
@@ -103,7 +105,7 @@ export function createOrders(root, sim, map, tables, strings) {
     return [t.x - truck.x, t.z - truck.z];
   }
 
-  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, serviceOffer, service, order, offers, progress: p, truck, route }) {
+  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, lastSurprise: surprise, serviceOffer, service, order, offers, progress: p, truck, route }) {
     if (profile.money !== lastMoney) {
       lastMoney = profile.money;
       money.textContent = eur(lastMoney);
@@ -129,6 +131,12 @@ export function createOrders(root, sim, map, tables, strings) {
     if (tow !== lastTow) {
       lastTow = tow;
       notify(towed, `${strings.towed} ${tow.station ? place(tow.station) : ''} −${eur(tow.fee)}`);
+    }
+
+    if (surprise !== lastSurprise) {
+      lastSurprise = surprise;
+      const s = strings.surprises;
+      notify(surprised, surprise.kind === 'closed' ? `${[s.closed, surprise.street].filter(Boolean).join(': ')} · ${s.newRoute}` : `${s.dropoff} ${place(surprise.spot)} · ${strings.payLines.umweg} +${eur(surprise.umweg)}`);
     }
 
     if (serviceOffer !== shownServices) {
@@ -179,7 +187,7 @@ export function createOrders(root, sim, map, tables, strings) {
     if (panel.hidden) return;
     // Fresh offers whenever the open panel has neither an order nor offers, e.g. right after a delivery.
     if (!order && offers.length === 0) offers = sim.requestOffers();
-    const now = order ? `${order.id} ${order.phase} ${order.drop}` : offers.map((o) => o.id).join();
+    const now = order ? `${order.id} ${order.phase} ${order.drop} ${order.dropoff}` : offers.map((o) => o.id).join();
     if (now === shown) return;
     shown = now;
     panel.innerHTML = order
