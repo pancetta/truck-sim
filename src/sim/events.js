@@ -22,11 +22,11 @@ export function createEvents(tables, map, traffic, random) {
   let wait = lasting(ev.every);
   const viewCos = Math.cos(tables.traffic.spawnView);
 
-  // The edges a market or roadworks may close: between two junctions (of 3+ arms, neither an edge exit), long enough,
-  // with no spot or zebra crossing on it.
+  // The edges a market or roadworks may close: between two junctions (of 3+ arms, neither an edge exit; not a loop back
+  // to its own, whose barriers would stand side by side), long enough, with no spot or zebra crossing on it.
   const busy = new Set([...map.spots.map((s) => s.pose.edge.id), ...(map.zebras ?? []).map((z) => z.edge)]);
   const span = (e) => e.length - nodes[e.from].radius - nodes[e.to].radius - 2 * ev.back;
-  const candidates = edges.filter((e) => [e.from, e.to].every((n) => nodes[n].arms.length >= 3 && !nodes[n].exit) && span(e) >= ev.minLength && !busy.has(e.id));
+  const candidates = edges.filter((e) => e.from !== e.to && [e.from, e.to].every((n) => nodes[n].arms.length >= 3 && !nodes[n].exit) && span(e) >= ev.minLength && !busy.has(e.id));
 
   // The barrier across edge e `along` m from its from node, facing along it: { kind, minX…maxZ, points }.
   function barrier(e, along) {
