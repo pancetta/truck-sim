@@ -1173,7 +1173,8 @@ export function createTraffic(tables, map, random) {
     return true;
   }
   // Closes edge e (by id), or opens it again: a car planning to turn into it plans anew from that turn, unless it can't
-  // stop before the turn any more; then it drives in, and on out of it, as the cars on it do.
+  // stop before the turn any more, or the turn is inside a crossing of several nodes, which let it in for its way through
+  // (see admit); then it drives in, and on out of it, as the cars on it do.
   function close(e, shut = true) {
     closed[e] = shut ? 1 : 0;
     if (!shut) return;
@@ -1181,7 +1182,7 @@ export function createTraffic(tables, map, random) {
       let dist = car.lane.length - car.s; // centre to the start of route path i
       for (let i = 1; i < car.route.length; i++) {
         if (edgeOf(car.route[i]) === e) {
-          if (stoppable(car, dist - car.size.length / 2)) {
+          if (stoppable(car, dist - car.size.length / 2) && !groupAt[car.route[i - 1].id]) {
             car.route.length = i; // route[i] is a turn: route[i - 1] the run it leaves
             extend(car.route, car);
           }

@@ -3,7 +3,8 @@
 // draws. An event is { id, kind ('market', 'roadworks' or 'garbage'), left (s until it ends) } and:
 // - a closing one: `edge` (its id), `on` (whether its barriers are up) and `barriers`, two colliders across the road
 //   and its pavements, `back` m out from each end junction's box. The edge counts as closed from the start (`closed`):
-//   no route, AI car turn or new car goes onto it; the barriers go up once no car and not the truck is on it.
+//   no route, AI car turn or new car goes onto it; the barriers go up once no car and not the truck is on it, while it
+//   is out of the truck's view.
 // - a garbage truck: `car`, the AI car (traffic.js); it ends when the car drives on or leaves.
 
 import { outOfView } from './traffic.js';
@@ -56,12 +57,13 @@ export function createEvents(tables, map, traffic, random) {
     return false;
   }
 
+  // Whether edge e's ends and middle are out of the truck's view.
+  const unseen = (e, truck) => [0, 0.5, 1].every((u) => outOfView(map.graph.pointAt(e, u * e.length), truck, ev.hidden, viewCos));
+
   // An edge to close, out of the truck's view and with a way round it, at random; null for none.
   function pickEdge(truck) {
-    const hidden = (p) => outOfView(p, truck, ev.hidden, viewCos);
     const fits = candidates.filter((e) => {
-      if (closed.has(e.id) || !traffic.closable(e)) return false;
-      if (![0, 0.5, 1].every((u) => hidden(map.graph.pointAt(e, u * e.length)))) return false;
+      if (closed.has(e.id) || !traffic.closable(e) || !unseen(e, truck)) return false;
       return reaches(e.from, e.to, e) && (e.oneWay || reaches(e.to, e.from, e));
     });
     return fits.length ? fits[Math.floor(random() * fits.length)] : null;
@@ -86,15 +88,15 @@ export function createEvents(tables, map, traffic, random) {
     version++;
   }
 
-  // Ends the events that are over, puts up the barriers of the ones whose edge is clear (`clear(event)`: the truck is
-  // off it and off its barriers, the Sim's to tell), and opens one when it is time.
+  // Ends the events that are over, puts up the barriers of the ones whose edge is clear and out of the truck's view
+  // (`clear(event)`: the truck is off it and off its barriers, the Sim's to tell), and opens one when it is time.
   function step(dt, truck, clear) {
     for (let i = list.length - 1; i >= 0; i--) {
       const x = list[i];
       x.left -= dt;
       const done = x.car ? x.car.halt <= 0 || !traffic.cars.includes(x.car) : x.left <= 0;
       if (!done) {
-        if (x.edge !== undefined && !x.on) x.on = !traffic.uses(x.edge) && clear(x);
+        if (x.edge !== undefined && !x.on) x.on = !traffic.uses(x.edge) && clear(x) && unseen(edges[x.edge], truck);
         continue;
       }
       list.splice(i, 1);

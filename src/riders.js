@@ -79,7 +79,8 @@ const MODELS = {
       [box(1.7, 0.6, 0.05, 0, 1.35, 2.18), 0x22303a], // windscreen
       [box(1.9, 1.75, 2.9, 0, 0.6, -0.75), PAINTED], // compactor body
       [box(1.92, 0.15, 2.92, 0, 1.15, -0.75), 0xe8731c], // band
-      [box(1.8, 1.3, 0.4, 0, 0.55, -2.2), METAL], // rear loader
+      [box(1.8, 1.3, 0.4, 0, 0.55, -2.05), METAL], // rear loader
+      [box(1.82, 0.15, 0.42, 0, 1.15, -2.05), 0xe8731c], [box(1.82, 0.12, 0.42, 0, 0.62, -2.05), 0xe8731c], // its bands
       [box(0.25, 0.15, 0.25, 0, 2.1, 1.6), 0xffa21f], // beacon
     ]),
     merged([
