@@ -142,9 +142,10 @@ function carDetails(c, rich, police) {
     detail(new THREE.BoxGeometry(0.16, 0.22, 2 * reach(rear(0.45) + 0.12, W * 0.46)).translate(rear(0.45) + 0.04, 0.45, 0), '#262626'),
   ];
   for (const ax of c.axles) {
-    for (const side of [-1, 1]) {
-      parts.push(detail(new THREE.CylinderGeometry(c.wheel, c.wheel, 0.21, segs).rotateX(Math.PI / 2).translate(ax, c.wheel, side * (W / 2 - 0.13)), '#1b1b1b'));
-      if (rich) parts.push(detail(new THREE.CylinderGeometry(c.wheel * 0.55, c.wheel * 0.55, 0.22, segs).rotateX(Math.PI / 2).translate(ax, c.wheel, side * (W / 2 - 0.13)), '#7d8186'));
+    // A `trike` has one front wheel, in the middle.
+    for (const z of c.trike && ax === c.axles.at(-1) ? [0] : [-1, 1].map((side) => side * (W / 2 - 0.13))) {
+      parts.push(detail(new THREE.CylinderGeometry(c.wheel, c.wheel, 0.21, segs).rotateX(Math.PI / 2).translate(ax, c.wheel, z), '#1b1b1b'));
+      if (rich) parts.push(detail(new THREE.CylinderGeometry(c.wheel * 0.55, c.wheel * 0.55, 0.22, segs).rotateX(Math.PI / 2).translate(ax, c.wheel, z), '#7d8186'));
     }
   }
   const [head, tail] = [0.72, 0.85];

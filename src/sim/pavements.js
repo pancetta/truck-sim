@@ -1,5 +1,5 @@
 // Pavement lines (#78): where pedestrians walk, along the middle of the pavements (tables.osm.pavement wide) on both
-// sides of every edge. At a node each side turns the corner onto the side of the next arm round: where the two cross,
+// sides of every edge but the pedestrian ones. At a node each side turns the corner onto the side of the next arm round: where the two cross,
 // if that is ahead along both (inside an angle under 180°), else round an arc on the node, out past its road disc (the
 // outside of a bend, a straight side, a dead end's end). Sides stop short of an edge exit's barrier. A stretch that
 // comes within tables.pedestrians keepRight + clear m of the road (an edge, or a node's disc as roads.js draws it), into
@@ -22,7 +22,7 @@ export function pavementLines(graph, solid, bounds, tables) {
   const piece = (points) => ({ points, trim: [0, 0], link: [null, null] });
   // Per edge its sides, right of its way (from → to) and left; `trim` the m cut off each end, `link` the piece end each
   // end joins ({ piece, end }) or null.
-  const sides = edges.map((e) => (e.points.length < 2 ? null : [1, -1].map((side) => piece(offset(e.points, side * (e.width / 2 + pavement / 2))))));
+  const sides = edges.map((e) => (e.points.length < 2 || e.pedestrian ? null : [1, -1].map((side) => piece(offset(e.points, side * (e.width / 2 + pavement / 2))))));
   const arcs = [];
   const join = (a, ea, b, eb) => {
     a.link[ea] = { piece: b, end: eb };
@@ -76,7 +76,7 @@ export function pavementLines(graph, solid, bounds, tables) {
   // The road (every edge segment `width` / 2 either side, every node's disc), `margin` m out, and the solid colliders.
   const cells = createCells(tables.city.cell);
   const near = ({ a, b, r }) => cells.add({ a, b, r }, Math.min(a.x, b.x) - r, Math.min(a.z, b.z) - r, Math.max(a.x, b.x) + r, Math.max(a.z, b.z) + r);
-  for (const e of edges) for (let k = 1; k < e.points.length; k++) near({ a: e.points[k - 1], b: e.points[k], r: e.width / 2 + margin });
+  for (const e of edges.filter((e) => !e.pedestrian)) for (let k = 1; k < e.points.length; k++) near({ a: e.points[k - 1], b: e.points[k], r: e.width / 2 + margin });
   nodes.forEach((n, i) => near({ a: n, b: n, r: disc[i] + margin }));
   for (const c of solid) cells.add({ solid: c }, c.minX, c.minZ, c.maxX, c.maxZ);
   const clear = (x, z) =>

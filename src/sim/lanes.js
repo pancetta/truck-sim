@@ -16,7 +16,7 @@ export function lanePaths(nodes, edges) {
   for (const n of nodes) n.slots = n.arms.map((id) => ({ edge: edges[id], angle: 0, in: null, out: null, stop: false }));
   // The slot of edge e at its `from` (or `to`) end; a loop's from end is its first slot there.
   const slotOf = (n, e, atFrom) => (atFrom ? nodes[n].arms.indexOf(e.id) : nodes[n].arms.lastIndexOf(e.id));
-  const drivable = edges.filter((e) => e.points.length > 1); // an edge of one point has nowhere to drive
+  const drivable = edges.filter((e) => e.points.length > 1 && !e.pedestrian); // an edge of one point has nowhere to drive; AI cars never take a pedestrian one
   for (const e of drivable) {
     const [a, b, y, z] = [e.points[0], e.points[1], e.points.at(-2), e.points.at(-1)];
     nodes[e.from].slots[slotOf(e.from, e, true)].angle = Math.atan2(b.z - a.z, b.x - a.x);

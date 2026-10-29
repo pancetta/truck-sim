@@ -6,18 +6,20 @@ import { createCells } from './cells.js';
 import { lanePaths } from './lanes.js';
 
 // `nodes`: [{ x, z }]. `edges`: [{ from, to (node indices), class, width (m), name, oneWay, limit (km/h), laneOffset?,
-// points: [{ x, z }] }], the points running from the `from` node to the `to` node. Fills in each node's `arms` (edge
-// indices; a loop counts twice) and each edge's `id`, `length`, `at` (m along it at each point), `laneOffset` (the
+// pedestrian?, points: [{ x, z }] }], the points running from the `from` node to the `to` node. Fills in each node's
+// `arms` (edge indices; a loop counts twice) and `walks` (the same for its pedestrian edges, #89: no arms, so AI traffic,
+// the junctions and their rules never see them; routes follow them only when asked) and each edge's `id`, `length`, `at`
+// (m along it at each point), `laneOffset` (the
 // edge's own, else `laneOffset`) and `lanes` ([{ points }] the way each runs: a one-way edge's one lane on its centre
 // line, else one laneOffset m right of it each way, the forward one first).
 // Edge segments are filed in a spatial cell index of `cellSize` m. `paths` are the lane paths AI cars drive (lanes.js).
 export function createGraph(nodes, edges, laneOffset, cellSize) {
   const index = createCells(cellSize);
-  for (const n of nodes) n.arms = [];
+  for (const n of nodes) [n.arms, n.walks] = [[], []];
   edges.forEach((e, id) => {
     e.id = id;
-    nodes[e.from].arms.push(id);
-    nodes[e.to].arms.push(id);
+    nodes[e.from][e.pedestrian ? 'walks' : 'arms'].push(id);
+    nodes[e.to][e.pedestrian ? 'walks' : 'arms'].push(id);
     e.at = e.points.map((p, k) => (k ? Math.hypot(p.x - e.points[k - 1].x, p.z - e.points[k - 1].z) : 0));
     for (let k = 1; k < e.at.length; k++) e.at[k] += e.at[k - 1];
     e.length = e.at.at(-1);
@@ -116,9 +118,11 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   // One-way edges are only followed from their `from` node to their `to` node, unless `legal` is false. Edges narrower
   // than `minWidth` m are never followed, nor is one the way ends on; the one it starts on always is. Edges whose ids
   // are in `closed` (a Set; street events, #80) are not driven along: from a pose on one, only out by its nearer end.
-  function towards(to, legal = true, minWidth = 0, closed = null) {
+  // Pedestrian edges are followed, and ended on, only with `walk` (a Vehicle narrow enough for their bollard gates);
+  // without it, a pose on one (at its mouth, whose middle is nearer there than the road's) leaves it as a closed one.
+  function towards(to, legal = true, minWidth = 0, closed = null, walk = false) {
     const t = to.edge;
-    if (t.width < minWidth) return () => null;
+    if (t.width < minWidth || (t.pedestrian && !walk)) return () => null;
     const dist = new Float64Array(nodes.length).fill(Infinity);
     const via = new Array(nodes.length).fill(null); // the edge on from each node towards `to`; null: on along t
     const done = new Uint8Array(nodes.length);
@@ -130,7 +134,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       for (let i = 0; i < nodes.length; i++) if (!done[i] && dist[i] < Infinity && (n < 0 || dist[i] < dist[n])) n = i;
       if (n < 0) break;
       done[n] = 1;
-      for (const id of nodes[n].arms) {
+      for (const id of walk ? [...nodes[n].arms, ...nodes[n].walks] : nodes[n].arms) {
         const e = edges[id];
         if ((against(e) && e.to !== n) || e.width < minWidth || closed?.has(id)) continue; // m → n would run against it, is too narrow or is closed
         const m = e.from === n ? e.to : e.from;
@@ -140,7 +144,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
 
     return (from) => {
       const f = from.edge;
-      const shut = closed?.has(f.id) ?? false;
+      const shut = (closed?.has(f.id) ?? false) || (f.pedestrian && !walk);
       const direct = f === t && !shut && (!against(f) || to.s >= from.s) ? Math.abs(from.s - to.s) : Infinity;
       const back = against(f) || (shut && from.s > f.length / 2) ? Infinity : from.s + dist[f.from];
       const ahead = shut && from.s <= f.length / 2 ? Infinity : f.length - from.s + dist[f.to];
@@ -161,7 +165,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
     };
   }
 
-  const route = (from, to, minWidth = 0, closed = null) => towards(to, true, minWidth, closed)(from);
+  const route = (from, to, minWidth = 0, closed = null, walk = false) => towards(to, true, minWidth, closed, walk)(from);
 
   return { nodes, edges, paths: lanePaths(nodes, edges), nearest, project, onRoad, along, pointAt, towards, route };
 }

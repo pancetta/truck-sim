@@ -283,9 +283,11 @@ function roadAhead(map, x, z, nx, nz, reach) {
 }
 
 // Ground height at (x, z), off the road: the raised pavement within tables.osm.pavement m of a road's edge, else open
-// ground (pedestrian paving is only 3 cm up).
+// ground (pedestrian paving, a pedestrian edge's too, is only 3 cm up).
 function groundAt(map, tables, x, z) {
-  const p = map.graph.nearest(x, z);
+  let p = map.graph.nearest(x, z);
+  // A pedestrian edge is flush, but a road's pavement may still lie beside it under (x, z).
+  if (p.edge.pedestrian) p = map.graph.edges.filter((e) => !e.pedestrian).map((e) => map.graph.project(e, x, z)).reduce((a, b) => (b.d < a.d ? b : a));
   return p.d <= p.edge.width / 2 + tables.osm.pavement ? tables.streets.pavement.height : 0;
 }
 

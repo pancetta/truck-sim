@@ -49,9 +49,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let base = tables.fleet[profile.vehicle];
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
-  // 'fragile', 'dock', 'fragileDock', 'express', 'oversized' or 'round' (see requestOffers()). `order` is the active offer
-  // plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops` of the drop-off it heads for or unloads at, whose
-  // spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
+  // 'fragile', 'dock', 'fragileDock', 'express', 'oversized', 'round' or 'pedestrian' (see requestOffers()). `order` is
+  // the active offer plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops` of the drop-off it heads for or
+  // unloads at, whose spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
   // loaded, see damageCargo()) and `faults`, what has cost it the clean Star so far: the reason of each fine taken since
   // it was accepted ('collision' for a Contact the truck made) and 'zebra' for a zebra crossing driven through, Witness
   // or not, each once;
@@ -181,7 +181,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // lies in a junction (a truck there would reach into the box of a node with three or more arms), where AI cars would
   // wait for it.
   const roadPoints = [];
-  for (const e of map?.graph.edges ?? []) {
+  for (const e of map?.graph.edges.filter((e) => !e.pedestrian) ?? []) {
     const { resetSpacing: spacing } = tables.city;
     const junction = (n, along) => along < map.graph.nodes[n].radius + base.length / 2 && map.graph.nodes[n].arms.length >= 3;
     const toward = (a, b) => Math.atan2(b.x - a.x, b.z - a.z);
@@ -748,10 +748,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // shortest against them; null where no road leads there at all. On the road it runs from `here`, its first point (the
   // truck's own) left out. Off it, it joins the road where straight across plus on by road is shortest, along a line
   // clear of buildings, and starts at that join. With a `width`, only over edges that wide (see graph.towards()), else as
-  // without one. Never along an edge a street event closes.
+  // without one. Never along an edge a street event closes, and along pedestrian edges only in a narrow Vehicle.
   function routeFrom(here, onRoad, to, width = 0) {
     const g = map.graph;
-    return wayFrom(here, onRoad, g.towards(to, true, width, closed)) ?? wayFrom(here, onRoad, g.towards(to, false, width, closed)) ?? (width ? routeFrom(here, onRoad, to) : null);
+    const walk = narrow();
+    return wayFrom(here, onRoad, g.towards(to, true, width, closed, walk)) ?? wayFrom(here, onRoad, g.towards(to, false, width, closed, walk)) ?? (width ? routeFrom(here, onRoad, to) : null);
   }
   function wayFrom(here, onRoad, way) {
     if (onRoad) {
@@ -759,7 +760,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       return r && { length: r.length, points: r.points.slice(1) };
     }
     const joins = map.graph.edges
-      .filter((e) => !closed.has(e.id))
+      .filter((e) => !closed.has(e.id) && (!e.pedestrian || narrow()))
       .map((e) => map.graph.project(e, truck.x, truck.z))
       .map((p) => ({ p, r: way(p) }))
       .filter(({ r }) => r)
@@ -973,6 +974,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return OK;
   }
 
+  // Whether the current Vehicle fits through a bollard gate (tables.osm.gate), so routes and offers may use pedestrian
+  // edges; the gate's bollards themselves are plain colliders.
+  const narrow = () => v.width < tables.osm.gate;
   const spot = (id) => map.spots.find((s) => s.id === id);
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
@@ -989,10 +993,11 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Each drop (`drops`: { spot, distance, pay, expectedTime }) pays base + distance of its own leg, and is expected
   // after the truck's route to the pickup plus the legs to it at reference speed, plus loading, the unloadings up to it
   // and slack; an express offer's is shorter and its pay higher, by tables.orders.express. The offer's `dropoff` is the
-  // first drop, its distance, pay and expected time are the whole order's.
+  // first drop, its distance, pay and expected time are the whole order's. Spots on pedestrian edges only take orders
+  // in a narrow Vehicle, of their own type ('pedestrian'), never a special one.
   function requestOffers() {
     state.offers = [];
-    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home);
+    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()));
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
@@ -1005,7 +1010,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const special = drawn && o.types[drawn] <= state.rank.tier ? drawn : null;
       const width = special === 'oversized' ? o.oversizedWidth : 0;
       const cargo = pick(special ? cargoes.filter((c) => (special === 'oversized' ? !c.kind : c.kind !== 'fragile')) : cargoes);
-      const wide = places.filter((s) => s.pose.edge.width >= width);
+      const wide = places.filter((s) => s.pose.edge.width >= width && !(special && s.pose.edge.pedestrian));
       const stops = [];
       for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)
         stops.push(pick(wide.filter((s) => !stops.includes(s) && (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier))));
@@ -1022,7 +1027,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       }));
       const sum = (key) => drops.reduce((total, d) => total + d[key], 0);
       const { expectedTime } = drops.at(-1);
-      state.offers.push({ id: nextOfferId++, type: special ?? typeOf(cargo, stops[0]), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime });
+      const pedestrian = [from, ...stops].some((s) => s.pose.edge.pedestrian);
+      state.offers.push({ id: nextOfferId++, type: special ?? (pedestrian ? 'pedestrian' : typeOf(cargo, stops[0])), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime });
     }
     return state.offers;
   }
@@ -1033,7 +1039,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const legs = [];
     for (let at = from, left = stops; left.length; ) {
       const [next] = left
-        .map((stop) => ({ stop, path: map.graph.route(at.pose, stop.pose, width, closed) }))
+        .map((stop) => ({ stop, path: map.graph.route(at.pose, stop.pose, width, closed, narrow()) }))
         .filter((x) => x.path)
         .sort((a, b) => a.path.length - b.path.length);
       if (!next) return null;

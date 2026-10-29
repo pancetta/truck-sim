@@ -28,7 +28,7 @@ export function createMinimap(canvas, map, tables) {
     bctx.strokeStyle = hex(palette.pavement);
     bctx.lineJoin = bctx.lineCap = 'round';
     for (const e of map.graph.edges) {
-      bctx.lineWidth = (e.width / unit) * scale;
+      bctx.lineWidth = ((e.pedestrian ? e.width / 3 : e.width) / unit) * scale; // a pedestrian edge thin, as a lane only the Dreirad takes
       bctx.beginPath();
       for (const p of e.points) bctx.lineTo(...at(p.x, p.z));
       bctx.stroke();

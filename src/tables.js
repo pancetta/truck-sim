@@ -90,6 +90,49 @@ export const fleet = {
     },
     paint: 0xe9e6dc,
   },
+  // The Dreirad (#89): a small three-wheeler with a cab up front and a box behind, the only Vehicle narrow enough for
+  // the pedestrian edges' bollard gates (osm.gate). Light, slow, nimble; light loads only.
+  dreirad: {
+    ...truck,
+    rank: 2,
+    price: 3500,
+    emptyMass: 450,
+    torqueCurve: [
+      [1000, 18],
+      [2000, 28],
+      [3000, 28],
+      [3800, 18],
+      [4200, 0],
+    ],
+    idleRpm: 1000,
+    gearRatios: [22, 13, 8.5, 5.8],
+    reverseRatio: 22,
+    upshiftRpm: 3300,
+    downshiftRpm: 1500,
+    wheelRadius: 0.24,
+    brakeForce: 4000,
+    rollingResistance: 0.015,
+    drag: 0.6,
+    wheelbase: 1.95,
+    steerFadeSpeed: 9,
+    rollPerAccel: 0.03,
+    maxRoll: 0.1,
+    length: 3.2,
+    width: 1.4,
+    maxCargo: 0.7,
+    tank: 25,
+    thirst: 0.12,
+    cab: [-0.55, -0.65, -0.8], // the driver sits in the middle
+    rearEye: [0, 1.7, -1.5],
+    looks: false,
+    // Side profile from the rear, as the van's; `trike`: one front wheel, in the middle.
+    body: {
+      body: [[0, 0.4], [0, 1.6], [0.05, 1.65], [1.85, 1.65], [1.95, 1.75], [2.7, 1.75], [2.95, 1.5], [3.15, 0.9], [3.2, 0.38]],
+      glass: [[2.45, 1.05], [2.45, 1.6], [2.75, 1.6], [3.0, 1.05]],
+      axles: [0.6, 2.85], wheel: 0.24, pillar: null, doors: [[2.0, 2.6]], trike: true,
+    },
+    paint: 0x5f8fae,
+  },
 };
 
 export const orders = {
@@ -132,6 +175,8 @@ export const orders = {
   // its tier on, an offer is express, oversized or a round at its `shares` (drawn first, each with cargo that isn't
   // fragile, an oversized one with cargo of no kind, to drop-offs that aren't docks); otherwise the type comes from the drop-off and the cargo: dock or
   // fragileDock to a dock, else fragile if its kind is (no other kind changes the type), heavy above maxCargo, or normal.
+  // An offer to or from a spot on a pedestrian edge, made only to a Vehicle narrow enough for the bollard gates, is a
+  // pedestrian one (#89), never express, oversized or a round.
   types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3, round: 3 },
   shares: { express: 0.2, oversized: 0.15, round: 0.15 },
   roundDrops: [2, 3], // a round's number of drop-offs, one drawn per round offer
@@ -154,6 +199,10 @@ export const orders = {
     { name: 'Stahl', weight: 14 },
     { name: 'Baumaschine', weight: 18 },
     { name: 'Betonteile', weight: 24 },
+    // Light loads, which the Dreirad carries too (#89).
+    { name: 'Pakete', weight: 0.4 },
+    { name: 'Blumen', weight: 0.2 },
+    { name: 'Wein', weight: 0.6, kind: 'fragile' },
   ],
 };
 
@@ -539,12 +588,15 @@ export const osm = {
     residential: { width: 7, lane: 1.75, limit: 30 },
     unclassified: { width: 7, lane: 1.75, limit: 30 },
     service: { width: 4, lane: 1, limit: 30 },
+    // Pedestrian edges (#89): AI traffic never takes them, and a bollard gate closes each where it leaves the road. As
+    // wide as they are paved (no pavements beside), and buildings are cut back to that.
+    pedestrian: { width: 6, lane: 1.5, limit: 10 },
   },
   // A junction gets lights where two different streets (by name) of these classes cross: both go on through it.
   lightClasses: ['secondary', 'tertiary'],
   pavement: 1.5, // m beside each side of a road, which buildings are cut back to leave clear
-  pedestrian: 6, // m, width of a pedestrian way (not a square), for its bollards
-  bollardSpacing: 1.5, // m between the bollards closing a pedestrian way or square, under the truck's width
+  bollardSpacing: 1.5, // m between the bollards closing a pedestrian square, under every Vehicle's width
+  gate: 1.9, // m clear between the middle two bollards of a pedestrian edge's bollard gate: over the Dreirad's width, under the van's
   barrier: 0.6, // m thick, the truck-only barrier across each edge exit, in from the map's edge by as much
   exitStep: 10, // m at least between the points an exit road takes from its way past the map's edge (osm.js exitRoad)
   // The paved area's open edges (sim/paved.js) get a low edge wall `wall` m thick; none where a building stands within
@@ -579,6 +631,10 @@ export const osm = {
     { id: 'K', name: 'Bottega del Rame', street: 'Via Cimarra', way: 202737280, at: 159, side: 'right' },
     { id: 'L', name: 'Tessuti Arcobaleno', street: 'Via Caprareccia', way: 113687408, at: 66, side: 'right' },
     { id: 'M', name: 'Pasticceria Nuvola', street: 'Via degli Zingari', way: 206908813, at: 57, side: 'right' },
+    // On pedestrian edges (#89): only the Dreirad gets through the bollard gates to them.
+    { id: 'S', name: 'Gelateria Tre Conchiglie', street: 'Piazza della Madonna dei Monti', way: 29702265, at: 28, side: 'right' },
+    { id: 'T', name: 'Erboristeria Riccio', street: 'Via dei Quattro Cantoni', way: 23328112, at: 12, side: 'right' },
+    { id: 'U', name: 'Merceria Ago Felice', street: 'Via Vittorino da Feltre', way: 24492032, at: 60, side: 'right' },
     // Petrol stations (`stations`): service spots on wide two-way streets, never an order's pickup or drop-off.
     { id: 'N', name: 'Carburanti Colibrì', street: 'Via Cavour', way: 232183086, at: 50, side: 'right' },
     { id: 'O', name: 'Distributore Girasole', street: 'Via Cavour', way: 232183088, at: 45, side: 'right' },

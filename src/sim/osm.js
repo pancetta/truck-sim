@@ -4,11 +4,13 @@
 // metres, x east and z south. The city is flat. `furniture` is public/maps/monti-furniture.json or a fixture's:
 // { nodes: [{ x, z, tags }] }.
 //   Drivable network: ways of a tables.osm.classes highway class, but no tunnels or areas, cut where they leave the
-//     bounds (an edge exit, closed by a gate) and split at every node they share into edges.
+//     bounds (an edge exit, closed by a gate, but not on a pedestrian way) and split at every node they share into edges.
+//     Pedestrian ways are pedestrian edges (#89): the graph keeps them off its junctions (graph.js), and each has a
+//     bollard gate where it leaves the road, whose gap only narrow Vehicles fit through.
 //   Edge exits (`exits`): each one's gate, a barrier the truck stops at (kind 'barrier') that opens for AI cars, and
 //     its exit road on past the map's edge into the haze, where AI cars that leave drive on (see exitRoad).
-//   Pedestrian ways and squares: not drivable, closed by bollards where the road and its pavements meet them; the map
-//     keeps them as `pedestrian` { lines, squares } for the renderer to pave.
+//   Pedestrian ways and squares: squares are no edges, closed by bollards where the road and its pavements meet them;
+//     the map keeps both as `pedestrian` { lines, squares } for the renderer to pave.
 //   Buildings: closed building ways, cut back where they reach into a road or its pavement.
 //   Edge walls: along the paved area's open edges (paved.js), solid (kind 'wall'), so the truck keeps to the paving.
 //   Lights: on every approach to a junction where two named streets of tables.osm.lightClasses cross.
@@ -48,6 +50,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   const runs = [];
   for (const w of drivable) {
     let run = null;
+    const exit = w.tags.highway !== 'pedestrian'; // a pedestrian way just ends at the map's edge, where a wall stands
     w.points.forEach(([x, z], k) => {
       if (k === 0) return;
       const a = { key: w.nodes[k - 1], x: w.points[k - 1][0], z: w.points[k - 1][1] };
@@ -55,7 +58,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       const clip = clipSegment(a, b, bounds);
       if (!clip) return void (run = null);
       // An edge exit, with the way's points on past it.
-      const at = (t, end) => ({ key: `exit ${w.id}.${k}.${end}`, x: a.x + t * (b.x - a.x), z: a.z + t * (b.z - a.z), exit: true, outside: end ? w.points.slice(k) : w.points.slice(0, k).reverse() });
+      const at = (t, end) => ({ key: `exit ${w.id}.${k}.${end}`, x: a.x + t * (b.x - a.x), z: a.z + t * (b.z - a.z), exit, outside: end ? w.points.slice(k) : w.points.slice(0, k).reverse() });
       if (clip[0] > 0 || !run) runs.push((run = { way: w, points: [clip[0] > 0 ? at(clip[0], 0) : a] }));
       run.points.push(clip[1] < 1 ? at(clip[1], 1) : b);
       if (clip[1] < 1) run = null;
@@ -84,15 +87,16 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       if (k === 0 || (k < points.length - 1 && uses.get(p.key) < 2)) return;
       const piece = points.slice(start, k + 1);
       if (way.tags.oneway === '-1') piece.reverse(); // drawn against the way it runs
-      edges.push({ from: node(piece[0]), to: node(piece.at(-1)), way: way.id, class: way.tags.highway, width, laneOffset: lane, limit, name: way.tags.name ?? '', oneWay, points: piece.map(({ x, z }) => ({ x, z })) });
+      edges.push({ from: node(piece[0]), to: node(piece.at(-1)), way: way.id, class: way.tags.highway, width, laneOffset: lane, limit, name: way.tags.name ?? '', oneWay, pedestrian: way.tags.highway === 'pedestrian', points: piece.map(({ x, z }) => ({ x, z })) });
       start = k;
     });
   }
   const graph = createGraph(nodes, edges, tables.traffic.laneOffset, cell);
 
-  // Each node's arms: the edge, the way out along it (unit u) and whether traffic may come in along it.
+  // Each node's arms: the edge, the way out along it (unit u) and whether traffic may come in along it. As in the graph,
+  // a pedestrian edge is none.
   const arms = nodes.map(() => []);
-  for (const e of edges) {
+  for (const e of edges.filter((e) => !e.pedestrian)) {
     for (const end of [0, 1]) {
       const n = end ? e.to : e.from;
       const s = end ? Math.max(0, e.length - 5) : Math.min(5, e.length);
@@ -171,24 +175,26 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     }
   });
 
-  // The road and its pavements: per edge segment, a box that far either side of it and past its ends. Buildings are cut
-  // back out of them; bollards stand on their outer edge where it meets a pedestrian way or square.
+  // The road and its pavements, and the pedestrian edges: per edge segment, a box that far either side of it (a
+  // pedestrian edge has no pavements) and past its ends, as { box, road, edge }. Buildings are cut back out of them; bollards
+  // stand on a road's outer edge where it meets a pedestrian square.
   const corridors = [];
   const corridorCells = createCells(cell);
   for (const e of edges) {
-    const c = e.width / 2 + o.pavement;
+    const c = e.width / 2 + (e.pedestrian ? 0 : o.pavement);
     for (let k = 1; k < e.points.length; k++) {
       const [a, b] = [e.points[k - 1], e.points[k]];
       const l = Math.hypot(b.x - a.x, b.z - a.z);
       if (l < 1e-6) continue;
       const u = [(b.x - a.x) / l, (b.z - a.z) / l];
-      const box = rect({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }, u, l / 2 + c, c);
-      corridors.push(box);
-      const { minX, minZ, maxX, maxZ } = outline(box);
-      corridorCells.add(box, minX, minZ, maxX, maxZ);
+      const corridor = { box: rect({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }, u, l / 2 + c, c), road: !e.pedestrian, edge: e };
+      corridors.push(corridor);
+      const { minX, minZ, maxX, maxZ } = outline(corridor.box);
+      corridorCells.add(corridor, minX, minZ, maxX, maxZ);
     }
   }
-  const inCorridor = (x, z) => corridorCells.some(x, z, x, z, (box) => insideConvex(box, x, z));
+  // Whether (x, z) lies in a corridor; with `road`, in a road's.
+  const inCorridor = (x, z, road = false) => corridorCells.some(x, z, x, z, (c) => (c.road || !road) && insideConvex(c.box, x, z));
 
   // Edge exits: a gate across the road and its pavements, its own thickness in from the map's edge, and the exit road
   // on past the map's edge, a car's length longer than the haze reaches (as traffic.js has it). `u` points into the map,
@@ -203,27 +209,64 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     exits.push({ node: n, gate, u: a.u, edge: a.e, road: exitRoad(nd, outside[n], bounds, haze, o.exitStep) });
   }
 
-  // Bollards every tables.osm.bollardSpacing m along the corridors' outer edge where it lies in a pedestrian square or
-  // within half a pedestrian way's width of its line.
+  // Pedestrian ways and squares, and the bollards that close them off from the road.
   const pedestrian = data.ways.filter((w) => w.tags.highway === 'pedestrian');
   const squares = pedestrian.filter((w) => w.tags.area === 'yes').map((w) => w.points.map(([x, z]) => ({ x, z })));
   const lines = pedestrian.filter((w) => w.tags.area !== 'yes');
-  const nearLine = (x, z) =>
-    lines.some((w) => w.points.some((p, k) => k > 0 && segmentDistance(x, z, w.points[k - 1], p) < o.pedestrian / 2));
+  const inSquare = (x, z) => squares.some((ring) => inside(x, z, ring));
   const bollards = [];
-  for (const box of corridors) {
+  const crowded = (x, z) => bollards.some((q) => Math.hypot(q.x - x, q.z - z) < o.bollardSpacing * 0.6);
+  const size = tables.city.props;
+  // Bollard gates (#89): across each pedestrian edge where it leaves the road, just past where all of it is out of the
+  // roads' corridors, a bollard either side of a tables.osm.gate m gap down its middle and more every bollardSpacing m out
+  // to its sides, and on across a pedestrian square there; only a Vehicle narrower than the gap gets through. `zone`:
+  // per pedestrian edge, the m along it between its gates (from an end with no road, all the way), which the fence below
+  // closes off; an edge that never leaves the roads' corridors runs along their pavements and has none.
+  const zone = new Map();
+  for (const e of edges.filter((e) => e.pedestrian)) {
+    const range = [0, e.length];
+    [e.from, e.to].forEach((end, k) => {
+      if (!nodes[end].arms.length) return; // no road there
+      range[k] = k ? 0 : e.length;
+      const half = e.width / 2;
+      for (let d = 0; d < e.length; d += 0.25) {
+        const s = k ? e.length - d : d;
+        const [p, q] = [graph.pointAt(e, s), graph.pointAt(e, k ? Math.max(0, s - 0.5) : Math.min(e.length, s + 0.5))];
+        const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+        const [ux, uz] = [(q.x - p.x) / l, (q.z - p.z) / l]; // along the edge, away from the road
+        const at = (across, on = 0) => ({ x: p.x + ux * on - uz * across, z: p.z + uz * on + ux * across });
+        if ([-1, -0.5, 0, 0.5, 1].some((f) => inCorridor(at(f * half).x, at(f * half).z, true))) continue;
+        for (let across = (o.gate + size.bollard) / 2; ; across += o.bollardSpacing) {
+          const sides = [at(across, size.bollard / 2), at(-across, size.bollard / 2)].filter((b) => across <= half || (inSquare(b.x, b.z) && !inCorridor(b.x, b.z, true)));
+          if (!sides.length) break;
+          for (const b of sides) if (!crowded(b.x, b.z)) bollards.push(b);
+        }
+        range[k] = s;
+        break;
+      }
+    });
+    zone.set(e, range);
+  }
+  // Whether (x, z) lies in a pedestrian edge's corridor between its gates (`inside` true), or on the road's side of one.
+  const inZone = (x, z, inside = true) =>
+    corridorCells.some(x, z, x, z, (c) => {
+      if (c.road || !insideConvex(c.box, x, z)) return false;
+      const { s } = graph.project(c.edge, x, z);
+      return (s >= zone.get(c.edge)[0] && s <= zone.get(c.edge)[1]) === inside;
+    });
+  // The fence: bollards every tables.osm.bollardSpacing m along the roads' corridors' outer edge where it lies in a
+  // pedestrian edge's zone, or in a pedestrian square but not on the road's side of a gate (whose gap it would close),
+  // and in no other road's corridor.
+  for (const { box } of corridors.filter((c) => c.road)) {
     box.forEach((a, k) => {
       const b = box[(k + 1) % 4];
       const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
       for (let s = 0; s < l; s += o.bollardSpacing) {
         const [x, z] = [a[0] + ((b[0] - a[0]) * s) / l, a[1] + ((b[1] - a[1]) * s) / l];
-        if (inCorridor(x, z) || bollards.some((q) => Math.hypot(q.x - x, q.z - z) < o.bollardSpacing * 0.6)) continue;
-        if (!squares.some((ring) => inside(x, z, ring)) && !nearLine(x, z)) continue;
-        bollards.push({ x, z });
+        if (!inCorridor(x, z, true) && !crowded(x, z) && (inZone(x, z) || (inSquare(x, z) && !inZone(x, z, false)))) bollards.push({ x, z });
       }
     });
   }
-  const size = tables.city.props;
   for (const p of bollards) colliders.push({ kind: 'bollard', ...outline(rect(p, [1, 0], size.bollard / 2, size.bollard / 2)) });
 
   // The street furniture where OSM puts it, unless that reaches into the road.
@@ -245,7 +288,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
     let pieces = [w.points.slice(0, -1)];
     const { minX, minZ, maxX, maxZ } = outline(pieces[0]);
     const near = new Set(); // a box is filed under every cell it spans
-    corridorCells.some(minX, minZ, maxX, maxZ, (box) => void near.add(box));
+    corridorCells.some(minX, minZ, maxX, maxZ, (c) => void near.add(c.box));
     for (const box of near) pieces = pieces.flatMap((p) => subtract(p, box));
     for (const p of pieces) {
       if (Math.abs(area2(p)) / 2 < o.minArea) continue;
@@ -259,7 +302,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
   // the truck keeps to the paving and meets nothing it can't see.
   const toXZ = (w) => w.points.map(([x, z]) => ({ x, z }));
   const pedestrianWays = { lines: lines.map(toXZ), squares };
-  const paved = [...roadPieces(graph).map((p) => p.ring), ...pavementPieces(graph, o.pavement), ...pedestrianPieces(pedestrianWays, o.pedestrian)];
+  const paved = [...roadPieces(graph).map((p) => p.ring), ...pavementPieces(graph, o.pavement), ...pedestrianPieces(pedestrianWays, o.classes.pedestrian.width)];
   const closers = colliders.filter((c) => c.kind === 'building' || c.kind === 'barrier');
   // None across an exit road where cars that leave drive on: from half a car in from the barrier's map-side face along
   // the road's first stretch, as wide as the road. Past the barrier, which is wider, the truck can't get; before it,

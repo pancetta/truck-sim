@@ -14,8 +14,8 @@ const viewCos = Math.cos(tables.traffic.spawnView);
 // draws them), negative on it. By brute force, so it doesn't share the code it checks.
 function roadOf({ nodes, edges }) {
   const pieces = [
-    ...edges.flatMap((e) => e.points.slice(1).map((b, k) => ({ a: e.points[k], b, r: e.width / 2 }))),
-    ...nodes.map((n) => ({ a: n, b: n, r: Math.max(...n.arms.map((id) => edges[id].width / 2)) })),
+    ...edges.filter((e) => !e.pedestrian).flatMap((e) => e.points.slice(1).map((b, k) => ({ a: e.points[k], b, r: e.width / 2 }))),
+    ...nodes.filter((n) => n.arms.length).map((n) => ({ a: n, b: n, r: Math.max(...n.arms.map((id) => edges[id].width / 2)) })),
   ];
   return (x, z) => {
     let d = Infinity;
@@ -72,7 +72,7 @@ describe('pavement lines', () => {
 
   test('on Monti the lines cover most of both sides of the streets, in the map, clear of the road, buildings, barriers and docks', () => {
     const map = monti();
-    const sides = map.graph.edges.reduce((s, e) => s + 2 * e.length, 0);
+    const sides = map.graph.edges.filter((e) => !e.pedestrian).reduce((s, e) => s + 2 * e.length, 0);
     expect(map.pavements.reduce((s, l) => s + l.length, 0)).toBeGreaterThan(0.85 * sides);
     const solid = map.colliders.filter((c) => ['building', 'barrier', 'dock'].includes(c.kind));
     const offRoad = roadOf(map.graph);

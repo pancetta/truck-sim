@@ -48,23 +48,24 @@ const ribbon = (points, half) => [
 
 // The road as convex pieces ({ ring, points, round }, `points` the ring as { x, z }): a box per edge segment, a
 // centimetre past its ends so the pieces of a bend overlap, a disc on each of its points, and a disc on each node as
-// wide as its widest arm, which closes the junction and rounds its corners.
+// wide as its widest arm, which closes the junction and rounds its corners. Pedestrian edges are no road: they are paved
+// as pedestrian ways (pedestrianPieces).
 export function roadPieces(graph) {
   const pieces = [];
-  for (const e of graph.edges) {
+  for (const e of graph.edges.filter((e) => !e.pedestrian)) {
     e.points.slice(1).forEach((p, k) => {
       const ring = strip(e.points[k], p, -e.width / 2, e.width / 2, 0.01);
       if (ring) pieces.push({ ring, round: false });
     });
     for (const p of e.points.slice(1, -1)) pieces.push({ ring: disc(p, e.width / 2), round: true });
   }
-  for (const n of graph.nodes) pieces.push({ ring: disc(n, Math.max(...n.arms.map((id) => graph.edges[id].width / 2))), round: true });
+  for (const n of graph.nodes.filter((n) => n.arms.length)) pieces.push({ ring: disc(n, Math.max(...n.arms.map((id) => graph.edges[id].width / 2))), round: true });
   return pieces.map((piece) => ({ points: xz(piece.ring), ...piece }));
 }
 
 // The pavements as convex rings: `width` m wide strips along both sides of every edge, a square cap as far past each end
 // (a junction's corners or a dead end's), and at a bend the wedge its strips leave open. They overlap the road, and
-// reach as far as osm.js cuts the buildings back.
+// reach as far as osm.js cuts the buildings back. A pedestrian edge has none.
 export function pavementPieces(graph, width) {
   const pieces = [];
   // The box across the road and its pavements from b to `c` m on past it, away from a.
@@ -72,7 +73,7 @@ export function pavementPieces(graph, width) {
     const l = Math.hypot(b.x - a.x, b.z - a.z);
     return l < 1e-6 ? null : strip(b, { x: b.x + ((b.x - a.x) / l) * c, z: b.z + ((b.z - a.z) / l) * c }, -c, c);
   };
-  for (const e of graph.edges) {
+  for (const e of graph.edges.filter((e) => !e.pedestrian)) {
     const [half, points] = [e.width / 2, e.points];
     points.slice(1).forEach((p, k) => pieces.push(strip(points[k], p, half, half + width), strip(points[k], p, -half - width, -half)));
     pieces.push(cap(points[1], points[0], half + width), cap(points.at(-2), points.at(-1), half + width));

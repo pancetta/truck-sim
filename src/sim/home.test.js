@@ -118,8 +118,9 @@ describe('Monti: home', () => {
   test('every spot reaches it and it reaches every spot; a new game starts in its zone, clear of everything', () => {
     expect(home.id).toBe(tables.osm.home);
     for (const o of map.spots.filter((o) => o !== home)) {
-      expect(map.graph.route(o.pose, home.pose), `${o.id} → home`).toBeTruthy();
-      expect(map.graph.route(home.pose, o.pose), `home → ${o.id}`).toBeTruthy();
+      const walk = o.pose.edge.pedestrian; // only the Dreirad gets there
+      expect(map.graph.route(o.pose, home.pose, 0, null, walk), `${o.id} → home`).toBeTruthy();
+      expect(map.graph.route(home.pose, o.pose, 0, null, walk), `home → ${o.id}`).toBeTruthy();
     }
     expect(map.start).toEqual(home.lane);
     const sim = createSim(tables, map, seeded(1));

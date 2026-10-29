@@ -99,10 +99,10 @@ describe('Monti roads and pavements (#65)', () => {
       if (under && Math.min(...under.map((a, k) => segment(x, z, a, under[(k + 1) % under.length]))) > 0.01) covered++;
     }
     expect(covered).toBe(0);
-    // Every lane, sampled every 2 m, is off the paving.
+    // Every lane, sampled every 2 m, is off the paving; a pedestrian edge's lies on it.
     const pavedAt = index([...tops, ...flush].map((ring) => ring.map(([x, z]) => ({ x, z }))));
     let lanePoints = 0;
-    for (const { points } of map.graph.edges.flatMap((e) => e.lanes)) {
+    for (const { points } of map.graph.edges.filter((e) => !e.pedestrian).flatMap((e) => e.lanes)) {
       points.slice(1).forEach((b, k) => {
         const a = points[k];
         const steps = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 2);

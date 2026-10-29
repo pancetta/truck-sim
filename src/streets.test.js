@@ -104,8 +104,11 @@ describe('Streets on the Monti map', () => {
     const [binMesh] = scene.children.filter((o) => o.userData.matrices?.length === bins.length);
     const ys = binMesh.userData.matrices.map((m) => m[13]);
     const placed = [...pots.map((p) => ['pot', p]), ...bins.map((b, i) => ['bin', { x: (b.minX + b.maxX) / 2, y: ys[i], z: (b.minZ + b.maxZ) / 2 }])];
+    const roads = monti.graph.edges.filter((e) => !e.pedestrian);
     for (const [kind, { x, y, z }] of placed) {
-      const onPavement = kerb(x, z, 0, 0)[0] <= tables.osm.pavement;
+      // A pedestrian edge is flush (#89): only a road has raised pavements.
+      const p = roads.map((e) => monti.graph.project(e, x, z)).reduce((a, b) => (b.d < a.d ? b : a));
+      const onPavement = p.d - p.edge.width / 2 <= tables.osm.pavement;
       expect(y, `${kind} at ${x}, ${z}`).toBe(onPavement ? height : 0);
     }
     expect(ys.filter((y) => y === height).length).toBeGreaterThan(0);

@@ -23,7 +23,7 @@ export const strings = {
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
   payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Sorgfalts-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag' }, // state.lastPayment line labels
-  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour' },
+  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour', pedestrian: 'Fußgängerzone' },
   // What is special about an offer of each type, on its line in the orders panel.
   offerTags: {
     normal: 'Hinfahren, abladen, fertig',
@@ -34,6 +34,7 @@ export const strings = {
     express: 'Knappe Zeit, dafür mehr Lohn',
     oversized: 'Zu breit für Gassen: Route nur über breite Straßen',
     round: 'Mehrere Entladestellen nacheinander, jede zahlt ihren Teil',
+    pedestrian: 'Nur mit dem Dreirad: zwischen den Pollern hindurch',
   },
   // Cargo kinds (tables.orders.kinds): the name and meter in the goal banner while one is loaded, and the twist at the
   // end of an offer's tag line (fragile has its own offer type, which says it).
@@ -63,7 +64,7 @@ export const strings = {
   upgrades: { motor: 'Motor', brakes: 'Bremsen', tyres: 'Reifen', suspension: 'Fahrwerk', cargoBed: 'Ladefläche', tank: 'Tank' },
   effects: { motor: 'Drehmoment', brakes: 'Bremskraft', tyres: 'Lenkung bei Tempo', suspension: 'Seitenneigung', cargoBed: 'Ladung bis', tank: 'Tankinhalt' },
   // The Vehicles (tables.fleet) by id, and the Werkstatt's words for them.
-  fleet: { truck: 'Lkw', van: 'Transporter' },
+  fleet: { truck: 'Lkw', van: 'Transporter', dreirad: 'Dreirad' },
   fahrzeuge: 'Fahrzeuge',
   choose: 'Fahren',
   current: 'Im Einsatz',

@@ -202,8 +202,9 @@ describe('Monti: petrol stations', () => {
     expect(stations.map((s) => s.id)).toEqual(tables.osm.stations);
     for (const s of stations) {
       for (const o of map.spots.filter((o) => !o.station)) {
-        expect(map.graph.route(o.pose, s.pose), `${o.id} → ${s.id}`).toBeTruthy();
-        expect(map.graph.route(s.pose, o.pose), `${s.id} → ${o.id}`).toBeTruthy();
+        const walk = o.pose.edge.pedestrian; // only the Dreirad gets there
+        expect(map.graph.route(o.pose, s.pose, 0, null, walk), `${o.id} → ${s.id}`).toBeTruthy();
+        expect(map.graph.route(s.pose, o.pose, 0, null, walk), `${s.id} → ${o.id}`).toBeTruthy();
       }
     }
     const islands = map.colliders.filter((c) => c.kind === 'station');

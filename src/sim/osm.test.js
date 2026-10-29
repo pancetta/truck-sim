@@ -20,28 +20,45 @@ const segment = (x, z, a, b) => {
   return Math.hypot(a.x + t * dx - x, a.z + t * dz - z);
 };
 
-// Full gas from (x, z) on `heading` until the truck stops against something (or 20 s pass); returns the truck.
-function driveFrom(map, x, z, heading) {
-  const sim = createSim(tables, map);
+// Full gas from (x, z) on `heading` until the truck (or Vehicle `id`) stops against something (or 20 s pass); returns
+// the Sim's state.
+function driveFrom(map, x, z, heading, id = 'truck') {
+  const sim = createSim(tables, map, Math.random, { ...freshProfile(), vehicle: id, vehicles: { truck: {}, [id]: {} } });
   Object.assign(sim.state.truck, { x, z, heading, speed: 0 });
   for (let t = 0; t < 20 && !sim.state.collision; t += 1 / 60) sim.step(1 / 60, GAS);
   return sim.state;
 }
 
 describe('OSM map: drivable network', () => {
-  test('pedestrian and tunnel ways are no road, and bollards close the pedestrian way where it meets the road', () => {
+  test('tunnels are no road; a pedestrian way is a pedestrian edge, off the junctions and the AI cars\' lanes', () => {
     const map = build(
       way('residential', [[-50, 0], [0, 0], [50, 0]]),
       way('pedestrian', [[0, 0], [0, 50]]),
       way('service', [[0, 0], [0, -50]], { tunnel: 'building_passage' }),
     );
-    expect(map.graph.edges.map((e) => e.class)).toEqual(['residential']);
-    // Heading 0 faces +z: up the pedestrian way, which bollards close at the pavement's outer edge.
+    expect(map.graph.edges.map((e) => [e.class, e.pedestrian])).toEqual([['residential', false], ['residential', false], ['pedestrian', true]]);
+    const node = map.graph.nodes.find((n) => n.x === 0 && n.z === 0);
+    expect([node.arms.length, node.walks.length]).toEqual([2, 1]); // no junction: two arms, and the pedestrian edge
+    expect(map.graph.paths.filter((p) => p.kind === 'run' && p.edge.pedestrian)).toEqual([]);
+  });
+
+  test('a bollard gate closes the pedestrian edge where it leaves the road: the Dreirad gets through its gap, the van and truck don\'t', () => {
+    const map = build(way('residential', [[-50, 0], [0, 0], [50, 0]]), way('pedestrian', [[0, 0], [0, 50]]));
+    // Heading 0 faces +z: up the pedestrian way, whose gate stands just past the pavement's outer edge.
     const kerb = classes.residential.width / 2 + pavement;
-    const state = driveFrom(map, 0, 0, 0);
-    expect(state.collision).toBe(true);
-    expect(state.truck.z + tables.fleet.truck.length / 2).toBeLessThan(kerb);
-    expect(state.truck.z + tables.fleet.truck.length / 2).toBeGreaterThan(kerb - 1);
+    const gate = map.colliders.filter((c) => c.kind === 'bollard').map((c) => (c.minX + c.maxX) / 2).sort((a, b) => a - b);
+    const inner = gate.filter((x) => Math.abs(x) < 1.5);
+    expect(inner).toHaveLength(2);
+    expect(inner[1] - inner[0] - tables.city.props.bollard).toBeCloseTo(tables.osm.gate);
+    for (const id of ['truck', 'van']) {
+      const state = driveFrom(map, 0, 0, 0, id);
+      expect(state.collision, id).toBe(true);
+      expect(state.truck.z + tables.fleet[id].length / 2, id).toBeLessThan(kerb + 0.01);
+      expect(state.truck.z + tables.fleet[id].length / 2, id).toBeGreaterThan(kerb - 1);
+    }
+    const state = driveFrom(map, 0, 0, 0, 'dreirad');
+    expect(state.truck.z).toBeGreaterThan(40); // on up to the end of the pedestrian way
+    expect(state.speedLimit).toBe(classes.pedestrian.limit);
   });
 
   test('bollards close a pedestrian square along the road it borders, and nowhere on the road', () => {
@@ -166,7 +183,7 @@ describe('OSM map: lights and signs', () => {
   });
 
   test('the speed limit is the class limit of the edge the truck is on', () => {
-    for (const [highway, { limit }] of Object.entries(classes)) {
+    for (const [highway, { limit }] of Object.entries(classes).filter(([highway]) => highway !== 'pedestrian')) { // a bollard gate test has that
       const sim = createSim(tables, build(way(highway, [[-50, 0], [50, 0]])));
       sim.step(1 / 60, GAS);
       expect([highway, sim.state.speedLimit]).toEqual([highway, limit]);
@@ -363,23 +380,22 @@ describe('OSM map: the paved area (#94)', () => {
     );
     // No wall across the pedestrian way's mouth (bollards close it), but along its sides.
     expect(walls(map).filter((c) => c.maxX > -2 && c.minX < 2 && c.minZ > 0 && c.minZ < 20)).toEqual([]);
-    expect(length(walls(map).filter((c) => c.minX > tables.osm.pedestrian / 2 - 1e-6 && c.maxX < 4 && c.minZ > kerb - 0.05))).toBeGreaterThan(40);
+    expect(length(walls(map).filter((c) => c.minX > tables.osm.classes.pedestrian.width / 2 - 1e-6 && c.maxX < 4 && c.minZ > kerb - 0.05))).toBeGreaterThan(40);
     expect(length(walls(map).filter((c) => c.minX > bounds.maxX - 1e-6))).toBeCloseTo(40, 1);
   });
 
-  test("on the real extract the truck can't leave the paving, and reaches every spot zone and dock bay", () => {
-    const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
-    const map = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
-    // A flood of probes from the start: grid points every `step` m with nothing solid within `r` m, 8-connected. A gap
-    // the truck fits through leaves a band of such points over 1 m wide, so the probes find every way it could take.
-    // shortcut: it also passes gaps from 2 r wide, which the truck can't, so a find needs a look before a fix.
-    const [step, r] = [0.5, 0.75];
+  // A flood of probes from the start on the real extract: grid points every `step` m with nothing solid within `r` m,
+  // 8-connected; returns { reached, at (whether a point { x, z } was) }. A gap a Vehicle fits through leaves a band of
+  // such points over 1 m wide, so the probes find every way it could take.
+  // shortcut: they also pass gaps from 2 r wide, which it may not, so a find needs a look before a fix.
+  const step = 0.5;
+  const key = (i, j) => `${i},${j}`;
+  function flood(map, r) {
     const solids = createCells(tables.city.cell);
     for (const c of map.colliders) solids.add(c, c.minX, c.minZ, c.maxX, c.maxZ);
     const near = (x, z, { points }) => inside(x, z, points) || points.some((a, i) => segment(x, z, a, points[(i + 1) % points.length]) < r);
     const { minX, minZ, maxX, maxZ } = map.bounds;
     const free = (x, z) => x - r > minX && x + r < maxX && z - r > minZ && z + r < maxZ && !solids.some(x - r, z - r, x + r, z + r, (c) => near(x, z, c));
-    const key = (i, j) => `${i},${j}`;
     const [i0, j0] = [Math.round(map.start.x / step), Math.round(map.start.z / step)];
     const reached = new Set([key(i0, j0)]);
     const queue = [[i0, j0]];
@@ -392,9 +408,17 @@ describe('OSM map: the paved area (#94)', () => {
         queue.push([i + di, j + dj]);
       }
     }
+    return { reached, at: ({ x, z }) => reached.has(key(Math.round(x / step), Math.round(z / step))) };
+  }
+
+  test("on the real extract the truck can't leave the paving, and reaches every spot zone and dock bay", () => {
+    const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
+    const map = buildOsmMap(read(tables.osm.file), tables, read(tables.osm.furniture));
+    const r = 0.75;
+    const { reached, at } = flood(map, r);
     expect(reached.size).toBeGreaterThan(100000);
 
-    const rings = [...roadPieces(map.graph).map((p) => p.ring), ...pavementPieces(map.graph, pavement), ...pedestrianPieces(map.pedestrian, tables.osm.pedestrian)];
+    const rings = [...roadPieces(map.graph).map((p) => p.ring), ...pavementPieces(map.graph, pavement), ...pedestrianPieces(map.pedestrian, classes.pedestrian.width)];
     const paving = createCells(tables.city.cell);
     for (const ring of rings) {
       const [xs, zs] = [ring.map((p) => p[0]), ring.map((p) => p[1])];
@@ -410,13 +434,22 @@ describe('OSM map: the paved area (#94)', () => {
     }
     expect(offPaving).toEqual([]);
 
-    const at = ({ x, z }) => reached.has(key(Math.round(x / step), Math.round(z / step)));
     for (const s of map.spots) expect(at(s.lane), s.id).toBe(true);
     for (const { id, bay } of map.spots.filter((s) => s.bay)) {
       const docked = { x: bay.x + (Math.sin(bay.heading) * tables.fleet.truck.length) / 2, z: bay.z + (Math.cos(bay.heading) * tables.fleet.truck.length) / 2 };
       expect(at(docked), id).toBe(true);
     }
   }, 30_000); // builds Monti and floods it: over 5 s on a loaded CI runner
+
+  test('on the real extract the spots on pedestrian edges are closed off from anything as wide as the van', () => {
+    // Probes 1 m round pass gaps from 2 m, under the van's width: any way in for the van, the truck or wider, they take.
+    expect(tables.fleet.van.width).toBeGreaterThan(2);
+    const map = monti();
+    const { at } = flood(map, 1);
+    expect(at(map.start)).toBe(true);
+    const walks = map.spots.filter((s) => s.pose.edge.pedestrian);
+    expect(walks.map((s) => [s.id, at(s.lane)])).toEqual(walks.map((s) => [s.id, false]));
+  }, 30_000);
 });
 
 describe('OSM map: reset to road', () => {
@@ -708,7 +741,7 @@ describe('OSM map: the real Monti extract', () => {
         const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.5);
         for (let k = 0; k <= n; k++) {
           const [x, z] = [a.x + ((b.x - a.x) * k) / n, a.z + ((b.z - a.z) * k) / n];
-          for (const e of near) for (let j = 1; j < e.points.length; j++) if (segment(x, z, e.points[j - 1], e.points[j]) < e.width / 2 + pavement - 0.01) into.push({ x, z, edge: e.id });
+          for (const e of near) for (let j = 1; j < e.points.length; j++) if (segment(x, z, e.points[j - 1], e.points[j]) < e.width / 2 + (e.pedestrian ? 0 : pavement) - 0.01) into.push({ x, z, edge: e.id });
         }
       });
     }
@@ -717,13 +750,32 @@ describe('OSM map: the real Monti extract', () => {
     expect(onRoad).toEqual([]);
   });
 
-  test('places every spot of the spot table on its street, each reachable from every other by the legal routes', () => {
+  test('places every spot of the spot table on its street, each reachable from every other by the legal routes, those on pedestrian edges only by the Dreirad\'s', () => {
     expect(map.spots.map((s) => s.id)).toEqual(tables.osm.spots.map((s) => s.id));
     expect(map.spots.filter((s) => s.dock).map((s) => s.id)).toEqual(tables.osm.docks);
+    expect(map.spots.filter((s) => s.pose.edge.pedestrian).length).toBeGreaterThanOrEqual(3);
     for (const s of map.spots) {
       expect(s.street).toBe(tables.osm.spots.find((t) => t.id === s.id).street);
       if (!s.dock) expect(s.pose.edge.name).toBe(s.street); // a dock's zone may be down a lane off it
-      for (const to of map.spots) if (to !== s) expect(map.graph.route(s.pose, to.pose), `${s.id} → ${to.id}`).not.toBe(null);
+      for (const to of map.spots.filter((to) => to !== s)) {
+        const walk = s.pose.edge.pedestrian || to.pose.edge.pedestrian;
+        expect(map.graph.route(s.pose, to.pose, 0, null, walk), `${s.id} → ${to.id}`).not.toBe(null);
+        if (to.pose.edge.pedestrian) expect(map.graph.route(s.pose, to.pose), `${s.id} → ${to.id} by truck`).toBe(null);
+      }
+      // From a pedestrian edge's mouth the truck's route leaves it by the road's end, never on through the bollard gate.
+      if (s.pose.edge.pedestrian) {
+        const e = s.pose.edge;
+        for (const end of [e.from, e.to].filter((n) => map.graph.nodes[n].arms.length)) {
+          const mouth = { ...s.pose, s: end === e.from ? 1 : e.length - 1 };
+          for (const to of map.spots.filter((to) => !to.pose.edge.pedestrian)) {
+            const middle = map.graph.route(mouth, to.pose).points.filter((p) => {
+              const q = map.graph.project(e, p.x, p.z);
+              return q.d < 0.01 && q.s > 1.5 && q.s < e.length - 1.5;
+            });
+            expect(middle, `${s.id} → ${to.id}`).toEqual([]);
+          }
+        }
+      }
     }
     expect(map.start).toMatchObject({ x: expect.any(Number), z: expect.any(Number), heading: expect.any(Number) });
   });
@@ -731,9 +783,10 @@ describe('OSM map: the real Monti extract', () => {
   test('puts most of OSM\'s street furniture in, and none of it reaching into a road', () => {
     const props = map.colliders.filter((c) => ['tree', 'bollard', 'fountain', 'bin'].includes(c.kind));
     expect(props.length).toBeGreaterThan(0.8 * read(tables.osm.furniture).nodes.length);
+    // A pedestrian edge's bollards stand on it, and props there are left out (the Dreirad drives there).
     const onRoad = ({ minX, maxX, minZ, maxZ }) => {
       const [x, z] = [(minX + maxX) / 2, (minZ + maxZ) / 2];
-      return map.graph.edges.some((e) => e.points.some((b, k) => k && segment(x, z, e.points[k - 1], b) <= e.width / 2 + (maxX - minX) / 2));
+      return map.graph.edges.some((e) => !e.pedestrian && e.points.some((b, k) => k && segment(x, z, e.points[k - 1], b) <= e.width / 2 + (maxX - minX) / 2));
     };
     expect(props.filter(onRoad)).toEqual([]);
   });

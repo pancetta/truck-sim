@@ -33,13 +33,13 @@ export function roadSurface(pieces, y) {
 // `pieces`. Returns `tops`, rings of [x, z] counter-clockwise seen from above (they overlap where strips meet, and draw
 // alike there), and their outline's `kerbs`, the sides along the road, and `backs`, the sides on open ground, each
 // { a, b, out } with `out` the unit normal away from the pavement; sides inside another top are neither. Also `flush`,
-// the pedestrian ways (`tables.osm.pedestrian` m wide) and squares less the road, paved level with it: OSM's squares
+// the pedestrian ways (`tables.osm.classes.pedestrian` wide) and squares less the road, paved level with it: OSM's squares
 // stop short of our pavements, and raised they left a trench of bare ground between the two.
 export function osmPavements(map, pieces, tables) {
-  const { pavement: width, pedestrian } = tables.osm;
+  const { pavement: width, classes } = tables.osm;
   const { cell } = tables.city;
   const sources = pavementPieces(map.graph, width);
-  const squares = pedestrianPieces(map.pedestrian, pedestrian);
+  const squares = pedestrianPieces(map.pedestrian, classes.pedestrian.width);
 
   const roads = createCells(cell);
   for (const piece of pieces) roads.add(piece, ...bounds(piece.ring));

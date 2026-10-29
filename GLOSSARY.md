@@ -70,7 +70,8 @@ _Avoid_: active offer, job
 
 **Order type**:
 The kind of delivery: normal ("Normal"), heavy ("Schwerlast"), fragile ("Zerbrechlich"), dock ("Rampe"), fragile dock,
-**Express**, **Oversized** or **Round** ("Tour"). Each comes from its **Tier** on.
+**Express**, **Oversized**, **Round** ("Tour") or pedestrian ("Fußgängerzone": to or from a **Spot** on a
+**Pedestrian edge**, only in the **Dreirad**). Each comes from its **Tier** on.
 
 **Express**:
 An **Order type** with a shorter **Expected time** and higher pay, for a share of **Offers**.
@@ -160,6 +161,11 @@ _Avoid_: car (that is an **AI car**), fleet member
 **Transporter**:
 A **Vehicle**: a high-roof van, quicker and lighter than the truck, carrying smaller loads.
 _Avoid_: Van (in the UI), Sprinter (a brand)
+
+**Dreirad**:
+A **Vehicle**: a small three-wheeler with a cab up front and a box behind, light, slow and nimble, carrying light loads;
+the only one narrow enough for a **Bollard gate**, so it alone reaches the **Spots** on **Pedestrian edges**.
+_Avoid_: three-wheeler (in the UI), any brand name
 
 **Werkstatt**:
 The garage at **Home** where the player buys and switches **Vehicles** and buys **Upgrades** and **Visuals**; open only
@@ -316,6 +322,17 @@ _Avoid_: network, navmesh
 A stretch of street between two **Junctions**, dead ends or **Edge exits**, with one **Road class**, name and width.
 _Avoid_: segment, way (OpenStreetMap's word for its raw data)
 
+**Pedestrian edge**:
+An **Edge** along a pedestrian street, with a low **Speed limit**: no **AI car** ever takes it, it makes no **Junction**
+where it meets the road, and a **Bollard gate** closes it there. Routes follow it only for the **Dreirad**.
+_Avoid_: pedestrian zone (in code), footpath
+
+**Bollard gate**:
+The row of bollards across a **Pedestrian edge** where it leaves the road, with one gap down its middle that only the
+**Dreirad** fits through; plain solid bollards, no rule. Along a road beside a **Pedestrian edge** or square, bollards
+stand closer than any **Vehicle**'s width.
+_Avoid_: barrier (that closes an **Edge exit**), gate (alone)
+
 **Lane**:
 One direction of travel along an **Edge**; a one-way **Edge** has one, a two-way **Edge** has two.
 
@@ -373,5 +390,7 @@ The **Spot** where a new game puts the truck, in its lane.
 - The **Restaurant** is a **Service spot**; it and the **Petrol stations** restore **Energy**.
 - A **Rule fine** needs a **Witness**; a **Fine** for a **Contact** the truck made does not.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.
+- A **Spot** on a **Pedestrian edge** only gets **Offers** in the **Dreirad**, of their own **Order type**
+  ("Fußgängerzone").
 - A **Pedestrian** walks one **Pavement line**; each side of an **Edge** belongs to at most one **Pavement line**.
 - A **Zebra crossing** joins the **Pavement lines** on its two kerbs; a **Pedestrian** on it is solid to the truck, and one the truck comes at steps back to a kerb, so it is never hurt and makes no **Contact**.

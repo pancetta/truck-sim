@@ -157,8 +157,9 @@ describe('Monti: the restaurant', () => {
     expect(restaurant.id).toBe(tables.osm.restaurant);
     expect(tables.osm.lightClasses).toContain(restaurant.pose.edge.class);
     for (const o of map.spots.filter((o) => o !== restaurant)) {
-      expect(map.graph.route(o.pose, restaurant.pose), `${o.id} → R`).toBeTruthy();
-      expect(map.graph.route(restaurant.pose, o.pose), `R → ${o.id}`).toBeTruthy();
+      const walk = o.pose.edge.pedestrian; // only the Dreirad gets there
+      expect(map.graph.route(o.pose, restaurant.pose, 0, null, walk), `${o.id} → R`).toBeTruthy();
+      expect(map.graph.route(restaurant.pose, o.pose, 0, null, walk), `R → ${o.id}`).toBeTruthy();
     }
     const [terrace, ...more] = map.colliders.filter((c) => c.kind === 'restaurant');
     expect(more).toEqual([]);

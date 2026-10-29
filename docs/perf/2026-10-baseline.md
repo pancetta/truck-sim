@@ -991,6 +991,17 @@ Up to two street events at a time (`tables.events.count`). A market or roadworks
 | base, cab (2 runs) | 16.7 / 16.7 | 2.8–2.9 / 2.88–3.11 | 0.10–0.12 | 2.7–2.8 / 2.74–2.94 | 150–164 / 583–605k | 322–351 ms |
 | #80, cab (2 runs) | 16.7 / 16.7–16.8 | 2.9 / 2.94–3.07 | 0.12 | 2.7–2.8 / 2.78–2.90 | 154–161 / 581–582k | 352–363 ms |
 
+## Dreirad (#89)
+
+Pedestrian ways are pedestrian edges now: paved as before, with bollard gates and the fence along the road where it meets them. The Dreirad is a third code-built body (vehicles.js) in the truck's group, hidden while another Vehicle is driven. Driving the truck, the draw calls went from 87 to 80 and the triangles from 321k to 325k. The map build is about 35 ms quicker, most likely because the fence no longer measures every sample against every pedestrian line.
+
+**How measured:** production builds of `ba439ba` (main, with #83 Rounds) and this change before its rebase onto it, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), cab view, the truck, the overlay's 1,200 frames 55 s after it first showed, alternating main, this change, main, this change, load average 2.4–7.1 (7.1 at the start of the first #89 run). Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.7 | 2.0–3.0 / 1.99–3.01 | 0.12–0.14 | 1.8–2.9 / 1.84–2.83 | 87 / 321k | 297–298 ms |
+| #89, cab (2 runs) | 16.7 / 16.7–16.8 | 2.1–3.1 / 2.19–3.04 | 0.11–0.12 | 1.9–2.9 / 2.04–2.88 | 80 / 325k | 259–264 ms |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.
