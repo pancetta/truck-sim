@@ -1,0 +1,53 @@
+src/sim/surprises.test.js
+  s_6d942683dd01c0::t_52877b3b542307 80
+src/sim/sim.js
+  s_6d942683dd01c0::t_dee07a6b4826ce 812
+  s_6d942683dd01c0::t_47318d4d0ae86c 359-360
+  s_6d942683dd01c0::t_65e6bf8a9c8251 177,764,778-779,804,810-811,816-817,819-824,1164
+  s_6d942683dd01c0::t_42c4f75f8b8332 66-67,789,815,818,829,838,1205-1206,1211,1226-1228,1237
+  s_6d942683dd01c0::t_80f0237023eeda 790-794
+  s_6d942683dd01c0::t_040201536efd23 798-803,805-809,813-814,1232
+  s_6d942683dd01c0::t_3644ca2f8a9888 68-69,765
+src/sim/graph.test.js
+  s_6d942683dd01c0::t_bef6eb89c65698 78-88,90-97
+  s_6d942683dd01c0::t_c7ee9cc01601fa 89
+  s_6d942683dd01c0::t_5ba74cbb0364e9 98-104,109-110
+  s_6d942683dd01c0::t_8b07aa3cab588e 105-108
+src/tables.js
+  s_6d942683dd01c0::t_040201536efd23 190-192
+src/sim/lorry.test.js
+  s_6d942683dd01c0::t_52877b3b542307 35,37
+  s_6d942683dd01c0::t_12183fdc3ab598 36
+src/sim/events.test.js
+  s_6d942683dd01c0::t_52877b3b542307 82-83,85-86,89,101
+src/sim/graph.js
+  s_6d942683dd01c0::t_02daa4cd203b4f 159-173,180-181
+  s_6d942683dd01c0::t_b63aa8a1f707f1 126-128,151-152,154-158,174-177,179,182-190,192-194,196-211,219,230-231
+  s_6d942683dd01c0::t_c5f952c7f1d0be 153,178,191,195,236-243
+  s_6d942683dd01c0::t_b7fb9db9176fd4 244
+src/sim/orders.test.js
+  s_6d942683dd01c0::t_20477b685b7c98 75
+  s_6d942683dd01c0::t_8c3c42bf6ba029 199-212,745,778,783-788,827-837
+  s_6d942683dd01c0::t_47318d4d0ae86c 213-225
+  s_6d942683dd01c0::t_5ba74cbb0364e9 789,809
+  s_6d942683dd01c0::t_bbff33a8cab7dd 806-808
+  s_6d942683dd01c0::t_12183fdc3ab598 32-33,35,37-45,746-747,790-805,810-825
+  s_6d942683dd01c0::t_1c912720e5ed70 70-73
+  s_6d942683dd01c0::t_275fa3489bf11e 826
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4981e7564fdd220c80e0fa13a676240ab889208b",
+  "prompts": {},
+  "sessions": {
+    "s_6d942683dd01c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b119a626-f847-47ea-a54d-5541bb059e34",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
