@@ -1,0 +1,69 @@
+src/sim/traffic.js
+  s_b9aa36dc04bfdc::t_53f6c3e7383d99 59,220,626,791-792,794-798,801-802,924,946-947,1081,1135,1175-1177,1179
+src/sim/trailer.test.js
+  s_b9aa36dc04bfdc::t_a9aaf0a78064de 225-226,228-234,236
+  s_b9aa36dc04bfdc::t_c03147acc74730 1-3,5-91,116-144,150-151,153-161,163-166,170-172,174-188,190-191,194-195,197-224,227,235,237-275
+  s_b9aa36dc04bfdc::t_45ed4d4f03d7ae 92-115
+  s_b9aa36dc04bfdc::t_1890e5da4d666d 145-149,152,162,167-169,173,189,192-193
+  s_b9aa36dc04bfdc::t_f9b9a516c04557 196
+  s_b9aa36dc04bfdc::t_3307617896fb30 4
+src/minimap.js
+  s_b9aa36dc04bfdc::t_60b687fa16ecd2 146,165-166,171-183
+src/sim/sim.test.js
+  s_b9aa36dc04bfdc::t_89cd51c0b62ba8 302
+src/trailerModel.js
+  s_b9aa36dc04bfdc::t_ea1ff2f1fbc8e3 1-11,13-26,32,34,36,39-75
+  s_b9aa36dc04bfdc::t_11f7eb07a985a5 12,27-31,33,35,37-38
+src/blend.js
+  s_b9aa36dc04bfdc::t_dd338b52b81f32 3,6-7,13,26,28-29
+src/sim/soak.test.js
+  s_b9aa36dc04bfdc::t_c5a1ba2587528b 5,114-117,128,131,147-149,164,172,180,186,188-196,217,232,241-242,245,288-290,292
+  s_b9aa36dc04bfdc::t_d1791c577ee874 291
+  s_b9aa36dc04bfdc::t_b47fd15e2d5cd6 234
+src/werkstatt.js
+  s_b9aa36dc04bfdc::t_c3f50e70ea595e 2,102-119,142-144
+docs/perf/2026-10-baseline.md
+  s_b9aa36dc04bfdc::t_7fe6167cf37b2a 1016-1026
+src/save.js
+  s_b9aa36dc04bfdc::t_ae78b026ea974d 28-29,46,48,57,85
+src/sim/sim.js
+  s_b9aa36dc04bfdc::t_89cd51c0b62ba8 1175
+  s_b9aa36dc04bfdc::t_11f7eb07a985a5 1045,1346,1350-1351
+  s_b9aa36dc04bfdc::t_7956b0f3174ec5 1347-1349,1352-1356
+  s_b9aa36dc04bfdc::t_46f55af6ff4087 15,21-22,26,40,106-107,138-139,162,164-165,180,297-298,303,308,310-312,314-316,320-324,490,535-537,541-542,547-549,551,596-597,604,907-908,913-915,917-927,931-932,934,937-938,1021-1044,1046-1050,1083-1085,1119-1120,1131-1133,1288,1292,1295-1296,1320-1322,1324,1332,1341-1342,1357-1394,1396-1397,1401-1402,1404,1408-1411,1413,1432-1433,1441
+src/save.test.js
+  s_b9aa36dc04bfdc::t_69eff44343f67e 27,42,44,47-51,55,79-82,95-97,114-125,128
+  s_b9aa36dc04bfdc::t_42eb92e1e8a299 174,196
+  s_b9aa36dc04bfdc::t_89cd51c0b62ba8 160
+src/renderer.js
+  s_b9aa36dc04bfdc::t_c75a91231108d6 13,803,843-850,999-1011,1074,1076-1078,1082,1088-1091,1179-1182,1184,1186
+src/tables.js
+  s_b9aa36dc04bfdc::t_c75a91231108d6 358-359,371-372,919-921
+  s_b9aa36dc04bfdc::t_6eac5ba013256f 351-357,360-370,373-374
+src/hud.js
+  s_b9aa36dc04bfdc::t_c3f50e70ea595e 48,75,93,121
+  s_b9aa36dc04bfdc::t_dd338b52b81f32 4
+src/strings.js
+  s_b9aa36dc04bfdc::t_c3f50e70ea595e 165-174,186-187
+GLOSSARY.md
+  s_b9aa36dc04bfdc::t_60b687fa16ecd2 217-223
+  s_b9aa36dc04bfdc::t_a13f872122509d 213-214
+src/style.css
+  s_b9aa36dc04bfdc::t_c3f50e70ea595e 614-615,645-646,665-666
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a5204ae1e181a71fd54a2ad71bf0f7f82b23c34",
+  "prompts": {},
+  "sessions": {
+    "s_b9aa36dc04bfdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7bfb97c5-6fa8-44d4-9790-bfd2181cf49e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
