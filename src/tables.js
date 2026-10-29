@@ -552,15 +552,15 @@ export const events = {
   garbage: { top: 30, accel: 1.2 },
 };
 
-// Surprises (#85, sim.js): at most one per order, drawn from their own seeded random (`seed`) when it is accepted: a
+// Surprises (#85, sim.js): at most one per order, drawn from their own random (`seed`, plus the time played) when it is accepted: a
 // street on the route ahead closes (a market or roadworks, see events) at `closed`, or the Client changes the drop-off at
 // `dropoff`. It comes `after` s (least, most) into the drive to the last drop-off; where none fits then, it tries again
 // every `retry` s until the truck is there. The closed street starts `ahead` m or more from the truck by straight line.
 // On Monti only about one route in three has a street that can close (with a way round it past the one-ways), so
 // `closed` is drawn three times as often as it comes: about one order in ten each.
-// The new drop-off is a place like the old one (a dock for a dock, wide enough for an oversized load) at most
-// `detour` m farther by road; the extra distance is paid at orders.payPerKm (the "Umweg" pay line) and added to the
-// expected times at orders.referenceSpeed.
+// The new drop-off is a place like the old one (a dock for a dock, one a wide route leads to for an oversized load) at
+// most `detour` m farther by road; the extra distance is paid at orders.payPerKm (the "Umweg" pay line) and added to the
+// expected times at orders.referenceSpeed (an express order's shortened by orders.express.time).
 export const surprises = {
   seed: 85,
   closed: 0.3,

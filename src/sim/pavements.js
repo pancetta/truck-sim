@@ -157,7 +157,7 @@ function tidy(points) {
 }
 
 // m from (x, z) to the segment from a to b ({ x, z }).
-function segmentDistance(x, z, a, b) {
+export function segmentDistance(x, z, a, b) {
   const [dx, dz] = [b.x - a.x, b.z - a.z];
   const l2 = dx * dx + dz * dz;
   const t = l2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / l2)) : 0;

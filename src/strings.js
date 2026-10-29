@@ -24,7 +24,7 @@ export const strings = {
   paid: 'Bezahlt',
   payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Sorgfalts-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag', umweg: 'Umweg' }, // state.lastPayment line labels
   // The surprise notice (state.lastSurprise): a street closed ahead (then its name), or the Client's call (then the new place and the Umweg pay).
-  surprises: { closed: 'Straße voraus gesperrt', newRoute: 'neue Route', dropoff: 'Anruf vom Kunden: bitte nach' },
+  surprises: { closed: 'Voraus gesperrt', newRoute: 'neue Route', dropoff: 'Anruf vom Kunden: bitte nach' },
   offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour', pedestrian: 'Fußgängerzone' },
   // What is special about an offer of each type, on its line in the orders panel.
   offerTags: {

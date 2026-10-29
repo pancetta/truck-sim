@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as base from '../tables.js';
 import { way, build, withSpots, createSim, drive, timeUntil, seeded, IDLE } from './fixtures.js';
+import { freshProfile } from './sim.js';
 
 // Surprises on the way (#85): a street closing on the route ahead, the Client changing the drop-off, their chances.
 
@@ -16,13 +17,17 @@ const quiet = (surprises) => ({
 
 // A ladder: two residential streets 80 m apart (north at z -40, south at z 40) from x -80 to 80, joined at the ends and
 // by a middle rung M along x 0. A is on the north street 10 m west of the rung, B and C on the south one, 10 and 50 m
-// west of it: A to B is 100 m by M, A to C 140 m.
-function ladder(t) {
+// west of it: A to B is 100 m by M, A to C 140 m. With `stub`, D is on a residential dead end south of the street, 30 m west of the rung, that
+// only a service lane (4 m) leads to: no oversized load reaches it.
+function ladder(t, stub = false) {
   const north = way('residential', [[-80, -40], [0, -40], [80, -40]], { name: 'Nord' });
-  const south = way('residential', [[-80, 40], [0, 40], [80, 40]], { name: 'Süd' });
+  const south = way('residential', [[-80, 40], [-30, 40], [0, 40], [80, 40]], { name: 'Süd' }); // -30: where the stub joins
   const rung = way('residential', [[0, -40], [0, 40]], { name: 'Mitte' });
   const ways = [north, south, way('residential', [[-80, -40], [-80, 40]]), way('residential', [[80, -40], [80, 40]]), rung];
+  const end = way('residential', [[-30, 60], [-30, 95]], { name: 'Sackgasse' });
+  if (stub) ways.push(way('service', [[-30, 40], [-30, 60]]), end);
   const spots = [
+    ...(stub ? [{ id: 'D', name: 'Sackgasse', street: 'Sackgasse', way: end.id, at: 20, side: 'right' }] : []),
     { id: 'A', name: 'Nord', street: 'Nord', way: north.id, at: 70, side: 'right' },
     { id: 'B', name: 'Süd', street: 'Süd', way: south.id, at: 70, side: 'right' },
     { id: 'C', name: 'Süd West', street: 'Süd', way: south.id, at: 30, side: 'right' },
@@ -98,6 +103,25 @@ describe('Sim: surprises on the way (#85)', () => {
     timeUntil(sim, IDLE, () => !sim.state.order, 5);
     expect(sim.state.lastPayment.lines).toContainEqual({ label: 'umweg', amount: umweg });
     expect(sim.state.lastPayment.stars).toContainEqual({ star: 'onTime', reasons: [] });
+  });
+
+  test("an oversized load's drop-off moves only to a place a wide route leads to", () => {
+    const t = quiet({ closed: 0, dropoff: 1 });
+    const { tables, map } = ladder({ ...t, orders: { ...t.orders, shares: { oversized: 1 } } }, true);
+    const moved = (profile) => {
+      const sim = createSim(tables, map, seeded(1), profile);
+      loadAtoB(sim, map);
+      timeUntil(sim, IDLE, () => sim.state.lastSurprise, 5);
+      return [sim.state.order.type, sim.state.order.dropoff];
+    };
+    const tiers = tables.rank.tiers;
+    // Below the oversized tier a normal order may go to D; from it, an oversized one only ever to C.
+    const seen = new Set();
+    for (let played = 0; played < 20; played++) seen.add(moved({ ...freshProfile(), timePlayed: played }).join());
+    expect(seen).toContain('normal,D');
+    const oversized = new Set();
+    for (let played = 0; played < 20; played++) oversized.add(moved({ ...freshProfile(), timePlayed: played, stars: tiers[tables.orders.types.oversized].stars }).join());
+    expect([...oversized]).toEqual(['oversized,C']);
   });
 
   test('surprises come at the table chances, at most one per order', () => {

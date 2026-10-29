@@ -5,6 +5,7 @@ import { createCells } from './cells.js';
 import { boxesOverlap, createTraffic } from './traffic.js';
 import { createPedestrians } from './pedestrians.js';
 import { createEvents } from './events.js';
+import { segmentDistance } from './pavements.js';
 import { clock as dayClock, fleet } from '../tables.js';
 
 const G = 9.81; // m/s²
@@ -1064,9 +1065,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Surprises (tables.surprises), from their own seeded random, so the offers' draws stay as they were: at most one per
-  // order, drawn as it is accepted ({ kind: 'closed' or 'dropoff', wait (s until it is due) }), or null.
+  // order, drawn as it is accepted ({ kind: 'closed' or 'dropoff', wait (s until it is due) }), or null. Seeded on from
+  // the time played too, so a session goes on with other surprises than the last one began with.
   const sp = tables.surprises;
-  const chance = seeded(sp.seed);
+  const chance = seeded(sp.seed + Math.floor(profile.timePlayed));
   function drawSurprise() {
     const u = chance();
     const wait = sp.after[0] + (sp.after[1] - sp.after[0]) * chance();
@@ -1091,14 +1093,17 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // anew round it.
   function closeAhead(here) {
     const far = (p) => Math.hypot(p.x - truck.x, p.z - truck.z) >= sp.ahead;
-    const onRoute = (e) => e !== here.edge && [0, e.length].every((s) => far(map.graph.pointAt(e, s))) && nearLine(state.route, map.graph.pointAt(e, e.length / 2));
+    const route = state.route;
+    const onLine = ({ x, z }) => route.some((b, i) => i && segmentDistance(x, z, route[i - 1], b) < 0.5);
+    const onRoute = (e) => e !== here.edge && [0, e.length].every((s) => far(map.graph.pointAt(e, s))) && onLine(map.graph.pointAt(e, e.length / 2));
     const x = events?.closeWhere(onRoute);
     return x && { kind: 'closed', street: map.graph.edges[x.edge].name };
   }
 
-  // Moves the last drop-off to another place like it (a dock for a dock, in a pedestrian street for one there, wide enough for an oversized load), farther
-  // from here by road but by at most `detour` m, at random. The drop pays for the extra way (its `umweg`), and it is
-  // added to the drop's and the order's distance and, at reference speed, their expected times.
+  // Moves the last drop-off to another place like it (a dock for a dock, in a pedestrian street for one there; for an
+  // oversized load, one a wide route leads to from the pickup, as for its offer), farther from here by road but by at
+  // most `detour` m, at random. The drop pays for the extra way (its `umweg`), and it is added to the drop's and the
+  // order's distance and, at reference speed (an express order's shortened, as its offer's), their expected times.
   function changeDropoff(here) {
     const order = state.order;
     const drop = order.drops.at(-1);
@@ -1109,12 +1114,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const now = way(old);
     const taken = [order.pickup, ...order.drops.map((d) => d.spot)];
     const options = map.spots
-      .filter((s) => !s.station && !s.restaurant && !s.home && !taken.includes(s.id) && !s.dock === !old.dock && !s.pose.edge.pedestrian === !old.pose.edge.pedestrian && s.pose.edge.width >= width)
+      .filter((s) => !s.station && !s.restaurant && !s.home && !taken.includes(s.id) && !s.dock === !old.dock && !s.pose.edge.pedestrian === !old.pose.edge.pedestrian)
+      .filter((s) => !width || map.graph.route(spot(order.pickup).pose, s.pose, width, closed))
       .map((s) => ({ s, extra: way(s) - now }))
       .filter(({ extra }) => extra > 0 && extra <= sp.detour);
     if (!options.length) return null;
     const { s, extra } = options[Math.floor(chance() * options.length)];
-    const time = extra / o.referenceSpeed;
+    const time = (extra / o.referenceSpeed) * (order.type === 'express' ? o.express.time : 1);
     Object.assign(drop, { spot: s.id, distance: drop.distance + extra, expectedTime: drop.expectedTime + time, umweg: Math.round((o.payPerKm * extra) / 1000) });
     Object.assign(order, { dropoff: s.id, distance: order.distance + extra, expectedTime: order.expectedTime + time });
     return { kind: 'dropoff', spot: s.id, umweg: drop.umweg };
@@ -1257,14 +1263,3 @@ export function inside(x, z, points) {
   return odd;
 }
 
-// Whether point p lies within half a metre of the polyline `line`.
-function nearLine(line, p) {
-  return line.some((b, i) => {
-    const a = line[i - 1];
-    if (!a) return false;
-    const [dx, dz] = [b.x - a.x, b.z - a.z];
-    const l2 = dx * dx + dz * dz;
-    const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / l2)) : 0;
-    return Math.hypot(a.x + t * dx - p.x, a.z + t * dz - p.z) < 0.5;
-  });
-}
