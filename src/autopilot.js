@@ -3,7 +3,8 @@
 // `loop` false it drives from the first stop to the last and no further. Pure pursuit in the right-hand lane (a one-way's middle); when stuck it jumps on along the
 // way. Ported from the investigation's scratch autopilot; since #33 it also waits behind an AI car in its path, as it
 // ignores right of way and otherwise rammed one car over and over at 50 km/h traffic. When street events (#80) close
-// or open an edge, it finds its way again round the closed ones.
+// or open an edge, it finds its way again round the closed ones: the loop all over, a leg that doesn't loop from where
+// the truck is to its last stop.
 export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loop = true) {
   const { spacing, dodge, radius, cruiseSpeed, turnSpeed, steerGain, stuckTime, waitTime } = tables.perf;
   const vehicle = tables.fleet[sim.state.profile.vehicle]; // the one it drives (a switch needs a new autopilot)
@@ -26,10 +27,13 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   let path;
   let lanes;
   let shut; // the closed edges `path` goes round, as a key
-  function plan() {
+  // shortcut: a leg that doesn't loop plans anew straight to its last stop, past any between; fine for the two-stop legs
+  // the economy run and the tests drive.
+  function plan(from) {
     const { closed } = sim.state;
     shut = [...closed].join();
-    const legs = corners.slice(0, loop ? corners.length : -1).flatMap((c, i) => map.graph.route(c, corners[(i + 1) % corners.length], 0, closed).points);
+    const stops = from ? [from, corners.at(-1)] : corners;
+    const legs = stops.slice(0, loop ? stops.length : -1).flatMap((c, i) => map.graph.route(c, stops[(i + 1) % stops.length], 0, closed).points);
     path = resample(radius ? rounded(legs, radius, laneAt) : legs, spacing);
     if (loop && Math.hypot(path[0].x - path.at(-1).x, path[0].z - path.at(-1).z) < spacing / 2) path.pop(); // the loop closes
     lanes = path.map(({ x, z }) => laneAt(x, z));
@@ -70,7 +74,7 @@ export function createAutopilot(sim, map, tables, stops = tables.perf.spots, loo
   function update(dt) {
     const t = sim.state.truck;
     if ([...sim.state.closed].join() !== shut) {
-      plan();
+      plan(loop ? null : map.graph.nearest(t.x, t.z));
       idx = 0;
     }
     // Advance along the path to the nearest point ahead.
