@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { facadeParts } from './buildings.js';
 import assetInfo from './assetInfo.json';
 
-// Where lanterns hang: { x, z, angle }, (x, z) on the wall, turned by `angle` about y so the model's +z points out
+// Where lanterns hang: { x, y, z, angle }, (x, z) on the wall, y the ground's height there, turned by `angle` about y so the model's +z points out
 // over the road. On the street sides of the planned buildings (buildings.js), halfway between two windows, the one
 // nearest to each point `spacing` m apart along the street (counted from the map's origin, so the rhythm runs on from
 // building to building); `clear` m clear of a speed sign.
@@ -32,7 +32,7 @@ export function lanternMounts(map, plan, { spacing, clear }, bay, reach) {
       if (!gaps.length) break;
       const [, gx, gz] = gaps.reduce((a, g) => (Math.abs(g[0] - (k + 0.5) * spacing) < Math.abs(a[0] - (k + 0.5) * spacing) ? g : a));
       if (map.signs.some((c) => Math.hypot(c.x - gx, c.z - gz) < clear) || !roadAhead(map, gx, gz, nx, nz, reach)) continue;
-      mounts.push({ x: gx, z: gz, angle: Math.atan2(nx, nz) });
+      mounts.push({ x: gx, y: map.heightAt(gx, gz), z: gz, angle: Math.atan2(nx, nz) });
     }
   }
   return mounts;
@@ -63,7 +63,7 @@ export function facadeProps(map, plan, tables) {
           if (!pair.some((p) => map.signs.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1))) pots.push(...pair);
         } else if (boxed && part.cell.startsWith('glass') && ahead(part)) {
           // On the sill, whose top is 0.95 m under the window's middle; the glass is 1 cm out, the sill 28 cm deep.
-          boxes.push({ x: part.x + nx * 0.14, y: part.y - 0.95, z: part.z + nz * 0.14, angle });
+          boxes.push({ x: part.x + nx * 0.14, y: b.ground + part.y - 0.95, z: part.z + nz * 0.14, angle });
         }
       }
     }
@@ -188,7 +188,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
           levels[k].meshes.push(mesh);
         });
       });
-      addSet(mounts.map((m) => ({ ...m, y: lantern.height })), levels, 1.7);
+      addSet(mounts.map((m) => ({ ...m, y: m.y + lantern.height })), levels, 1.7);
     });
     const trees = Promise.all(tables.streets.trees.map(({ picture }) => loadTexture(`${picture}.ktx2`))).then((pictures) => addTrees(pictures));
     return Promise.all([lamps, trees]);
@@ -282,13 +282,13 @@ function roadAhead(map, x, z, nx, nz, reach) {
   return p.d - p.edge.width / 2 < reach && (p.x - x) * nx + (p.z - z) * nz > 0;
 }
 
-// Ground height at (x, z), off the road: the raised pavement within tables.osm.pavement m of a road's edge, else open
+// Ground height at (x, z), off the road, on the terrain: the raised pavement within tables.osm.pavement m of a road's edge, else open
 // ground (pedestrian paving, a pedestrian edge's too, is only 3 cm up).
 function groundAt(map, tables, x, z) {
   let p = map.graph.nearest(x, z);
   // A pedestrian edge is flush, but a road's pavement may still lie beside it under (x, z).
   if (p.edge.pedestrian) p = map.graph.edges.filter((e) => !e.pedestrian).map((e) => map.graph.project(e, x, z)).reduce((a, b) => (b.d < a.d ? b : a));
-  return p.d <= p.edge.width / 2 + tables.osm.pavement ? tables.streets.pavement.height : 0;
+  return map.heightAt(x, z) + (p.d <= p.edge.width / 2 + tables.osm.pavement ? tables.streets.pavement.height : 0);
 }
 
 const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place, as in renderer.js

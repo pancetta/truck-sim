@@ -22,6 +22,7 @@ import { createCells } from './sim/cells.js';
 import { inside, isNight } from './sim/sim.js';
 import assetInfo from './assetInfo.json';
 import { strings } from './strings.js';
+import { drape, onGround } from './drape.js';
 
 // CC0 models in public/models/, sky, ground and building textures in public/textures/ (see CREDITS.md); the textures are
 // KTX2 from `npm run assets`, transcoded by three's Basis transcoder in public/basis/.
@@ -253,9 +254,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return material;
   }
 
-  // Centred on the map, so it reaches under the skyline ring on every side.
+  // Centred on the map, so it reaches under the skyline ring on every side; on the terrain (drape.js), a little under it.
   const { bounds } = map;
-  const groundPlane = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
+  const fit = tables.ground.drape;
+  const flatGround = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
+  const groundPlane = drape(flatGround, map, fit.open, -fit.sink);
   const ground = new THREE.Mesh(worldUVs(groundPlane, tables.ground.open.repeat), groundMaterial(tables.ground.open));
   ground.receiveShadow = true;
   ground.renderOrder = 1; // last of the opaque meshes, so the depth test skips its texturing under roads and buildings
@@ -272,7 +275,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const pieces = roadPieces(map.graph);
   const exitPieces = roadPieces({ nodes: [], edges: map.exits.map((x) => ({ points: x.road, width: x.edge.width })) });
   const asphalt = new THREE.Mesh(
-    worldUVs(roadSurface([...pieces, ...exitPieces], roadHeight / 2), tables.ground.road.repeat),
+    worldUVs(drape(roadSurface([...pieces, ...exitPieces], roadHeight / 2), map, fit.road), tables.ground.road.repeat),
     Object.assign(groundMaterial(tables.ground.road), { polygonOffset: true, polygonOffsetUnits: 4 }),
   );
   asphalt.receiveShadow = true;
@@ -305,14 +308,14 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // (lanterns, pots and flower boxes; streets.js) is placed then too.
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
     const plan = planBuildings(map, tables);
-    Object.assign(buildingParts, buildingMeshes(plan, tables, cells, buildingMaterials));
+    Object.assign(buildingParts, buildingMeshes(plan, tables, cells, buildingMaterials, map));
     scene.add(...buildingParts.meshes);
     streets.dress(plan);
   }));
   // The skyline ring outside the map (skyline.js): the real buildings round it less the exit roads, two meshes, its
   // roofs in the buildings' roof material. Far off in the haze, so the first frame doesn't wait for it.
   const skylineMaterials = { walls: new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 }), roof: buildingMaterials.roof };
-  laterLoads.push(() => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials))));
+  laterLoads.push(() => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials, map))));
   // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
   // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
   const { pavement } = tables.streets;
@@ -320,26 +323,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
     const { top, stones } = pavementGeometry(osmPavements(map, [...pieces, ...exitPieces], tables), pavement, roadHeight / 2);
-    for (const mesh of [new THREE.Mesh(top, pavers), new THREE.Mesh(stones, kerbs)]) {
+    for (const mesh of [new THREE.Mesh(drape(top, map, fit.paving), pavers), new THREE.Mesh(drape(stones, map, fit.paving), kerbs)]) {
       mesh.receiveShadow = true;
       scene.add(mesh);
     }
   }));
-  // The edge walls along the paved area's open edges, plain boxes on their colliders (each a box turned any way).
-  const boxesOn = (kind, height, color) => {
-    const list = map.colliders.filter((c) => c.kind === kind);
-    if (!list.length) return; // WebGPU rejects an instanced mesh without instances
-    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), list.length);
-    mesh.castShadow = mesh.receiveShadow = true;
-    const m = new THREE.Matrix4();
-    list.forEach(({ points: [a, b, c] }, i) => {
-      const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-(b.z - a.z), b.x - a.x)); // local x along a→b
-      const size = new THREE.Vector3(Math.hypot(b.x - a.x, b.z - a.z), height, Math.hypot(c.x - b.x, c.z - b.z));
-      mesh.setMatrixAt(i, m.compose(new THREE.Vector3((a.x + c.x) / 2, height / 2, (a.z + c.z) / 2), turn, size));
-    });
-    scene.add(mesh);
-  };
-  boxesOn('wall', city.wallHeight, tables.streets.pavement.kerbColour);
+  // The edge walls along the paved area's open edges, plain boxes on their colliders (each a box turned any way, its
+  // local x along a→b).
+  const edgeWalls = map.colliders.filter((c) => c.kind === 'wall').map(({ points: [a, b, c] }) => {
+    const [x, z, length, width] = [(a.x + c.x) / 2, (a.z + c.z) / 2, Math.hypot(b.x - a.x, b.z - a.z), Math.hypot(c.x - b.x, c.z - b.z)];
+    return { minX: x - length / 2, maxX: x + length / 2, minZ: z - width / 2, maxZ: z + width / 2, angle: Math.atan2(-(b.z - a.z), b.x - a.x) };
+  });
+  const walls = addBoxes(tables.streets.pavement.kerbColour, edgeWalls, city.wallHeight);
+  if (walls) walls.castShadow = true;
 
   // Parked cars on their colliders, either way round: a generated car in one of the paints, or now and then a
   // covered car. Drawn with the AI cars (drawCars).
@@ -378,7 +374,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const half = edge.width / 2;
     const right = (along, out) => ({ x: gate.x + u[0] * along + u[1] * out, z: gate.z + u[1] * along - u[0] * out });
     const pivot = right(0, half);
-    return { ...gate, heading: Math.atan2(u[0], u[1]), half, right, pivot: new THREE.Vector3(pivot.x, city.barrierHeight - city.gate.boom / 2, pivot.z), lift: -1 };
+    return { ...gate, heading: Math.atan2(u[0], u[1]), half, right, pivot: new THREE.Vector3(pivot.x, map.heightAt(pivot.x, pivot.z) + city.barrierHeight - city.gate.boom / 2, pivot.z), lift: -1 };
   });
   const { pavement: walk, barrier } = tables.osm;
   // No block or sign on a road: two exits 2.8 m apart share their ground, and cars leaving by one would drive through the
@@ -545,7 +541,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const m = new THREE.Matrix4();
   map.lights.forEach((l, i) => {
     const [dc, dr] = [l.dx, l.dz];
-    m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(l.post.x, 0, l.post.z);
+    m.makeRotationY(Math.atan2(-dc, -dr)).setPosition(l.post.x, map.heightAt(l.post.x, l.post.z), l.post.z);
     signals.setMatrixAt(i, m);
     for (let k = 0; k < 3; k++) {
       lamps.setMatrixAt(i * 3 + k, m.clone().multiply(new THREE.Matrix4().makeTranslation(0, 4.3 - k * 0.45, 0.19)));
@@ -575,8 +571,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Lanterns and plants on the walls, and OSM's street furniture (streets.js).
   const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
   laterLoads.push(streets.load);
-  const people = createPeople(scene, tables, roadHeight / 2);
-  const riders = createRiders(scene, tables);
+  const people = createPeople(scene, tables, roadHeight / 2, map);
+  const riders = createRiders(scene, tables, map);
   const streetEvents = createStreetEvents(scene, map, tables);
 
   // The road signs as one batched mesh with one shader: three tests each placement against the view, so only what's
@@ -595,7 +591,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const id = batch.addGeometry(geometry);
       for (const p of list) {
         const i = batch.addInstance(id);
-        batch.setMatrixAt(i, m.compose(new THREE.Vector3(p.x, 0, p.z), q.setFromAxisAngle(up, p.angle), new THREE.Vector3(...p.size)));
+        batch.setMatrixAt(i, m.compose(new THREE.Vector3(p.x, map.heightAt(p.x, p.z), p.z), q.setFromAxisAngle(up, p.angle), new THREE.Vector3(...p.size)));
         batch.setColorAt(i, white);
       }
     }
@@ -696,21 +692,38 @@ export function createRenderer(canvas, tables, map, onProgress) {
     });
   }
 
-  // One instanced draw call per colour; boxes stand on the ground or `y` m up if they carry one, `height` tall unless
-  // they carry their own, and turned by their `angle` about their middle if they have one. None for no boxes (a map
+  // One instanced draw call per colour, returned; boxes stand on the ground or `y` m up if they carry one, `height`
+  // tall unless they carry their own, and turned by their `angle` about their middle if they have one. On the terrain
+  // each is laid onto the ground's plane under it (drape.js onGround): a marking (under 10 cm tall) goes up until it is
+  // nowhere under the ground, a box standing on it reaches down until it nowhere floats. None for no boxes (a map
   // without docks): WebGPU rejects an instanced mesh without instances.
   function addBoxes(color, boxes, height) {
     if (!boxes.length) return;
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color }), boxes.length);
     mesh.receiveShadow = true;
-    const m = new THREE.Matrix4();
+    const [m, shear] = [new THREE.Matrix4(), new THREE.Matrix4()];
     const size = new THREE.Vector3();
     boxes.forEach((b, i) => {
       const h = b.height ?? height;
-      m.makeRotationY(b.angle ?? 0).scale(size.set(b.maxX - b.minX, h, b.maxZ - b.minZ)).setPosition((b.minX + b.maxX) / 2, (b.y ?? 0) + h / 2, (b.minZ + b.maxZ) / 2);
-      mesh.setMatrixAt(i, m);
+      const [x, z, angle] = [(b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, b.angle ?? 0];
+      const [hx, hz] = [(b.maxX - b.minX) / 2, (b.maxZ - b.minZ) / 2];
+      const e = onGround(map, x, z, Math.hypot(hx, hz), shear).elements;
+      // How far the plane lies over the ground, every 2.5 m or less over the box's footprint.
+      const [cos, sin, nx, nz] = [Math.cos(angle), Math.sin(angle), Math.ceil(hx / 1.25), Math.ceil(hz / 1.25)];
+      const over = [];
+      for (let k = 0; k <= nx; k++) {
+        for (let j = 0; j <= nz; j++) {
+          const [s, t] = [hx * (2 * k / nx - 1), hz * (2 * j / nz - 1)];
+          const [px, pz] = [x + s * cos + t * sin, z - s * sin + t * cos];
+          over.push(e[1] * px + e[9] * pz + e[13] - map.heightAt(px, pz));
+        }
+      }
+      const [up, down] = h < 0.1 ? [Math.max(0, -Math.min(...over)), 0] : b.y ? [0, 0] : [0, fit.open + fit.sink + Math.max(0, ...over)];
+      m.makeRotationY(angle).scale(size.set(2 * hx, h + down, 2 * hz)).setPosition(x, (b.y ?? 0) + up + (h - down) / 2, z);
+      mesh.setMatrixAt(i, m.premultiply(shear));
     });
     scene.add(mesh);
+    return mesh;
   }
 
   // Active order's zone: a see-through column, one colour for the pickup and one for the drop-off,
@@ -998,15 +1011,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
     if (ratio && !frame.hidden) measureInset();
     lastFrame = now;
     const { x, z, heading, pitch, roll } = state.truck;
-    truck.position.set(x, 0, z);
-    // YXZ order: the heading, then the pitch and the roll about the truck's own axes. The city is drawn flat until #106.
+    const groundY = map.heightAt(x, z);
+    truck.position.set(x, groundY, z);
+    // YXZ order: the heading, then the pitch and the roll about the truck's own axes.
     truck.rotation.set(-pitch, heading, roll, 'YXZ');
     const vehicle = tables.fleet[state.profile.vehicle];
     if (shownVehicle !== state.profile.vehicle) showVehicle(state.profile.vehicle);
     const hitched = state.trailer;
     trailerBody.visible = !!hitched || warmUp;
     if (hitched) {
-      trailerBody.position.set(hitched.x, 0, hitched.z);
+      trailerBody.position.set(hitched.x, map.heightAt(hitched.x, hitched.z), hitched.z);
       trailerBody.rotation.set(-hitched.pitch, hitched.heading, hitched.roll, 'YXZ');
       trailerBody.updateMatrixWorld();
     }
@@ -1036,6 +1050,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const { zone } = map.spots.find((s) => s.id === (order.phase === 'pickup' ? order.pickup : order.dropoff));
       marker.position.x = (zone.minX + zone.maxX) / 2;
       marker.position.z = (zone.minZ + zone.maxZ) / 2;
+      marker.position.y = map.heightAt(marker.position.x, marker.position.z) + city.markerHeight / 2;
       marker.material.color.setHex(order.phase === 'pickup' ? palette.pickup : palette.dropoff);
     }
 
@@ -1069,8 +1084,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       // In front of the first building in the way, so no wall fills the picture; easing back out behind it.
       const room = Math.min(radius, canopyRoom(x, z, dx, dz), ...blocks.map((b) => rayToOutline(x, z, dx, dz, b.points) - wallGap));
       arm = Math.min(room, arm + armSpeed * dt);
-      camera.position.set(x + dx * arm, height, z + dz * arm);
-      camera.lookAt(x, lookHeight, z);
+      camera.position.set(x + dx * arm, groundY + height, z + dz * arm);
+      camera.lookAt(x, groundY + lookHeight, z);
     } else if (inCab) {
       // Truck-space points, so the camera follows anything that moves the truck.
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye).add(body.cab.interior.position)));
@@ -1087,8 +1102,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
       if (!wasChased) chaseArm = room;
       else chaseArm = room < chaseArm ? Math.max(room, chaseArm - cam.chasePullIn * dt) : Math.min(room, chaseArm + tables.showroom.armSpeed * dt);
       const height = cam.chaseHeight + higher + (reach - chaseArm) * cam.chaseRise;
-      camera.position.set(x + dx * chaseArm, height, z + dz * chaseArm);
-      camera.lookAt(x, cam.lookHeight, z);
+      camera.position.set(x + dx * chaseArm, groundY + height, z + dz * chaseArm);
+      camera.lookAt(x, groundY + cam.lookHeight, z);
     }
     drawingRear = rear || warmRear;
     if (drawingRear) {
@@ -1197,6 +1212,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const carMatrix = new THREE.Matrix4();
   const carPosition = new THREE.Vector3();
   const carTurn = new THREE.Quaternion();
+  const carEuler = new THREE.Euler();
   const up = new THREE.Vector3(0, 1, 0);
   const one = new THREE.Vector3(1, 1, 1);
   const frustum = new THREE.Frustum();
@@ -1237,12 +1253,15 @@ export function createRenderer(canvas, tables, map, onProgress) {
     warmCars = false;
   }
 
+  // On the ground, pitched with it over the car's length.
   function drawCar(kind, x, z, heading, paint, rear) {
-    carBounds.center.set(x, carSize.y / 2, z);
+    const y = map.heightAt(x, z);
+    carBounds.center.set(x, y + carSize.y / 2, z);
     if (!frustum.intersectsSphere(carBounds) && !(rear && rearFrustum.intersectsSphere(carBounds))) return;
     const { near, far, painted } = carKinds[kind];
     const meshes = Math.hypot(x - truck.position.x, z - truck.position.z) < tables.vehicles.near ? near : far;
-    carMatrix.compose(carPosition.set(x, 0, z), carTurn.setFromAxisAngle(up, heading), one);
+    const pitch = Math.atan(map.slopeAt(x, z, Math.sin(heading), Math.cos(heading), carSize.z / 2));
+    carMatrix.compose(carPosition.set(x, y, z), carTurn.setFromEuler(carEuler.set(-pitch, heading, 0, 'YXZ')), one);
     for (const mesh of meshes) mesh.setMatrixAt(mesh.count, carMatrix);
     if (painted) meshes[0].setColorAt(meshes[0].count, paint);
     for (const mesh of meshes) mesh.count++;

@@ -1493,8 +1493,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Sets `body`'s pitch from the ground under it, `length` m along it, and returns the roll the ground gives it,
-  // `width` m across (rising to its left leans it right), at most maxBank: streets are graded nearly flat across, and
-  // the 10 m height grid across one is the hillside's.
+  // `width` m across (rising to its left leans it right), at most maxBank.
   function tilt(body, length, width) {
     const [sin, cos] = [Math.sin(body.heading), Math.cos(body.heading)];
     body.pitch = Math.atan(ground.slopeAt(body.x, body.z, sin, cos, length / 2));

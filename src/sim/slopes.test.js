@@ -182,7 +182,7 @@ describe('Sim: Vehicles on slopes', () => {
     across.step(DT, IDLE);
     expect(across.state.truck.pitch).toBeCloseTo(0, 6);
     expect(across.state.truck.roll).toBeCloseTo(Math.atan(0.02), 3);
-    const hillside = on(0, { across: 0.2 });
+    const hillside = on(0, { across: 0.4 });
     hillside.step(DT, IDLE);
     expect(hillside.state.truck.roll).toBeCloseTo(tables.fleet.truck.maxBank, 6);
   });

@@ -444,7 +444,8 @@ The **Spot** where a new game puts the truck, in its lane.
 
 **Terrain**:
 The ground's height across a map, in m above sea level, from the map's height grid of real elevation data; a map
-without one is flat at 0. On **Monti** it runs from about 21 m by the Fori to about 53 m on the Esquiline.
+without one is flat at 0. On **Monti** it runs from about 21 m by the Fori to about 53 m on the Esquiline. The city
+is draped on it: the streets, pavements and everything on them follow it to within a few cm.
 _Avoid_: elevation model, DEM (the raw data it is resampled from), heightmap
 
 **Hill start** / **Hill hold**:

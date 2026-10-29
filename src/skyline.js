@@ -29,8 +29,9 @@ export function cutRing(items, pieces) {
 // meshes: `walls` from `base` to `top`, with the window picture (paintSkylineWindows) in one of the tints (on churches
 // and monuments, in stone and stretched into tall arches), and flat `roofs`, with a dome where OSM has one (`dome` its
 // height, or true for a half sphere). No normals (flat shading), no shadows either way, and drawn after the city, so
-// its depth test skips what the city hides. `materials` is { walls, roof }.
-export function ringMeshes(items, tables, materials) {
+// its depth test skips what the city hides. `materials` is { walls, roof }. Each stands on the lowest ground (`ground`, a
+// map's heightAt) under its outline, far enough off in the haze for the rest to sink unseen.
+export function ringMeshes(items, tables, materials, ground) {
   const t = tables.skyline;
   const random = seeded(t.seed);
   const repeat = tables.buildings.roof.repeat;
@@ -39,7 +40,9 @@ export function ringMeshes(items, tables, materials) {
   const colour = new THREE.Color();
   const white = new THREE.Color(1, 1, 1);
   const clockwise = (ring) => THREE.ShapeUtils.isClockWise(ring.map(([x, z]) => new THREE.Vector2(x, z)));
-  for (const b of items) {
+  for (const item of items) {
+    const lift = Math.min(...item.r.map(([x, z]) => ground.heightAt(x, z)));
+    const b = { ...item, base: item.base + lift, top: item.top + lift };
     colour.setHex(b.stone ? t.stone : t.tints[Math.floor(random() * t.tints.length)]).multiplyScalar(t.brightness[0] + random() * (t.brightness[1] - t.brightness[0]));
     // The outline clockwise and the courtyards not, so the walls face out of the building, as in buildings.js.
     const outer = clockwise(b.r) ? b.r : b.r.toReversed();

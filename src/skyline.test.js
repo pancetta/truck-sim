@@ -4,6 +4,8 @@ import { Vector3 } from 'three/webgpu';
 import * as tables from './tables.js';
 import { ringMeshes, cutRing } from './skyline.js';
 
+const flat = { heightAt: () => 0 };
+
 describe('ringMeshes', () => {
   // Each triangle of a mesh as its three corners.
   const triangles = ({ geometry }) => {
@@ -17,7 +19,7 @@ describe('ringMeshes', () => {
     const square = [[0, 0], [20, 0], [20, 20], [0, 20]];
     const yard = [[7, 7], [13, 7], [13, 13], [7, 13]];
     for (const r of [square, square.toReversed()]) {
-      const [walls, roof] = ringMeshes([{ r, h: [yard], top: 15, base: 4 }], tables, { walls: null, roof: null });
+      const [walls, roof] = ringMeshes([{ r, h: [yard], top: 15, base: 4 }], tables, { walls: null, roof: null }, flat);
       const wallTriangles = triangles(walls);
       expect(wallTriangles).toHaveLength(16);
       for (const t of wallTriangles) {
@@ -42,7 +44,7 @@ describe('ringMeshes', () => {
       expect(r.some(([x, z]) => x > bounds.minX && x < bounds.maxX && z > bounds.minZ && z < bounds.maxZ)).toBe(false); // the map has its own
       expect(Math.min(...r.map(([x, z]) => outside(x, z)))).toBeLessThan(tables.camera.fog[1]);
     }
-    const meshes = ringMeshes(items, tables, { walls: null, roof: null });
+    const meshes = ringMeshes(items, tables, { walls: null, roof: null }, flat);
     expect(meshes).toHaveLength(2);
     expect(meshes.reduce((n, { geometry }) => n + geometry.index.count / 3, 0)).toBeLessThan(100000);
   });

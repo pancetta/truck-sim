@@ -63,7 +63,7 @@ describe('Streets on the Monti map', () => {
   });
 
   // The street sides' facade parts, by 10 m square, and those within a few metres of (x, z).
-  const parts = montiPlan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables)));
+  const parts = montiPlan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables).map((p) => ({ ...p, ground: b.ground }))));
   const square = (x, z) => `${Math.floor(x / 10)},${Math.floor(z / 10)}`;
   const bySquare = Map.groupBy(parts, (p) => square(p.x, p.z));
   const near = (x, z) => [-10, 0, 10].flatMap((dx) => [-10, 0, 10].flatMap((dz) => bySquare.get(square(x + dx, z + dz)) ?? []));
@@ -90,10 +90,10 @@ describe('Streets on the Monti map', () => {
     const isSill = (s) => s.cell === 'plain' && s.size[0] === 1.6 && s.size[2] === 0.28;
     expect(boxes.length).toBeGreaterThan(0);
     expect(boxes.length).toBeLessThan(parts.filter(isSill).length / 2);
-    for (const { x, y, z } of boxes) expect(near(x, z).some((s) => isSill(s) && Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
+    for (const { x, y, z } of boxes) expect(near(x, z).some((s) => isSill(s) && Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.ground + s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
   });
 
-  it('stands pots and props on the pavement where they are on it, and on the ground elsewhere', () => {
+  it('stands pots and props on the pavement where they are on it, and on the ground elsewhere, on the terrain', () => {
     const { pots } = facadeProps(monti, montiPlan, tables);
     expect(pots.length).toBeGreaterThan(50);
     const { height } = tables.streets.pavement;
@@ -109,8 +109,8 @@ describe('Streets on the Monti map', () => {
       // A pedestrian edge is flush (#89): only a road has raised pavements.
       const p = roads.map((e) => monti.graph.project(e, x, z)).reduce((a, b) => (b.d < a.d ? b : a));
       const onPavement = p.d - p.edge.width / 2 <= tables.osm.pavement;
-      expect(y, `${kind} at ${x}, ${z}`).toBe(onPavement ? height : 0);
+      expect(y - monti.heightAt(x, z), `${kind} at ${x}, ${z}`).toBeCloseTo(onPavement ? height : 0, 9);
     }
-    expect(ys.filter((y) => y === height).length).toBeGreaterThan(0);
+    expect(bins.filter((b, i) => Math.abs(ys[i] - monti.heightAt((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2) - height) < 1e-9).length).toBeGreaterThan(0);
   });
 });

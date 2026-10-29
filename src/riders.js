@@ -107,7 +107,7 @@ const HELMETS = {
 };
 const RADIUS = { garbage: 2.6 }; // m, the bounding sphere's; 1.2 for a two-wheeler
 
-export function createRiders(scene, tables) {
+export function createRiders(scene, tables, ground) {
   const room = Math.max(...tables.rank.tiers.map((t) => t.traffic)); // more than the tier's two-wheelers
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.15 });
   const colours = {
@@ -150,14 +150,15 @@ export function createRiders(scene, tables) {
     for (const car of cars) {
       const pair = meshes[car.kind];
       if (!pair) continue;
-      bounds.center.set(car.x, 0.8, car.z);
+      const y = ground.heightAt(car.x, car.z);
+      bounds.center.set(car.x, y + 0.8, car.z);
       bounds.radius = RADIUS[car.kind] ?? 1.2;
       if (!inView(bounds)) continue;
       const level = Math.hypot(car.x - truck.x, car.z - truck.z) < tables.vehicles.near ? 0 : 1;
       const mesh = pair[level];
       if (mesh.count === room) continue; // cars leaving through a gate don't count against the tier
       const list = colours[car.kind];
-      matrix.compose(position.set(car.x, 0, car.z), turn.setFromAxisAngle(up, car.heading), one);
+      matrix.compose(position.set(car.x, y, car.z), turn.setFromAxisAngle(up, car.heading), one);
       mesh.setMatrixAt(mesh.count, matrix);
       mesh.setColorAt(mesh.count, list[(car.id * 7) % list.length]);
       mesh.count++;

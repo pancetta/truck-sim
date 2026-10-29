@@ -38,7 +38,7 @@ function look(tables, random, floors, height) {
 }
 
 // The city's buildings, one per outline (map.buildings, cut back from the roads), with the height from the map and as
-// many floors as fit under it. Each has its footprint's box and `points`, turned so its sides run with the outside to
+// many floors as fit under it, standing at the `ground`'s height under its middle. Each has its footprint's box and `points`, turned so its sides run with the outside to
 // their left, `floors`, `height`, the look (see look()) and a side per wall from each corner to the next; `dir` is the
 // DIRS direction nearest to the way it faces. A side is a street side unless another building stands against it: a
 // party wall, left blank. Spots are on the street (the spot table), so no building is a spot's and none has a dock
@@ -54,6 +54,7 @@ export function planBuildings(map, tables) {
     const floors = Math.max(1, Math.floor((height - t.groundFloor - t.parapet) / t.floor) + 1);
     const [xs, zs] = [ring.map((p) => p.x), ring.map((p) => p.z)];
     const b = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), points: ring, ...look(tables, random, floors, height) };
+    b.ground = map.heightAt((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2);
     index.add(b, b.minX, b.minZ, b.maxX, b.maxZ);
     return b;
   });
@@ -140,14 +141,17 @@ export function facadeParts(building, side, tables) {
 // drawn in one mesh and the `near` ones in a mesh per direction the facades face, for the renderer to draw only close
 // up and from in front. `cells` are the facade pictures' places (facadePictures.js), `materials` { walls: [...], roof,
 // parts }, flat-shaded: the meshes have no normals. Returns all `meshes`, and `near` as [{ mesh, dir }]. The roofs
-// are flat, on the outlines.
-export function buildingMeshes(buildings, tables, cells, materials) {
+// are flat, on the outlines. Each building stands at its `ground` height, its walls reaching down to the ground
+// (`ground`, a map's heightAt) under each corner where that is lower.
+// shortcut: the floors follow the middle's height, so doors on a steep street float or sink; #107 steps them.
+export function buildingMeshes(buildings, tables, cells, materials, ground) {
   const t = tables.buildings;
   const uvOf = Object.fromEntries(Object.entries(cells).map(([name, [x, y, w, h]]) => {
     // A pixel in from the cell's edges, so mipmaps don't blend in the neighbours; the canvas is flipped in v.
     const [u0, u1, v0, v1] = [(x + 1) / ATLAS, (x + w - 1) / ATLAS, 1 - (y + h - 1) / ATLAS, 1 - (y + 1) / ATLAS];
     return [name, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]];
   }));
+  const under = tables.ground.drape.open + tables.ground.drape.sink; // the open ground's lowest, under the terrain
   const plainUV = [(uvOf.plain[0][0] + uvOf.plain[1][0]) / 2, (uvOf.plain[0][1] + uvOf.plain[2][1]) / 2];
   const colour = new THREE.Color();
   const grimy = new THREE.Color();
@@ -188,7 +192,10 @@ export function buildingMeshes(buildings, tables, cells, materials) {
       // Round the building, so the wall texture runs on from side to side.
       for (const side of b.sides) {
         const [nx, nz] = [-side.uz, side.ux];
-        const at = (a, y, o = 0) => [side.x + side.ux * a + nx * o, y, side.z + side.uz * a + nz * o];
+        const at = (a, y, o = 0) => {
+          const [x, z] = [side.x + side.ux * a + nx * o, side.z + side.uz * a + nz * o];
+          return [x, y ? y + b.ground : Math.min(b.ground, ground.heightAt(x, z)) - under, z];
+        };
         // A piece of wall `a0`..`a1` m along and `y0`..`y1` up, split where the grime fades out.
         const piece = (a0, a1, y0, y1) => {
           const ys = y0 < t.grime && y1 > t.grime ? [y0, t.grime, y1] : [y0, y1];
@@ -201,14 +208,14 @@ export function buildingMeshes(buildings, tables, cells, materials) {
         piece(0, side.length, 0, b.height);
         perimeter += side.length;
         if (!side.street) continue;
-        for (const p of facadeParts(b, side, tables)) addPart(p.near ? nearOf(b, side.dir) : base, p);
+        for (const p of facadeParts(b, side, tables)) addPart(p.near ? nearOf(b, side.dir) : base, p, b.ground);
       }
       // The roof: the outline's triangles, each turned to face up.
       const { height } = b;
       const r = t.roof.repeat;
       colour.setRGB(1, 1, 1);
       const first = roofs.position.length / 3;
-      for (const p of b.points) vertex(roofs, [p.x, height, p.z], [p.x / r, -p.z / r], colour);
+      for (const p of b.points) vertex(roofs, [p.x, height + b.ground, p.z], [p.x / r, -p.z / r], colour);
       for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(b.points.map((p) => new THREE.Vector2(p.x, p.z)), [])) {
         const [p, q, o] = [b.points[i], b.points[j], b.points[k]];
         const up = (q.x - p.x) * (o.z - p.z) - (q.z - p.z) * (o.x - p.x) < 0;
@@ -226,10 +233,10 @@ export function buildingMeshes(buildings, tables, cells, materials) {
   // A part's front with its picture, or a box of the plain patch (every box part is plain): corners from its centre `a`
   // along, `y` up and `o` out, sheared down by its slope. A box's faces share its eight corners; flat shading needs
   // no normals per face.
-  function addPart(data, p) {
+  function addPart(data, p, lift) {
     const [hx, hy, ho] = p.size.map((s) => s / 2);
     const [nx, nz] = [-p.uz, p.ux];
-    const at = (a, y, o) => [p.x + p.ux * a + nx * o, p.y + y - (p.slope ?? 0) * o, p.z + p.uz * a + nz * o];
+    const at = (a, y, o) => [p.x + p.ux * a + nx * o, lift + p.y + y - (p.slope ?? 0) * o, p.z + p.uz * a + nz * o];
     colour.setHex(p.colour);
     if (p.front) return quad(data, [at(-hx, -hy, ho), at(hx, -hy, ho), at(hx, hy, ho), at(-hx, hy, ho)], uvOf[p.cell], [colour, colour, colour, colour]);
     const first = data.position.length / 3;

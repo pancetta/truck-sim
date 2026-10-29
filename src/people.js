@@ -169,9 +169,9 @@ function figureMaterial() {
   return material;
 }
 
-export function createPeople(scene, tables, road) {
+export function createPeople(scene, tables, road, ground) {
   const p = tables.pedestrians;
-  const ground = tables.streets.pavement.height; // on the road (at `road` m) only off the kerb at a zebra
+  const kerb = tables.streets.pavement.height; // on the road (at `road` m) only off the kerb at a zebra
   const material = figureMaterial();
   // Per level its mesh and per instance attributes.
   const levels = [nearFigure(), farFigure()].map((figure, level) => {
@@ -208,7 +208,7 @@ export function createPeople(scene, tables, road) {
       if (!person) people.set(q, (person = { gait: { x: q.x, z: q.z, phase: 0, stride: 0 }, figure: figureOf(q.id, p) }));
       const { gait, figure } = person;
       stepGait(gait, q.x, q.z, dt, figure.step, p.speed);
-      const y = q.onRoad ? road : ground;
+      const y = ground.heightAt(q.x, q.z) + (q.onRoad ? road : kerb);
       bounds.center.set(q.x, y + p.height / 2, q.z);
       if (!inView(bounds)) continue;
       const level = levels[Math.hypot(q.x - truck.x, q.z - truck.z) < p.near ? 0 : 1];

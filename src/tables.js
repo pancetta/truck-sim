@@ -37,7 +37,9 @@ const truck = {
   // 12 % street (#105); never more than the slope pulls back, so the flat is unchanged.
   hillStart: 3.5,
   hillHold: 2, // s a standstill holds after the brake is let go, before it rolls on a slope
-  maxBank: 0.03, // rad; the most the ground across a street rolls a Vehicle (or its trailer)
+  // rad; the most the ground across a street rolls a Vehicle (or its trailer): over Monti's steepest street, 22 % across,
+  // as the streets are drawn on the ground (#106) and the wheels must stay on them
+  maxBank: 0.22,
   wheelbase: 5.0, // m
   maxSteerAngle: 0.6, // rad, front wheels at full lock when standing
   steerFadeSpeed: 8, // m/s at which the steering lock is halved
@@ -1109,6 +1111,10 @@ export const streets = {
 export const ground = {
   road: { texture: 'asphalt_02', repeat: 4 }, // the roads
   open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level, and round the city
+  // On the terrain (drape.js), at most so many m off the ground: the `road` (the markings stand 1.5 cm over it), the
+  // `paving` and kerbs, and the `open` ground, which lies `sink` m lower so it never shows through. Draped, the road,
+  // paving and kerbs have at most `budget` times their flat triangles (the prototype's even split had 5 times).
+  drape: { road: 0.01, paving: 0.02, open: 0.05, sink: 0.05, budget: 1.75 },
 };
 
 // Generated cars (src/vehicles.js) for the AI cars and the parked cars, all at city.obstacles.car's footprint. Per
