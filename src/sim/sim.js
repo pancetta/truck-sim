@@ -559,7 +559,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // Driving onto the pavement at a pedestrian (#100): the `moving` truck's or trailer's footprint within
   // tables.pedestrians.danger m of where one on the pavement walks (jumped aside or not), its point nearest them over the
-  // kerb (see overKerb), costs the order's clean Star, and a fine if the police see it, once per pass: the pass lasts,
+  // kerb (see overKerb) or right over that place, costs the order's clean Star, and a fine if the police see it, once per pass: the pass lasts,
   // moving or standing, while any is that near.
   let endangering = false;
   const walked = { x: 0, z: 0 }; // the pedestrian's place on its walk
@@ -569,7 +569,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (q.zebra >= 0 && !q.waiting) return false; // on a zebra crossing: checkZebras
       [walked.x, walked.z] = [q.x - q.asideX, q.z - q.asideZ];
       const t = state.trailer && outside(walked, state.trailer, tr) < outside(walked, truck) ? state.trailer : null;
-      if (outside(walked, t ?? truck, t ? tr : v) > tables.pedestrians.danger) return false;
+      const d = outside(walked, t ?? truck, t ? tr : v);
+      if (d > tables.pedestrians.danger) return false;
+      if (d <= 0) return true; // it drove where they walk, on the pavement
       const { x, z } = nearestOn(walked, t ?? truck, t ? tr : v);
       return overKerb(x, z);
     });

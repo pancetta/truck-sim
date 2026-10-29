@@ -114,6 +114,12 @@ describe('pedestrians and the truck on the pavement (#100)', () => {
     expect(unseen.fines).toEqual([]);
   }, 30_000);
 
+  test('driving through where one walks counts however close to the kerb their line is (#100 QA)', () => {
+    // A kerb tolerance wider than the truck is over it: only those whose place it drives through count.
+    const t = { ...base, pedestrians: { ...base.pedestrians, kerb: 1.2 } };
+    expect(cruise(onPavement(1, { t }), 14).faults).toEqual(['pedestrian']);
+  }, 30_000);
+
   test('stopping and going again beside them is still the one pass: one fine', () => {
     const { fines, faults } = cruise(onPavement(1, { witness: true }), 6, 0, true);
     expect(faults).toEqual(['pedestrian']);
