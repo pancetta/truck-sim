@@ -1074,7 +1074,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const chain = tables.stories.find((c) => c.id === id);
       const from = places.find((s) => s.id === client);
       const next = chain?.steps[step];
-      if (from && next && next.cargo.weight <= maxCargo && !(next.type && from.pose.edge.pedestrian)) addOffer(next.type ?? null, from, { chain: id, step });
+      // From a pedestrian street, a step is a plain pedestrian offer, as no other offer there is express or a round.
+      if (from && next && next.cargo.weight <= maxCargo) addOffer(from.pose.edge.pedestrian ? null : next.type ?? null, from, { chain: id, step });
     }
     state.offers.unshift(...state.offers.splice(unpinned));
     return state.offers;
@@ -1130,11 +1131,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     return legs;
   }
 
-  // Makes one of the current offers the active order; ignored while one is active or for an unknown id.
+  // Makes one of the current offers the active order; ignored while one is active or for an unknown id. A Story chain's
+  // step keeps its drop-off, whose Kind its lines speak of: a moved drop-off is drawn as no surprise.
   function acceptOrder(id) {
     const offer = state.offers.find((x) => x.id === id);
     if (state.order || !offer) return;
-    state.order = { ...offer, phase: 'pickup', drop: 0, elapsed: 0, damage: 0, faults: [], surprise: drawSurprise() };
+    const surprise = drawSurprise();
+    state.order = { ...offer, phase: 'pickup', drop: 0, elapsed: 0, damage: 0, faults: [], surprise: offer.story && surprise?.kind === 'dropoff' ? null : surprise };
     state.offers = [];
     updateRoute();
   }

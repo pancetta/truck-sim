@@ -43,9 +43,13 @@ export function createOrders(root, sim, map, tables, strings) {
   // A Story chain's title and how far it is: the step under way (or just done) of how many.
   const chainOf = (id) => tables.stories.find((c) => c.id === id);
   const part = (id, step) => `${strings.stories[id].title} · ${strings.story.part} ${step}/${chainOf(id).steps.length}`;
-  const storyHtml = ({ chain, step }) => `<small class="story">${strings.story.label}: ${part(chain, step + 1)}<br>„${strings.stories[chain].steps[step].offer}“</small><br>`;
+  // A chain under way, with its next step: its cargo and the Kind of place it goes to; and that step's line on its offer.
+  const chainHtml = (id, step) => {
+    const next = chainOf(id).steps[step];
+    return `<p class="story">${strings.story.label}: <b>${part(id, step + 1)}</b><br><small>${strings.story.next}: ${next.cargo.name} → ${strings.spotKinds[next.to]}</small></p>`;
+  };
   const offerHtml = (o) =>
-    (o.story ? storyHtml(o.story) : '') +
+    (o.story ? `<small class="story">„${strings.stories[o.story.chain].steps[o.story.step].offer}“</small><br>` : '') +
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${[o.pickup, ...o.drops.map((d) => d.spot)].map(place).join(' → ')}</small><br>` +
     `<small class="client">${[kindOf(o.pickup), standing(o.reputation)].filter(Boolean).join(' · ')}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
@@ -165,7 +169,7 @@ export function createOrders(root, sim, map, tables, strings) {
       lastStory = story;
       const text = strings.stories[story.chain];
       const { steps, reward } = chainOf(story.chain);
-      const done = `${strings.story.done}: ${text.title} · +${reward.stars} ★${reward.visual ? ` · ${strings.visuals[reward.visual]}` : ''}`;
+      const done = `${strings.story.done}: ${text.title} · +${reward.stars}\u00a0★${reward.visual ? ` · ${strings.visuals[reward.visual]}` : ''}`;
       const said = story.step ? text.steps[story.step - 1].thanks : text.intro;
       const how = story.step === 0 ? `${strings.story.started}: ${text.title}` : story.step === steps.length ? done : `${part(story.chain, story.step)} ✓`;
       notify(storied, `„${said}“\n${how}`, tables.orders.storyNoticeTime);
@@ -222,15 +226,12 @@ export function createOrders(root, sim, map, tables, strings) {
     const now = order ? `${order.id} ${order.phase} ${order.drop} ${order.dropoff}` : offers.map((o) => o.id).join();
     if (now === shown) return;
     shown = now;
-    // The Story chains under way on this map, each with its next step: its cargo and the Kind of place it goes to.
+    // The Story chains under way on this map atop the offers; an active step's own chain atop the order.
     const chains = Object.entries(profile.stories[map.id] ?? {})
       .filter(([id, { step }]) => chainOf(id)?.steps[step])
-      .map(([id, { step }]) => {
-        const next = chainOf(id).steps[step];
-        return `<p class="story">${strings.story.label}: <b>${part(id, step + 1)}</b><br><small>${strings.story.next}: ${next.cargo.name} → ${strings.spotKinds[next.to]}</small></p>`;
-      });
+      .map(([id, { step }]) => chainHtml(id, step));
     panel.innerHTML = order
-      ? `<h2>${strings.activeOrder}</h2><p>${offerHtml(order)}</p>` +
+      ? `<h2>${strings.activeOrder}</h2>${order.story ? chainHtml(order.story.chain, order.story.step) : ''}<p>${offerHtml(order)}</p>` +
         `<p>${order.phase === 'pickup' ? strings.toPickup : `${strings.toDropoff}${stop(order)}`}</p>`
       : `<h2>${strings.orders}</h2>${chains.join('')}<ul>${offers
           .map((o) => `<li><p>${offerHtml(o)}</p><button type="button" data-offer="${o.id}">${strings.accept}</button></li>`)

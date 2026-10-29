@@ -104,7 +104,7 @@ export const strings = {
           thanks: 'Jeder Laden blüht! Nur ein Kaktus schmollt, weil er nicht mitfahren durfte.',
         },
         {
-          offer: 'Eine Riesenorchidee, empfindlich wie eine Opernsängerin. Kein Ruckeln, sonst verliert sie die Nerven!',
+          offer: 'Eine Riesenorchidee für die Werkstatt, damit es dort nach Blumen duftet statt nach Leim. Sie ist empfindlich wie eine Opernsängerin: kein Ruckeln!',
           thanks: 'Die Diva ist heil angekommen und duftet jetzt zwischen den Hobelspänen. Alle sind verzaubert.',
         },
         {

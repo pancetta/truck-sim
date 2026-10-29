@@ -104,6 +104,19 @@ describe('a chain on a map of other places', () => {
     expect(sim.state.profile.stories).toEqual({ vicolo: { geburtstag: { client: 'A', step: chain.steps.length } } });
   });
 
+  test('a step keeps the place its lines speak of: the Client never calls to move its drop-off', () => {
+    const { t, map } = vicolo();
+    const calls = { ...t, surprises: { ...t.surprises, closed: 0, dropoff: 1 } };
+    const sim = createSim(calls, map, seeded(1), { ...freshProfile(), stories: { vicolo: { geburtstag: { client: 'A', step: 1 } } } });
+    const [story, plain] = sim.requestOffers();
+    sim.acceptOrder(story.id);
+    expect(sim.state.order).toMatchObject({ story: { chain: 'geburtstag', step: 1 }, surprise: null });
+    const other = createSim(calls, map, seeded(1), freshProfile());
+    other.acceptOrder(other.requestOffers()[0].id);
+    expect(other.state.order.surprise?.kind).toBe('dropoff');
+    expect(plain.story).toBeUndefined();
+  });
+
   test("the last step's Visual item is the player's to wear", () => {
     const { t, map } = vicolo();
     const chain = chainOf('espressomat');
