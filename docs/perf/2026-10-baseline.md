@@ -1024,6 +1024,25 @@ The trailer is two meshes (its painted box, and the chassis, wheels, drawbar and
 | unhitched | 16.7 / 16.8 | 3.5 / 4.3 | 0.1 / 0.2 | 3.3 / 4.0 | 134 / 428k |
 | hitched | 16.7 / 16.7 | 3.2 / 4.5 | 0.2 / 0.3 | 3.0 / 4.1 | 136 / 429k |
 
+## Headlights as a light (#98)
+
+At night the headlights are a real light: one shadowless `SpotLight` at the front bumper (`lighting.headlights.lamp`), so the cars, people and walls ahead are lit, not only the road. The road glow stays, at 0.4 rather than 0.55, as the light now adds to it. The light is in the scene from the first frame, dark by day, so no shader is rebuilt when night falls; like any light it costs every lit fragment all day. The reversing lights stay a glow: a second light would cost as much again.
+
+**How measured:** as for #52: production builds of main (`2aa205f`) and this change with WebGPU timestamp queries, Chrome headless on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), 900 frames after 6 s of driving, two runs each back to back (medians agreed within 0.1 ms; the first run's are shown). Relative numbers; the iPad numbers are the owner's `?perf&auto&hour=22` run.
+
+| | GPU ms median / p95 | render ms median / p95 | draw calls / triangles |
+|---|---|---|---|
+| main at night (22:00), cab | 8.7 / 9.1 | 2.3 / 4.0 | 122 / 379k |
+| #98 at night, cab | 9.7 / 9.9 | 2.4 / 4.3 | 122 / 380k |
+| main at night, chase | 10.1 / 10.9 | 2.4 / 4.5 | 112 / 392k |
+| #98 at night, chase | 11.2 / 12.0 | 2.3 / 4.3 | 112 / 392k |
+| main by day (12:00), cab | 8.4 / 8.6 | 2.4 / 4.1 | 118 / 378k |
+| #98 by day, cab | 9.3 / 9.7 | 2.5 / 4.3 | 118 / 379k |
+
+Frames held 16.7 ms throughout. The light costs about 1 ms of the M2's GPU in every frame, by day too, and no draw calls. Across 20:00 (`?perf&auto&hour=19.9`, 20 s of play) no frame took over 17 ms after the first 0.3 s, on main and on this change alike: the lights coming on rebuild nothing.
+
+After these numbers, QA flattened the light's falloff (decay 1 at 25 cd, from decay 2 at 300 cd), so a light-coloured car 8 m ahead no longer turns white while one 20 m ahead stays lit. These are uniform values, so the table still holds.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

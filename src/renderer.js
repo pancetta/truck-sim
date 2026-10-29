@@ -858,6 +858,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const headlights = glowOut(beam.width, beam.length, 1);
   const reversingLights = glowOut(...beam.reversing, -1);
   truck.add(headlights, reversingLights);
+  // And one real light (#98), so the cars, people and walls ahead are lit too. It is in the scene all day, dark by day:
+  // adding it at dusk would rebuild every shader.
+  const headlamp = new THREE.SpotLight(beam.colour, 0, ...beam.lamp.reach); // placed by showVehicle()
+  truck.add(headlamp, headlamp.target);
 
   // Shows Vehicle `id`, its outside and (in render()) its interior from the cab, and moves the lights to its bumpers. The
   // warm-up frame (see warmUp) shows every Vehicle, so each one's shaders are ready for a switch.
@@ -871,6 +875,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
     headlights.position.z = tables.fleet[id].length / 2;
     reversingLights.position.z = -headlights.position.z;
+    headlamp.position.set(0, beam.lamp.height, headlights.position.z);
+    headlamp.target.position.z = headlights.position.z + beam.lamp.aim;
   }
 
   // Rain streaks (tables.weather.streaks): `drops` thin crossed quads, each falling through a box round the camera. The
@@ -1120,6 +1126,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     scene.environmentIntensity = (skyLight * (daytime.sky.r + daytime.sky.g + daytime.sky.b)) / 3;
     const night = isNight(clock, tables.clock);
     headlights.visible = night || warmUp;
+    headlamp.intensity = night ? beam.lamp.intensity : 0;
     reversingLights.visible = (night && state.truck.gear === 'R') || warmUp;
     headlights.rotation.z = reversingLights.rotation.z = -roll; // flat on the road while the body rolls
     warmUp = false;

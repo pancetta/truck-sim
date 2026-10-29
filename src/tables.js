@@ -997,8 +997,13 @@ export const lighting = {
   // of up to 7 s), and one headlight and three street lights took the M2's GPU from 8.0 to 11.5 ms a frame (docs/perf).
   // The truck's headlights: a glow `width` × `length` m on the road ahead of the front bumper (renderer.js), `glow` times
   // `colour` in its middle, `height` m up so it also shows on the pavements; the reversing lights' glow, in gear R, is
-  // `reversing` m (width, length) behind the rear bumper.
-  headlights: { width: 11, length: 42, height: 0.2, colour: 0xfff1d8, glow: 0.55, reversing: [7, 16] },
+  // `reversing` m (width, length) behind the rear bumper. The one exception is `lamp` (#98), a spot light so the cars
+  // and people ahead are lit too: `intensity` (cd) at night, 0 by day, `height` m up at the front bumper, aimed at the
+  // road `aim` m ahead, `reach` its distance (m), cone half-angle (rad), penumbra and decay (three's SpotLight).
+  headlights: {
+    width: 11, length: 42, height: 0.2, colour: 0xfff1d8, glow: 0.4, reversing: [7, 16],
+    lamp: { intensity: 25, height: 1, aim: 20, reach: [45, 0.55, 0.6, 1] },
+  },
   lampGlow: 1.5, // traffic light lamps and light bars shine this many times their palette colour
   // Sky-coloured haze, exponential squared, per m; camera.fog fades the rest to the sky at the far plane.
   haze: 0.0022,
