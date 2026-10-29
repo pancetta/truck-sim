@@ -64,7 +64,7 @@ export function runEconomy({ tables = realTables, map = montiMap(tables), seed =
     }
     if (s.lastPayment !== lastPayment) {
       ({ lastPayment } = s);
-      r.deliveries++;
+      if (lastPayment.stars.length) r.deliveries++; // a round pays each drop, and is one delivery
       for (const l of lastPayment.lines) r.pay[l.label] = (r.pay[l.label] ?? 0) + l.amount;
     }
     if (p().timePlayed >= (r.hourly.length + 1) * 3600) r.hourly.push(p().money);
