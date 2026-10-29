@@ -22,7 +22,7 @@ export const strings = {
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
-  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Sorgfalts-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag', umweg: 'Umweg' }, // state.lastPayment line labels
+  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Sorgfalts-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag', umweg: 'Umweg', story: 'Belohnung' }, // state.lastPayment line labels
   // The surprise notice (state.lastSurprise): a street closed ahead (then its name), or the Client's call (then the new place and the Umweg pay).
   surprises: { closed: 'Voraus gesperrt', newRoute: 'neue Route', dropoff: 'Anruf vom Kunden: bitte nach' },
   offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour', pedestrian: 'Fußgängerzone', schwertransport: 'Schwertransport' },
@@ -63,6 +63,78 @@ export const strings = {
     grocer: 'Frisch und pünktlich, so mögen wir das. Grazie mille!',
     florist: 'Die Blumen strahlen, und wir auch. Danke!',
     cafe: 'Der nächste Espresso geht aufs Haus!',
+  },
+  // Story chains (tables.stories): their words in the orders panel and notices (state.lastStory), then each chain's
+  // title, the line its Client says as it starts (`intro`), and per step the line on its offer and the thank-you once
+  // it is delivered (the last one's closes the chain).
+  story: { label: 'Geschichte', part: 'Teil', started: 'Neue Geschichte', done: 'Geschichte abgeschlossen', next: 'Als Nächstes' },
+  stories: {
+    geburtstag: {
+      title: 'Nonna Ottavias Hundertster',
+      intro: 'Meine Nonna wird hundert! Ich backe für die ganze Nachbarschaft, aber allein schaffe ich das nie. Helfen Sie mir?',
+      steps: [
+        {
+          offer: 'Hundert Einladungen, eine für jede Kerze. Bitte in alle Läden: Nonna kennt wirklich jeden.',
+          thanks: 'Alle eingeladen! Einer hat vor Freude geweint. Oder war das die Zwiebel in seiner Hand?',
+        },
+        {
+          offer: 'Eine Probetorte fürs Café. Die Chefin dort ist die strengste Kuchenrichterin der Stadt.',
+          thanks: 'Sie hat zwei Stücke gegessen. Bei ihr heißt das: Weltklasse!',
+        },
+        {
+          offer: 'Oje, die Kerzen! Der Blumenladen schmückt schon den Saal und wartet. Schnell, schnell!',
+          thanks: 'Gerade noch rechtzeitig. Sonst hätte ich hundert Streichhölzer anzünden müssen.',
+        },
+        {
+          offer: 'Die große Torte: sieben Stockwerke, obendrauf eine Nonna aus Marzipan. Bitte ganz, ganz sanft!',
+          thanks: 'Nonna hat alle hundert Kerzen auf einmal ausgepustet und sagt, Sie fahren schöner als ihr Mann früher mit dem Eselskarren. Ihr größtes Lob!',
+        },
+      ],
+    },
+    giesskanne: {
+      title: 'Die Goldene Gießkanne',
+      intro: 'Der Wettbewerb um die blühendste Straße beginnt! Die Goldene Gießkanne gehört dieses Jahr uns. Sind Sie dabei?',
+      steps: [
+        {
+          offer: 'Sonnenblumen für die Tische im Café. Wer neben Sonnenblumen Kaffee trinkt, lächelt doppelt.',
+          thanks: 'Das Café sieht aus wie ein Sommertag. Sogar der Kater auf der Fensterbank strahlt.',
+        },
+        {
+          offer: 'Blumenkästen für alle Läden. Ein Laden ohne Blumen ist wie ein Witz ohne Pointe.',
+          thanks: 'Jeder Laden blüht! Nur ein Kaktus schmollt, weil er nicht mitfahren durfte.',
+        },
+        {
+          offer: 'Eine Riesenorchidee, empfindlich wie eine Opernsängerin. Kein Ruckeln, sonst verliert sie die Nerven!',
+          thanks: 'Die Diva ist heil angekommen und duftet jetzt zwischen den Hobelspänen. Alle sind verzaubert.',
+        },
+        {
+          offer: 'Die Jury frühstückt beim Bäcker! Unser Siegergesteck muss sofort hin, bevor die Croissants alle sind.',
+          thanks: 'Gewonnen! Die Goldene Gießkanne ist unser! Ab heute gieße ich nur noch mit ihr. Und Sie bekommen den Ehrenplatz auf dem Siegerfoto!',
+        },
+      ],
+    },
+    espressomat: {
+      title: 'Zitas Wundermaschine',
+      intro: 'Ich bin Zita und erfinde den Espressomat 3000: Espresso für die ganze Straße, auf Knopfdruck! Na ja, bald. Fahren Sie für mich?',
+      steps: [
+        {
+          offer: 'Den Bauplan ins Café: Die Chefin soll mir sagen, wie viel Espresso die Straße wirklich trinkt.',
+          thanks: 'Ihre Antwort: unendlich viel. Ich brauche einen größeren Kessel!',
+        },
+        {
+          offer: 'Der erste Prototyp, für einen Test beim Bäcker. Vorsicht, er ist aus Glas und Hoffnung.',
+          thanks: 'Er hat gepfiffen, gedampft und … Kakao gemacht. Der Bäcker war trotzdem begeistert.',
+        },
+        {
+          offer: 'Testtassen für die Läden. Wer probiert, darf ehrlich sein. Na gut: nett ehrlich.',
+          thanks: 'Das Urteil: „zu stark“, „zu schwach“, „mehr davon!“. Ich nehme das als Ja.',
+        },
+        {
+          offer: 'Er ist fertig! Der Espressomat 3000 muss ins Café, bevor die Eröffnung beginnt. Bitte keine Schlaglöcher!',
+          thanks: 'Er läuft! Er pfeift ein Lied und macht den besten Espresso der Stadt. Zum Dank habe ich Ihre Stoßstangen verchromt.',
+        },
+      ],
+    },
   },
   expectedTime: 'Soll-Zeit',
   bonusTime: 'Bonuszeit',

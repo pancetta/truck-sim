@@ -299,7 +299,7 @@ describe('Sim: profile', () => {
 
   test('a fresh Sim starts with no money and no payment', () => {
     const sim = laneSim();
-    expect(sim.state.profile).toMatchObject({ version: 7, money: 0, stars: 0, distance: 0, fuel: tables.fleet.truck.tank, energy: 1, reputation: {} });
+    expect(sim.state.profile).toMatchObject({ version: 8, money: 0, stars: 0, distance: 0, fuel: tables.fleet.truck.tank, energy: 1, reputation: {}, stories: {} });
     expect(sim.state.lastPayment).toBe(null);
   });
 

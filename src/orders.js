@@ -1,5 +1,5 @@
 // Money counter, orders button and panel, goal banner, load/unload and service progress bar, a service spot's service
-// buttons, the Stars banner, payment, fine, tow, surprise and thank-you notices. Reads Sim state each frame; changes it only through the
+// buttons, the Stars banner, payment, fine, tow, surprise, thank-you and Story chain notices. Reads Sim state each frame; changes it only through the
 // Sim's order and service commands.
 export function createOrders(root, sim, map, tables, strings) {
   root.innerHTML = `
@@ -8,7 +8,7 @@ export function createOrders(root, sim, map, tables, strings) {
     <div class="orders-panel" hidden></div>
     <div class="goal" hidden><i>↑</i><span></span><small></small><p hidden><b></b><meter max="1" low="0.25" high="0.5" optimum="0"></meter></p></div>
     <div class="progress" hidden><span></span><i></i></div>
-    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div><div class="paid surprised" hidden></div><div class="paid thanked" hidden></div></div>`;
+    <div class="notices"><div class="services"></div><div class="paid stars-banner" hidden><b></b><span></span></div><div class="paid" hidden></div><div class="paid fined" hidden></div><div class="paid towed" hidden></div><div class="paid surprised" hidden></div><div class="paid thanked" hidden></div><div class="paid storied" hidden></div></div>`;
   const money = root.querySelector('.money');
   const panel = root.querySelector('.orders-panel');
   const progress = root.querySelector('.progress');
@@ -19,6 +19,7 @@ export function createOrders(root, sim, map, tables, strings) {
   const towed = root.querySelector('.towed');
   const surprised = root.querySelector('.surprised');
   const thanked = root.querySelector('.thanked');
+  const storied = root.querySelector('.storied');
   const services = root.querySelector('.services');
   const goal = root.querySelector('.goal');
   const [arrow, goalText, hint, damage] = goal.children;
@@ -39,7 +40,12 @@ export function createOrders(root, sim, map, tables, strings) {
   const top = tables.reputation.levels.length - 1;
   const standing = (level) => `${strings.reputation} ${'♥'.repeat(level)}${'♡'.repeat(top - level)} ${strings.reputationLevels[level]}`;
   const kindOf = (id) => strings.spotKinds[map.spots.find((s) => s.id === id).kind];
+  // A Story chain's title and how far it is: the step under way (or just done) of how many.
+  const chainOf = (id) => tables.stories.find((c) => c.id === id);
+  const part = (id, step) => `${strings.stories[id].title} · ${strings.story.part} ${step}/${chainOf(id).steps.length}`;
+  const storyHtml = ({ chain, step }) => `<small class="story">${strings.story.label}: ${part(chain, step + 1)}<br>„${strings.stories[chain].steps[step].offer}“</small><br>`;
   const offerHtml = (o) =>
+    (o.story ? storyHtml(o.story) : '') +
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${[o.pickup, ...o.drops.map((d) => d.spot)].map(place).join(' → ')}</small><br>` +
     `<small class="client">${[kindOf(o.pickup), standing(o.reputation)].filter(Boolean).join(' · ')}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
@@ -53,6 +59,7 @@ export function createOrders(root, sim, map, tables, strings) {
   let lastTow = sim.state.lastTow;
   let lastSurprise = sim.state.lastSurprise;
   let lastReputation = sim.state.lastReputation;
+  let lastStory = sim.state.lastStory;
   let shownServices = null;
   const timers = new Map();
   // Writes to the DOM only when a shown value changes, not every frame. It compares with what it last wrote,
@@ -63,21 +70,21 @@ export function createOrders(root, sim, map, tables, strings) {
     if (last[key] !== value) target[key] = last[key] = value;
   };
 
-  // Shows a notice for a few seconds; a new one restarts its time.
-  function notify(el, text) {
+  // Shows a notice for a few seconds (`seconds`); a new one restarts its time.
+  function notify(el, text, seconds) {
     el.textContent = text;
-    show(el);
+    show(el, seconds);
   }
-  function show(el) {
+  function show(el, seconds = tables.orders.paidNoticeTime) {
     el.hidden = false;
     clearTimeout(timers.get(el));
-    timers.set(el, setTimeout(() => (el.hidden = true), tables.orders.paidNoticeTime * 1000));
+    timers.set(el, setTimeout(() => (el.hidden = true), seconds * 1000));
   }
 
   // Hides the notices at once: the Werkstatt panel opening over them would cover them (#orders is a stacking
   // context of its own, under the Werkstatt).
   function dismissNotices() {
-    for (const el of [starsBanner, paid, fined, towed, surprised, thanked]) {
+    for (const el of [starsBanner, paid, fined, towed, surprised, thanked, storied]) {
       if (el.hidden) continue;
       clearTimeout(timers.get(el));
       el.hidden = true;
@@ -112,7 +119,7 @@ export function createOrders(root, sim, map, tables, strings) {
     return [t.x - truck.x, t.z - truck.z];
   }
 
-  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, lastSurprise: surprise, lastReputation: thanks, serviceOffer, service, order, offers, progress: p, truck, route }) {
+  function update({ profile, lastPayment: payment, lastFine: fine, lastTow: tow, lastSurprise: surprise, lastReputation: thanks, lastStory: story, serviceOffer, service, order, offers, progress: p, truck, route }) {
     if (profile.money !== lastMoney) {
       lastMoney = profile.money;
       money.textContent = eur(lastMoney);
@@ -150,6 +157,18 @@ export function createOrders(root, sim, map, tables, strings) {
       lastReputation = thanks;
       const { name, kind } = map.spots.find((s) => s.id === thanks.client);
       notify(thanked, `${name}: „${strings.thanks[kind] ?? ''}“\n${standing(thanks.level)}`);
+    }
+
+    // A Story chain's notice: its Client's opening line as it starts, then each step's thank-you, the last with the
+    // reward (its money is the payment's Belohnung line). Longer lines than the others, so it stays longer.
+    if (story !== lastStory) {
+      lastStory = story;
+      const text = strings.stories[story.chain];
+      const { steps, reward } = chainOf(story.chain);
+      const done = `${strings.story.done}: ${text.title} · +${reward.stars} ★${reward.visual ? ` · ${strings.visuals[reward.visual]}` : ''}`;
+      const said = story.step ? text.steps[story.step - 1].thanks : text.intro;
+      const how = story.step === 0 ? `${strings.story.started}: ${text.title}` : story.step === steps.length ? done : `${part(story.chain, story.step)} ✓`;
+      notify(storied, `„${said}“\n${how}`, tables.orders.storyNoticeTime);
     }
 
     if (serviceOffer !== shownServices) {
@@ -203,10 +222,17 @@ export function createOrders(root, sim, map, tables, strings) {
     const now = order ? `${order.id} ${order.phase} ${order.drop} ${order.dropoff}` : offers.map((o) => o.id).join();
     if (now === shown) return;
     shown = now;
+    // The Story chains under way on this map, each with its next step: its cargo and the Kind of place it goes to.
+    const chains = Object.entries(profile.stories[map.id] ?? {})
+      .filter(([id, { step }]) => chainOf(id)?.steps[step])
+      .map(([id, { step }]) => {
+        const next = chainOf(id).steps[step];
+        return `<p class="story">${strings.story.label}: <b>${part(id, step + 1)}</b><br><small>${strings.story.next}: ${next.cargo.name} → ${strings.spotKinds[next.to]}</small></p>`;
+      });
     panel.innerHTML = order
       ? `<h2>${strings.activeOrder}</h2><p>${offerHtml(order)}</p>` +
         `<p>${order.phase === 'pickup' ? strings.toPickup : `${strings.toDropoff}${stop(order)}`}</p>`
-      : `<h2>${strings.orders}</h2><ul>${offers
+      : `<h2>${strings.orders}</h2>${chains.join('')}<ul>${offers
           .map((o) => `<li><p>${offerHtml(o)}</p><button type="button" data-offer="${o.id}">${strings.accept}</button></li>`)
           .join('')}</ul>`;
   }

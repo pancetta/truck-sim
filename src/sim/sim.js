@@ -12,16 +12,17 @@ const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
 // migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), v6 with Vehicles (#88), v7 with
-// Reputation (#86), and the grid city's v1 and v2 start fresh.
+// Reputation (#86), v8 with Story chains (#87), and the grid city's v1 and v2 start fresh.
 // stars: the Stars earned in total, which make the Rank; distance: m driven in total; vehicle: the current Vehicle's id
 // (tables.fleet); vehicles: each owned Vehicle's id → its upgrades (id → level), the truck always among them;
 // equipped: slot → visual id; fuel: litres in the current Vehicle's tank; energy: the driver's, 0..1; timeOfDay: game
 // minutes since midnight; timePlayed: s of play in total; reputation: map id → spot id → the Stars earned on that
-// Client's orders (see tables.reputation).
+// Client's orders (see tables.reputation); stories: map id → Story chain id (tables.stories) → { client (its spot id),
+// step (the steps delivered) }.
 // The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
   return {
-    version: 7,
+    version: 8,
     money: 0,
     stars: 0,
     distance: 0,
@@ -34,6 +35,7 @@ export function freshProfile() {
     timeOfDay: dayClock.start,
     timePlayed: 0,
     reputation: {},
+    stories: {},
   };
 }
 
@@ -70,7 +72,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // tables.rank.cleanDamage; 'notDocked';
   // `lastFine` ({ reason, amount }, reason a key of tables.fines) likewise on every fine; `lastSurprise` on every
   // surprise: { kind: 'closed', street (the closed edge's name) } or { kind: 'dropoff', spot (the new one), umweg (€) };
-  // `lastReputation` ({ client (spot id), level }) whenever a delivery raises its Client's Reputation to a new level.
+  // `lastReputation` ({ client (spot id), level }) whenever a delivery raises its Client's Reputation to a new level;
+  // `lastStory` ({ chain (id), step }) whenever a Story chain starts (step 0) or a step of it is delivered (the steps
+  // delivered by then; all of them when the chain is done).
   // `lights` are map.lights, one per junction approach, each with its `phase` ('green', 'amber', 'red' or 'redAmber');
   // `lightsVersion` goes up whenever any phase changes, so a view can skip unchanged lights.
   // `traffic` are the AI cars: { id, x, z, heading, speed, lane, police } and more (see traffic.js).
@@ -110,6 +114,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     lastFine: null,
     lastSurprise: null,
     lastReputation: null,
+    lastStory: null,
     lights: (map?.lights ?? []).map((l) => ({ ...l, phase: 'red' })),
     lightsVersion: 0,
     traffic: [],
@@ -808,6 +813,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * drop.pay) });
       if (isNight(state.timeOfDay, tables.clock)) lines.push({ label: 'night', amount: Math.round(o.nightBonus * drop.pay) });
       if (state.weather.kind === 'rain' && state.weather.intensity >= w.rain.bonus) lines.push({ label: 'rain', amount: Math.round(o.rainBonus * drop.pay) });
+      const chain = order.story && tables.stories.find((c) => c.id === order.story.chain);
+      const finale = last && chain && order.story.step === chain.steps.length - 1;
+      if (finale) lines.push({ label: 'story', amount: chain.reward.money });
       const amount = lines.reduce((sum, l) => sum + l.amount, 0);
       state.profile.money += amount;
       if (!last) {
@@ -830,6 +838,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const known = (state.profile.reputation[map.id] ??= {});
       known[client] = (known[client] ?? 0) + earned;
       if (standing(client) > before) state.lastReputation = { client, level: standing(client) };
+      if (chain) {
+        const step = order.story.step + 1;
+        state.profile.stories[map.id][chain.id].step = step;
+        state.lastStory = { chain: chain.id, step };
+        if (finale) {
+          state.profile.stars += chain.reward.stars;
+          const { visual } = chain.reward;
+          if (visual && !owns(visual)) state.profile.owned.push(visual);
+        }
+      } else if (standing(client) === tables.reputation.levels.length - 1) startStory(spot(client));
       state.order = null;
       updateRank();
     }
@@ -1000,6 +1018,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const spot = (id) => map.spots.find((s) => s.id === id);
   // A Client's Reputation level (tables.reputation) on this map, by its spot id.
   const standing = (id) => tables.reputation.levels.findLastIndex((l) => (state.profile.reputation[map.id]?.[id] ?? 0) >= l.stars);
+  // Starts the first Story chain of the Client's Kind it hasn't started on this map, if there is one.
+  function startStory(client) {
+    const started = (state.profile.stories[map.id] ??= {});
+    const chain = tables.stories.find((c) => c.client === client.kind && !started[c.id]);
+    if (!chain) return;
+    started[chain.id] = { client: client.id, step: 0 };
+    state.lastStory = { chain: chain.id, step: 0 };
+  }
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
   const typeOf = (cargo, to) =>
@@ -1022,6 +1048,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // bays.
   // Each offer carries its Client's (the pickup's) Reputation level (`reputation`) and pays its level's `pay` times as
   // much; one more offer comes from a Client of level 1 or more, express from a level that has it (tables.reputation).
+  // Each Story chain under way on this map adds its next step's offer from its Client, first in the list, with `story`
+  // ({ chain (id), step }); none while its Client or its cargo doesn't suit the current Vehicle (see tables.stories).
   function requestOffers() {
     state.offers = [];
     const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()) && (!s.dock || fitsBays()));
@@ -1041,16 +1069,30 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const client = pick(regulars);
       addOffer(tables.reputation.levels[standing(client.id)].express && !client.pose.edge.pedestrian ? 'express' : null, client);
     }
+    const unpinned = state.offers.length;
+    for (const [id, { client, step }] of Object.entries(state.profile.stories[map.id] ?? {})) {
+      const chain = tables.stories.find((c) => c.id === id);
+      const from = places.find((s) => s.id === client);
+      const next = chain?.steps[step];
+      if (from && next && next.cargo.weight <= maxCargo && !(next.type && from.pose.edge.pedestrian)) addOffer(next.type ?? null, from, { chain: id, step });
+    }
+    state.offers.unshift(...state.offers.splice(unpinned));
     return state.offers;
 
-    // An offer of type `special` (or one from its cargo and drop-off where null), from `client` or a place at random.
-    function addOffer(special, client) {
+    // An offer of type `special` (or one from its cargo and drop-off where null), from `client` or a place at random; a
+    // Story chain's `story` step brings its cargo and drops off at places of its Kind.
+    function addOffer(special, client, story) {
       const width = wideLoad(special) ? o.oversizedWidth : 0;
-      const cargo = pick(cargoes.filter((c) => schwer(c) === (special === 'schwertransport') && (wideLoad(special) ? !c.kind : !special || c.kind !== 'fragile')));
+      const next = story && tables.stories.find((c) => c.id === story.chain).steps[story.step];
+      const cargo = next?.cargo ?? pick(cargoes.filter((c) => schwer(c) === (special === 'schwertransport') && (wideLoad(special) ? !c.kind : !special || c.kind !== 'fragile')));
       const wide = places.filter((s) => s.pose.edge.width >= width && !(special && s.pose.edge.pedestrian));
       const stops = [];
-      for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)
-        stops.push(pick(wide.filter((s) => s !== client && !stops.includes(s) && (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier))));
+      for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--) {
+        const free = wide.filter((s) => s !== client && !stops.includes(s) && (special ? !s.dock : o.types[typeOf(cargo, s)] <= state.rank.tier));
+        const alike = next ? free.filter((s) => s.kind === next.to) : free;
+        if (next?.type === 'round' && stops.length && !alike.length) break; // a story's round goes only to its Kind
+        stops.push(pick(alike.length ? alike : free));
+      }
       const from = client ?? pick(wide.filter((s) => !stops.includes(s)));
       const legs = from && stops.every(Boolean) && tour(from, stops, width);
       if (!legs) return; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
@@ -1067,7 +1109,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const sum = (key) => drops.reduce((total, d) => total + d[key], 0);
       const { expectedTime } = drops.at(-1);
       const pedestrian = [from, ...stops].some((s) => s.pose.edge.pedestrian);
-      state.offers.push({ id: nextOfferId++, type: special ?? (pedestrian ? 'pedestrian' : typeOf(cargo, stops[0])), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime, reputation });
+      state.offers.push({ id: nextOfferId++, type: special ?? (pedestrian ? 'pedestrian' : typeOf(cargo, stops[0])), cargo, pickup: from.id, dropoff: drops[0].spot, drops, distance: sum('distance'), pay: sum('pay'), expectedTime, reputation, ...(story && { story }) });
     }
   }
 

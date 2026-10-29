@@ -476,7 +476,8 @@ body:has(.rear-inset:not([hidden])) .goal {
    and the button stay in the panel. */
 .orders-panel .places,
 .orders-panel .client,
-.orders-panel .tag {
+.orders-panel .tag,
+.orders-panel .story {
   white-space: normal;
 }
 
@@ -864,6 +865,22 @@ body:has(.rear-inset:not([hidden])) .goal {
 /* A Client's thank-you when its Reputation rises (#86): its line, then the hearts of its new level. */
 .thanked {
   color: #ffc2cf;
+}
+
+/* Story chains (#87): the chains under way atop the orders panel and the line on a step's offer, in the notice's
+   colour; the notice wraps its Client's line, which is longer than the other notices'. */
+.orders-panel .story,
+.storied {
+  color: #b9e4ff;
+}
+
+.orders-panel p.story {
+  white-space: normal;
+}
+
+.storied {
+  max-width: min(480px, 80vw);
+  text-align: center;
 }
 
 /* A service spot's services, while the truck stands in its zone, as buttons over the notices; hidden while the orders

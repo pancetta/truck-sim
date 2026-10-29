@@ -12,7 +12,7 @@ _Avoid_: engine, game loop, world
 
 **Profile**:
 The player's lasting progress: money, **Stars**, distance driven, the owned **Vehicles** with their **Upgrades**,
-visuals, and each map's **Reputations**, by the map's id. It is what the **Save** stores.
+visuals, and each map's **Reputations** and **Story chain** progress, by the map's id. It is what the **Save** stores.
 _Avoid_: account, player data
 
 **Save** ("Spielstand"):
@@ -113,6 +113,14 @@ What a **Client** thinks of the player, per map: the **Stars** earned on its **O
 **Offers** brings one more from such a **Client**, an **Express** one from "Geschätzt" on, whatever the **Tier**.
 _Avoid_: loyalty, standing, affinity
 
+**Story chain** ("Geschichte"):
+A little story of 3–5 linked **Orders** ("Teile") from one **Client**, with its own characters and German lines. A
+**Client** reaching the top **Reputation** level ("Unverzichtbar") starts the chain of its **Kind**, once per map. Each
+step names its cargo, the **Kind** of place it goes to and, optionally, its **Order type**; delivering it unlocks the
+next, whose **Offer** comes first in the list. The last step pays the reward: a "Belohnung" **Pay line**, extra
+**Stars** and, for some chains, a **Visual item**.
+_Avoid_: quest, mission, campaign
+
 **Umweg**:
 The **Pay line** for the extra way to a **Drop-off** a **Surprise** moved, at the distance pay's rate.
 _Avoid_: detour bonus
@@ -141,7 +149,7 @@ _Avoid_: location, stop
 
 **Kind**:
 What sort of place a **Spot** is ("Bäckerei", "Café", "Laden", "Lager", "Tankstelle", "Zuhause"…). Content (a **Client**'s
-thank-you, a moved **Drop-off**, Story chains) refers to Kinds, never to a map's own **Spots**, so it carries over to other maps.
+thank-you, a moved **Drop-off**, **Story chains**) refers to Kinds, never to a map's own **Spots**, so it carries over to other maps.
 _Avoid_: category, spot type
 
 **Zone**:
@@ -426,6 +434,8 @@ The **Spot** where a new game puts the truck, in its lane.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.
 - A **Spot** on a **Pedestrian edge** only gets **Offers** in the **Dreirad**, of their own **Order type**
   ("Fußgängerzone").
+- A **Story chain** belongs, per map, to the first **Client** of its **Kind** to reach the top **Reputation**; its
+  **Offers** come first.
 - A **Vehicle** longer than a map's **Dock bays** gets no **Offers** to or from its **Docks**.
 - A **Pedestrian** walks one **Pavement line**; each side of an **Edge** belongs to at most one **Pavement line**.
 - A **Zebra crossing** joins the **Pavement lines** on its two kerbs; a **Pedestrian** on it is solid to the truck, and one the truck comes at steps back to a kerb, so it is never hurt and makes no **Contact**.

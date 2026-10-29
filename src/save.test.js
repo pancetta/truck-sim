@@ -24,7 +24,7 @@ function fakeStorage(items = {}) {
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
 const valid = {
-  version: 7,
+  version: 8,
   money: 1234,
   stars: 4,
   distance: 5678.9,
@@ -37,13 +37,18 @@ const valid = {
   timeOfDay: 1300.5,
   timePlayed: 3600.25,
   reputation: { monti: { B: 9, J: 0 }, laterMap: { A: 3 } }, // a map that comes later keeps its own
+  // Mid-chain on this map, and a chain this build doesn't know on a map that comes later.
+  stories: { monti: { geburtstag: { client: 'B', step: 2 } }, laterMap: { laterChain: { client: 'A', step: 0 } } },
 };
-// The same progress as saved by the earlier versions: 6, before Reputation (#86), 5, with the truck's upgrades before
-// Vehicles (#88), 4, with rank points before Stars (#81), 3, before fuel, energy and the clock (#48), and the grid city's
-// 1, before the distance counter, and 2 (#67: no migration). Migrated, they come with no Reputation.
-const { reputation, ...v7Fields } = valid;
+// The same progress as saved by the earlier versions: 7, before Story chains (#87), 6, before Reputation (#86), 5, with
+// the truck's upgrades before Vehicles (#88), 4, with rank points before Stars (#81), 3, before fuel, energy and the
+// clock (#48), and the grid city's 1, before the distance counter, and 2 (#67: no migration). Migrated, they come with no
+// Story progress, and before v7 with no Reputation.
+const { stories, ...v8Fields } = valid;
+const v7 = { ...v8Fields, version: 7 };
+const { reputation, ...v7Fields } = v7;
 const v6 = { ...v7Fields, version: 6 };
-const migrated = { ...valid, reputation: {} };
+const migrated = { ...valid, reputation: {}, stories: {} };
 const { vehicle, vehicles, ...v6Fields } = v6;
 const v5 = { ...v6Fields, upgrades: { motor: 2 }, version: 5 };
 const { stars, ...v5Fields } = v5;
@@ -64,6 +69,7 @@ describe('save module', () => {
     profile.vehicle = 'van';
     profile.fuel = 99;
     profile.reputation.monti = { C: 15 };
+    profile.stories.monti = { espressomat: { client: 'K', step: 3 } };
     save.save(profile);
     expect(createSave(storage, tables).load()).toEqual(profile);
     expect(stored(valid)).toEqual(valid);
@@ -78,7 +84,10 @@ describe('save module', () => {
       { ...valid, vehicles: { truck: { motor: 4 } } }, { ...valid, vehicles: { truck: {}, van: { motor: 1.5 } } },
       { ...valid, vehicles: { truck: {}, van: null } }, { ...valid, reputation: null }, { ...valid, reputation: { monti: [] } },
       { ...valid, reputation: { monti: { B: -1 } } }, { ...valid, reputation: { monti: { B: 2.5 } } }, { ...valid, reputation: { monti: { B: '3' } } },
-      { ...v7Fields, version: 7 }, { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
+      { ...v7Fields, version: 7 }, { ...v8Fields, version: 8 }, { ...valid, stories: null }, { ...valid, stories: { monti: [] } },
+      { ...valid, stories: { monti: { geburtstag: 2 } } }, { ...valid, stories: { monti: { geburtstag: { client: 'B', step: -1 } } } },
+      { ...valid, stories: { monti: { geburtstag: { client: 'B', step: 1.5 } } } }, { ...valid, stories: { monti: { geburtstag: { step: 1 } } } },
+      { ...valid, owned: 'red' }, { ...valid, owned: [3] }, { ...valid, equipped: null },
       { ...valid, distance: -1 }, { ...valid, distance: '12' }, { ...valid, distance: Infinity }, v1Fields,
       { ...valid, fuel: -1 }, { ...valid, fuel: '400' }, { ...valid, fuel: undefined }, { ...valid, energy: 1.01 },
       { ...valid, energy: -0.1 }, { ...valid, energy: null }, { ...valid, timeOfDay: 1440 }, { ...valid, timeOfDay: -1 },
@@ -92,12 +101,16 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 6 save loads as version 7, with all progress kept and no Reputation yet', () => {
-    expect(fresh.version).toBe(7);
+  test('a version 7 save loads as version 8, with all progress kept and no Story progress yet', () => {
+    expect(fresh.version).toBe(8);
+    expect(stored(v7)).toEqual({ ...valid, stories: {} });
+  });
+
+  test('a version 6 save goes through both steps, with no Reputation and no Story progress yet', () => {
     expect(stored(v6)).toEqual(migrated);
   });
 
-  test('a version 5 save goes through both steps: the truck, with its upgrades, is the one owned Vehicle and the current one', () => {
+  test('a version 5 save goes through every step: the truck, with its upgrades, is the one owned Vehicle and the current one', () => {
     expect(stored(v5)).toEqual(migrated);
   });
 
@@ -125,7 +138,7 @@ describe('save module', () => {
   });
 
   test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
-    const newer = JSON.stringify({ ...valid, version: 8 });
+    const newer = JSON.stringify({ ...valid, version: 9 });
     const storage = fakeStorage({ [KEY]: newer });
     const save = createSave(storage, tables);
     const profile = save.load();
@@ -139,7 +152,7 @@ describe('save module', () => {
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 8, '7', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 9, '8', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 

@@ -182,6 +182,7 @@ export const orders = {
   basePay: 200, // € per delivery
   payPerKm: 150, // € per km of road route from pickup to drop-off
   paidNoticeTime: 4, // s the payment confirmation stays on screen
+  storyNoticeTime: 10, // s a Story chain's notice stays, long enough to read its Client's line
   // Time bonus: a share of the pay (base + distance) that shrinks from timeBonus at once to 0 at the expected time.
   timeBonus: 0.5,
   referenceSpeed: 7, // m/s along the road route, for an offer's expected time
@@ -289,6 +290,50 @@ export const reputation = {
     { stars: 24, pay: 1.5, express: true },
   ],
 };
+
+// Story chains (#87; texts in strings.stories by id): a Client reaching the top Reputation level, on a delivery that
+// isn't a step of a chain, starts the first chain of its Kind (`client`) it hasn't started on this map. Each step is an
+// Order from that Client, unlocked by delivering the one before, offered at the top of every request for offers: its
+// `cargo` (as orders.cargo, whatever the Tier) to a place of Kind `to` (any place that takes orders where the map has
+// none left of it), of `type` 'express' or 'round' (as many drops of that Kind as there are, up to the round's count)
+// or, without one, the type its cargo and drop-off make. The last step pays the `reward`: `money` € as a pay line,
+// `stars` more Stars and, optionally, a `visual` item (tables.visuals) to own. Cargo is at most 0.7 t, so the Dreirad
+// takes every step too.
+export const stories = [
+  {
+    id: 'geburtstag',
+    client: 'bakery',
+    steps: [
+      { cargo: { name: 'Einladungskarten', weight: 0.1 }, to: 'shop', type: 'round' },
+      { cargo: { name: 'Probetorte', weight: 0.5, kind: 'delicate' }, to: 'cafe' },
+      { cargo: { name: 'Hundert Kerzen', weight: 0.1 }, to: 'florist', type: 'express' },
+      { cargo: { name: 'Geburtstagstorte', weight: 0.6, kind: 'delicate' }, to: 'cafe' },
+    ],
+    reward: { money: 1500, stars: 5 },
+  },
+  {
+    id: 'giesskanne',
+    client: 'florist',
+    steps: [
+      { cargo: { name: 'Sonnenblumen', weight: 0.3 }, to: 'cafe' },
+      { cargo: { name: 'Blumenkästen', weight: 0.6 }, to: 'shop', type: 'round' },
+      { cargo: { name: 'Riesenorchidee', weight: 0.4, kind: 'delicate' }, to: 'workshop' },
+      { cargo: { name: 'Siegergesteck', weight: 0.5 }, to: 'bakery', type: 'express' },
+    ],
+    reward: { money: 1500, stars: 5 },
+  },
+  {
+    id: 'espressomat',
+    client: 'workshop',
+    steps: [
+      { cargo: { name: 'Bauplan', weight: 0.1 }, to: 'cafe' },
+      { cargo: { name: 'Prototyp', weight: 0.4, kind: 'fragile' }, to: 'bakery' },
+      { cargo: { name: 'Espressotassen', weight: 0.3 }, to: 'shop', type: 'round' },
+      { cargo: { name: 'Espressomat 3000', weight: 0.7, kind: 'delicate' }, to: 'cafe', type: 'express' },
+    ],
+    reward: { money: 2000, stars: 6, visual: 'chromeBumpers' },
+  },
+];
 
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
 // rank tier that may buy a level. `factor` scales a constant of the current Vehicle (tables.fleet), whose own levels
