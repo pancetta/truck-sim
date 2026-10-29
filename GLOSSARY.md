@@ -61,7 +61,7 @@ steering and brake lag behind the controls, more the lower the **Energy**.
 ### Orders
 
 **Offer**:
-A proposed delivery the player may accept, with its **Order type** and that type's tag line (what is special about it), cargo, **Pickup**, **Drop-off**, pay and **Expected time**.
+A proposed delivery the player may accept, with its **Order type** and that type's tag line (what is special about it, and its **Cargo kind**'s twist), cargo, **Pickup**, **Drop-off**, pay and **Expected time**.
 _Avoid_: job, mission, quest
 
 **Order** ("Auftrag"):
@@ -93,11 +93,20 @@ _Avoid_: source/target, from/to
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
 **Pay lines**:
-The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), fragile premium ("Zerbrechlich-Prämie"), **Dock bonus** ("Rampenbonus"), the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
+The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), the **Cargo kind**'s premium (fragile "Zerbrechlich-Prämie", perishable "Frische-Prämie", delicate "Vorsicht-Prämie", live "Tierwohl-Prämie"), **Dock bonus** ("Rampenbonus"), the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
 _Avoid_: reward, payout
 
 **Damage** ("Schaden"):
-Harm to fragile cargo from hard braking and **Hits**; it lowers the fragile premium. The truck itself takes no damage.
+Harm to cargo of a **Cargo kind**, by its rule; it lowers the kind's premium, and past a small tolerance costs the clean
+**Star**. Perishable cargo's spoiling counts as damage for the premium but never costs the Star. The truck itself takes
+no damage.
+
+**Cargo kind**:
+What makes a cargo special once loaded, with its own premium and **Damage** rule: fragile ("Zerbrechlich": hard
+braking and **Hits**), perishable ("Frischware": spoils with the time it is loaded), delicate ("Empfindlich": hard
+braking, sharp cornering and Hits) or live ("Lebende Fracht": hard braking and hard speeding up). Each comes from its
+**Tier** on. An **Offer**'s tag line names its twist in place of the type's tag; fragile cargo makes its own **Order type** instead.
+_Avoid_: cargo type (an Order type is something else)
 
 ### Places
 

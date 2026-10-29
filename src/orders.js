@@ -33,7 +33,7 @@ export function createOrders(root, sim, map, tables, strings) {
   const offerHtml = (o) =>
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${[o.pickup, ...o.drops.map((d) => d.spot)].map(place).join(' → ')}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
-    `<small class="tag">${strings.offerTypes[o.type]} · ${strings.offerTags[o.type]}</small><strong>${eur(o.pay)}</strong>`;
+    `<small class="tag">${strings.offerTypes[o.type]} · ${strings.cargoKinds[o.cargo.kind]?.twist ?? strings.offerTags[o.type]}</small><strong>${eur(o.pay)}</strong>`;
   const stop = (order) => (order.drops.length > 1 && order.phase === 'dropoff' ? ` ${order.drop + 1}/${order.drops.length}` : '');
   let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.profile.money;
@@ -164,10 +164,11 @@ export function createOrders(root, sim, map, tables, strings) {
         `${strings.bonusTime} ${clock(Math.max(0, order.drops[order.drop].expectedTime - order.elapsed))}`,
       );
       set(hint, 'textContent', pickup ? strings.stopToLoad : dock ? strings.stopToDock : strings.stopToUnload);
-      // The damage meter, while fragile cargo is loaded.
-      set(damage, 'hidden', pickup || !order.cargo.fragile);
+      // The damage meter, while cargo of a kind is loaded.
+      const kind = strings.cargoKinds[order.cargo.kind];
+      set(damage, 'hidden', pickup || !kind);
       if (!damage.hidden) {
-        set(damageText, 'textContent', `${strings.offerTypes.fragile} · ${strings.damage} ${Math.round(order.damage * 100)} %`);
+        set(damageText, 'textContent', `${kind.name} · ${kind.meter} ${Math.round(order.damage * 100)} %`);
         set(meter, 'value', order.damage);
       }
     }

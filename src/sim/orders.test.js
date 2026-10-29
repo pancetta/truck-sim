@@ -260,16 +260,17 @@ describe('Sim: time bonus', () => {
 });
 
 describe('Sim: fragile cargo', () => {
-  const { loadTime, fragilePremium, types } = tables.orders;
+  const { loadTime, kinds, types } = tables.orders;
   const { maxCargo } = tables.fleet.truck;
   const fragileTier = { ...freshProfile(), stars: tables.rank.tiers[types.fragile].stars };
-  const glass = { name: 'Glas', weight: 4, fragile: true };
+  const glass = { name: 'Glas', weight: 4, kind: 'fragile' };
   // Every offer is fragile, so runs with the same driving carry the same mass.
   const onlyGlass = { ...tables, orders: { ...tables.orders, cargo: [glass] } };
   // A lane twice as long: room to speed up from A's zone and brake towards B.
   const longSim = (profile = fragileTier) => simOn(lane(onlyGlass, [], 56), 1, profile);
   // Spec #12's worked example on the nook (see 'Sim: time bonus'): base + distance 100, 120 s expected.
-  const example = { ...onlyGlass, orders: { ...onlyGlass.orders, basePay: 100, loadTime: 30, slack: 60, hitDamage: 0.25 } };
+  const withHit = (t, hit) => ({ ...t, orders: { ...t.orders, kinds: { ...kinds, fragile: { ...kinds.fragile, hit } } } });
+  const example = withHit({ ...onlyGlass, orders: { ...onlyGlass.orders, basePay: 100, loadTime: 30, slack: 60 } }, 0.25);
   const nookSim = (t = example) => simOn(nook(t), 1, fragileTier);
 
   // Loads a fragile order at A on the long lane; the truck then stands in A's zone facing B.
@@ -287,13 +288,13 @@ describe('Sim: fragile cargo', () => {
 
     const offers = laneSim(3, fragileTier).requestOffers();
     expect(laneSim(3, fragileTier).requestOffers()).toEqual(offers);
-    for (const o of offers) if (o.type !== 'express') expect(o.type).toBe(o.cargo.fragile ? 'fragile' : 'normal');
+    for (const o of offers) if (o.type !== 'express') expect(o.type).toBe(o.cargo.kind === 'fragile' ? 'fragile' : 'normal');
   });
 
   test('cargo heavier than the base Ladefläche carries is a heavy offer', () => {
     const sim = laneSim(1, { ...fragileTier, vehicles: { truck: { cargoBed: 1 } } });
     for (let i = 0; i < 50; i++) {
-      for (const o of sim.requestOffers()) if (!o.cargo.fragile && o.type !== 'express') expect(o.type).toBe(o.cargo.weight > maxCargo ? 'heavy' : 'normal');
+      for (const o of sim.requestOffers()) if (o.cargo.kind !== 'fragile' && o.type !== 'express') expect(o.type).toBe(o.cargo.weight > maxCargo ? 'heavy' : 'normal');
     }
     expect(typesOffered(sim)).toEqual(new Set(['normal', 'heavy', 'fragile', 'express']));
   });
@@ -371,7 +372,7 @@ describe('Sim: fragile cargo', () => {
   });
 
   test('damage within tables.rank.cleanDamage keeps the clean Star', () => {
-    const sim = nookSim({ ...example, orders: { ...example.orders, hitDamage: tables.rank.cleanDamage } });
+    const sim = nookSim(withHit(example, tables.rank.cleanDamage));
     sim.acceptOrder(sim.requestOffers()[0].id);
     drive(sim, 30.1, IDLE); // loaded at 30 s
     timeUntil(sim, GAS, () => sim.state.collision, 10); // one hit, into the map edge, still in the zone
@@ -394,7 +395,7 @@ describe('Sim: fragile cargo', () => {
       lines: [
         { label: 'base', amount: 100 },
         { label: 'time', amount: 25 },
-        { label: 'fragile', amount: fragilePremium * 100 },
+        { label: 'fragile', amount: kinds.fragile.premium * 100 },
       ],
       stars: [
         { star: 'delivered', reasons: [] },
@@ -403,6 +404,128 @@ describe('Sim: fragile cargo', () => {
       ],
     });
     expect(sim.state.profile.stars).toBe(fragileTier.stars + 3);
+  });
+});
+
+describe('Sim: cargo kinds', () => {
+  const { loadTime, kinds } = tables.orders;
+  const atTier = (tier) => ({ ...freshProfile(), stars: tables.rank.tiers[tier].stars });
+  const only = (cargo, orders = {}) => ({ ...tables, orders: { ...tables.orders, ...orders, cargo: [cargo] } });
+  const cake = { name: 'Torte', weight: 1, kind: 'delicate' };
+  const hens = { name: 'Hühner', weight: 2, kind: 'live' };
+  const ice = { name: 'Eis', weight: 3, kind: 'perishable' };
+  const top = atTier(tables.rank.tiers.length - 1);
+
+  // Loads `cargo` at A on the long lane (see 'Sim: fragile cargo'), drives `driving`, and returns the damage.
+  function damageAfter(cargo, driving) {
+    const sim = simOn(lane(only(cargo), [], 56), 1, top);
+    acceptFrom(sim, 'A');
+    parkAt(sim, 'A');
+    drive(sim, loadTime + 0.1, IDLE);
+    expect(sim.state.order.phase).toBe('dropoff');
+    driving(sim);
+    expect(sim.state.collision).toBe(false);
+    return sim.state.order.damage;
+  }
+  const steer = (x) => ({ steer: x, gas: 0, brake: 0 });
+  const swerve = (x) => (sim) => {
+    drive(sim, 3, GAS);
+    drive(sim, 0.3, steer(x));
+    drive(sim, 0.6, steer(-x));
+    drive(sim, 0.3, steer(x));
+  };
+  // Smooth: a short push on the gas and rolling to a stop. Rough: the gas held into second gear, then braked to a stop.
+  const smooth = (sim) => {
+    drive(sim, 1.5, GAS);
+    timeUntil(sim, IDLE, () => sim.state.truck.speed === 0);
+  };
+  const launch = (sim) => drive(sim, 4, GAS);
+  const rough = (sim) => {
+    launch(sim);
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+  };
+
+  // A hit into the nook's south edge with `cargo` loaded (see the fragile worked example); returns the Sim, still
+  // loaded, and the damage the hit itself did.
+  function hitWith(cargo) {
+    const sim = simOn(nook(only(cargo, { basePay: 100, loadTime: 30, slack: 60 })), 1, top);
+    sim.acceptOrder(sim.requestOffers()[0].id);
+    drive(sim, 30.1, IDLE);
+    let before = 0;
+    timeUntil(sim, GAS, () => sim.state.collision || ((before = sim.state.order.damage), false), 10);
+    drive(sim, 0.1, IDLE);
+    return { sim, hit: sim.state.order.damage - before };
+  }
+
+  test("each kind's cargo is offered from its rank tier on, never below it", () => {
+    for (const [kind, { tier }] of Object.entries(kinds)) {
+      const seen = (t) => {
+        const sim = laneSim(1, atTier(t));
+        for (let i = 0; i < 100; i++) if (sim.requestOffers().some((o) => o.cargo.kind === kind)) return true;
+        return false;
+      };
+      expect(tables.orders.cargo.some((c) => c.kind === kind)).toBe(true);
+      expect(seen(tier)).toBe(true);
+      if (tier > 0) expect(seen(tier - 1)).toBe(false);
+    }
+  });
+
+  test('perishable cargo spoils with the time it is loaded, rough driving or not; its line shrinks and the clean Star stays', () => {
+    const t = only(ice, { basePay: 100, loadTime: 30, slack: 60, kinds: { ...kinds, perishable: { ...kinds.perishable, spoil: 1 / 100 } } });
+    const sim = simOn(nook(t), 1, top);
+    sim.acceptOrder(sim.requestOffers()[0].id);
+    drive(sim, 29.9, IDLE);
+    expect(sim.state.order).toMatchObject({ phase: 'pickup', damage: 0 });
+    drive(sim, 30.2, IDLE); // loaded at 30 s, unloaded 30 s later: 30 % spoilt
+
+    expect(sim.state.lastPayment.lines).toContainEqual({ label: 'perishable', amount: Math.round(kinds.perishable.premium * 0.7 * 100) });
+    expect(starsOf(sim).clean).toEqual([]);
+
+    const loaded = 4 + 0.5; // s: rough() takes about this long; coasting would take longer
+    const spoilt = damageAfter(ice, rough);
+    expect(spoilt).toBeGreaterThan((loaded - 0.5) * kinds.perishable.spoil);
+    expect(spoilt).toBeLessThan((loaded + 1) * kinds.perishable.spoil);
+  });
+
+  test('delicate cargo is hurt by a sharp swerve, hard braking and hits, not by a gentle swerve or rolling to a stop', () => {
+    expect(damageAfter(cake, smooth)).toBe(0);
+    expect(damageAfter(cake, swerve(0.25))).toBe(0);
+    expect(damageAfter(cake, launch)).toBe(0);
+    expect(damageAfter(cake, swerve(1))).toBeGreaterThan(0);
+    expect(damageAfter(cake, rough)).toBeGreaterThan(0);
+
+    const { sim, hit } = hitWith(cake);
+    expect(sim.state.order.damage).toBe(kinds.delicate.hit);
+    expect(hit).toBe(kinds.delicate.hit);
+    drive(sim, 31, IDLE);
+    expect(sim.state.lastPayment.lines).toContainEqual({ label: 'delicate', amount: Math.round(kinds.delicate.premium * (1 - kinds.delicate.hit) * 100) });
+    expect(starsOf(sim).clean).toEqual(['damage']);
+  });
+
+  test('live cargo is hurt by speeding up hard and braking hard, hardly by a short push and rolling to a stop, not by hits', () => {
+    const gentle = damageAfter(hens, smooth);
+    const launched = damageAfter(hens, launch);
+    expect(gentle).toBeLessThan(0.001);
+    expect(launched).toBeGreaterThan(10 * gentle);
+    expect(damageAfter(hens, rough)).toBeGreaterThan(launched);
+    expect(damageAfter(hens, swerve(1))).toBe(damageAfter(hens, swerve(0.25)));
+
+    expect(hitWith(hens).hit).toBeLessThan(0.001); // only that step's speeding up; the speeding up into the wall does more
+  });
+
+  test('rough driving past the tolerance costs the clean Star, and a higher Fahrwerk level means less damage', () => {
+    const roughTwice = (sim) => {
+      rough(sim);
+      rough(sim);
+    };
+    expect(damageAfter(hens, roughTwice)).toBeGreaterThan(tables.rank.cleanDamage);
+
+    const sim = simOn(lane(only(hens), [], 56), 1, { ...top, vehicles: { truck: { suspension: 3 } } });
+    acceptFrom(sim, 'A');
+    parkAt(sim, 'A');
+    drive(sim, loadTime + 0.1, IDLE);
+    roughTwice(sim);
+    expect(sim.state.order.damage).toBeLessThan(damageAfter(hens, roughTwice));
   });
 });
 
@@ -467,7 +590,7 @@ describe('Sim: docking', () => {
   });
 
   test('reversing straight into the bay pays the dock line: +25% of base + distance', () => {
-    const sim = dockSim();
+    const sim = dockSim(['A'], tierOf('dock'), tables.orders.cargo.filter((c) => !c.kind)); // no kind's premium line
 
     const offer = reverseIntoA(sim);
 
@@ -529,7 +652,7 @@ describe('Sim: docking', () => {
   });
 
   test('a fragile + dock order pays both bonus lines', () => {
-    const glass = { name: 'Glas', weight: 4, fragile: true };
+    const glass = { name: 'Glas', weight: 4, kind: 'fragile' };
     const sim = dockSim(['A'], tierOf('fragileDock'), [glass]);
 
     const offer = reverseIntoA(sim);
@@ -697,7 +820,7 @@ describe('Sim: express and oversized offers', () => {
         count.all++;
         if (o.type !== 'express' && o.type !== 'oversized') continue;
         count[o.type]++;
-        expect(o.cargo.fragile).toBeFalsy();
+        expect(o.cargo.kind).not.toBe('fragile');
         expect(o.dropoff).toBe('B'); // A is the dock
       }
     }
@@ -859,7 +982,7 @@ describe('Sim: rounds', () => {
         const spots = o.drops.map((d) => d.spot);
         expect(new Set([o.pickup, ...spots]).size).toBe(spots.length + 1);
         expect(spots).not.toContain('A'); // the dock
-        expect(o.cargo.fragile).toBeFalsy();
+        expect(o.cargo.kind).not.toBe('fragile');
       }
     }
     expect(count.round / count.all).toBeCloseTo(shares.round, 1);

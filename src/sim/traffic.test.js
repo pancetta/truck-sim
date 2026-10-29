@@ -578,7 +578,7 @@ describe('Sim: right of way and collisions', () => {
   });
 
   test('driving into an AI car fines once per contact, stops both, floors money at 0 and damages fragile cargo', () => {
-    const glass = { name: 'Glas', weight: 4, fragile: true };
+    const glass = { name: 'Glas', weight: 4, kind: 'fragile' };
     const onlyGlass = { ...quiet, orders: { ...quiet.orders, cargo: [glass] } };
     const profile = { ...freshProfile(), money: 30, stars: tables.rank.tiers[tables.orders.types.fragile].stars };
     // A long north–south street with two spots on it; the truck starts on A's.
@@ -616,7 +616,7 @@ describe('Sim: right of way and collisions', () => {
     expect(car.speed).toBe(0);
     expect(sim.state.lastFine).toEqual({ reason: 'collision', amount: 30 }); // all the money there was
     expect(sim.state.profile.money).toBe(0);
-    expect(sim.state.order.damage).toBe(tables.orders.hitDamage);
+    expect(sim.state.order.damage).toBe(tables.orders.kinds.fragile.hit);
     expect(sim.state.order.faults).toEqual(['collision']); // the Contact costs the clean Star
 
     // Backing well off and driving into it again is a new contact.

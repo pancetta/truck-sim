@@ -102,13 +102,22 @@ export const orders = {
   timeBonus: 0.5,
   referenceSpeed: 7, // m/s along the road route, for an offer's expected time
   slack: 20, // s added to the expected time, for lights and parking
-  // Fragile cargo, once loaded, takes damage (0..1) from braking harder than hardBrake and from each new hit,
-  // both scaled by the Fahrwerk factor. The premium is a share of the pay, lost in proportion to the damage.
-  // The brake pedal is on or off, so a loaded truck's brake is always hard: damage goes by the speed braked away.
-  fragilePremium: 0.4,
-  hardBrake: 2.5, // m/s² of deceleration; coasting stays well below
-  brakeDamage: 0.005, // per m/s of speed shed while braking hard: ~0.07 for a full stop from 50 km/h
-  hitDamage: 0.2, // per new collision at hitSpeed or faster
+  // Cargo kinds (a cargo's `kind`; names, meters and twist lines in strings.cargoKinds). Once loaded, cargo of a kind
+  // takes damage (0..1): `spoil` per s loaded, and, scaled by the Fahrwerk factor, `brake` per m/s of speed shed braking
+  // harder than hardBrake, `speedUp` per m/s gained speeding up harder than hardAccel, `turn` per m/s of sideways speed
+  // turned away cornering harder than hardTurn, and `hit` per new hit. Its `premium`, a share of the pay, is lost in
+  // proportion. Spoiling isn't rough driving, so only the others' damage costs the clean Star (rank.cleanDamage).
+  // A kind's cargo is offered from rank tier `tier` on. The pedals are on or off, so a loaded truck's brake is always
+  // hard, and so is its gas in first gear: damage goes by the speed braked away or gained.
+  kinds: {
+    fragile: { tier: 1, premium: 0.4, spoil: 0, brake: 0.005, speedUp: 0, turn: 0, hit: 0.2 },
+    perishable: { tier: 1, premium: 0.5, spoil: 1 / 300, brake: 0, speedUp: 0, turn: 0, hit: 0 }, // gone in 5 min
+    delicate: { tier: 2, premium: 0.5, spoil: 0, brake: 0.005, speedUp: 0, turn: 0.005, hit: 0.2 },
+    live: { tier: 2, premium: 0.4, spoil: 0, brake: 0.005, speedUp: 0.01, turn: 0, hit: 0 },
+  },
+  hardBrake: 2.5, // m/s² of deceleration; coasting stays well below. A full stop from 50 km/h sheds 14 m/s
+  hardAccel: 2, // m/s²; the loaded truck in first gear, a van in its first two
+  hardTurn: 2.5, // m/s² sideways; a 15 m radius corner at 25 km/h is 3.2
   hitSpeed: 1.5, // m/s; slower touches, e.g. while manoeuvring, do no damage
   // Dock bonus: a share of the pay when unloading at a dock (osm.docks) ends with the truck reversed into the
   // bay, facing out of it within dockHeading, centred on it within dockCentre and its rear within dockDepth.
@@ -121,7 +130,7 @@ export const orders = {
   // Offer types by the lowest rank tier that offers them (names and tag lines in strings.offerTypes and offerTags). From
   // its tier on, an offer is express, oversized or a round at its `shares` (drawn first, each with cargo that isn't
   // fragile to drop-offs that aren't docks); otherwise the type comes from the drop-off and the cargo: dock or
-  // fragileDock to a dock, else fragile if marked so, heavy above maxCargo, or normal.
+  // fragileDock to a dock, else fragile if its kind is (no other kind changes the type), heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3, round: 3 },
   shares: { express: 0.2, oversized: 0.15, round: 0.15 },
   roundDrops: [2, 3], // a round's number of drop-offs, one drawn per round offer
@@ -133,8 +142,14 @@ export const orders = {
     { name: 'Paletten', weight: 6 }, // t
     { name: 'Getränke', weight: 10 },
     { name: 'Möbel', weight: 4 },
-    { name: 'Glas', weight: 5, fragile: true },
-    { name: 'Elektronik', weight: 3, fragile: true },
+    { name: 'Glas', weight: 5, kind: 'fragile' },
+    { name: 'Elektronik', weight: 3, kind: 'fragile' },
+    { name: 'Speiseeis', weight: 3, kind: 'perishable' },
+    { name: 'Frischer Fisch', weight: 4, kind: 'perishable' },
+    { name: 'Hochzeitstorte', weight: 1, kind: 'delicate' },
+    { name: 'Glasskulptur', weight: 2, kind: 'delicate' },
+    { name: 'Hühner', weight: 2, kind: 'live' },
+    { name: 'Hund zum Tierarzt', weight: 1, kind: 'live' },
     { name: 'Stahl', weight: 14 },
     { name: 'Baumaschine', weight: 18 },
     { name: 'Betonteile', weight: 24 },
@@ -149,7 +164,7 @@ export const orders = {
 // 25 Stars an hour, more than its 15 rank points / 10 did, so the tiers come at about 0.2, 0.9, 2 and 4 h of play, and
 // the ones after, which keep the busiest traffic, at about 8, 14 and 21 h.
 export const rank = {
-  cleanDamage: 0.1, // a hard stop from 50 km/h is about 0.07 (orders.brakeDamage), a Hit 0.2
+  cleanDamage: 0.1, // a hard stop from 50 km/h is about 0.07 (orders.kinds), a Hit 0.2
   tiers: [
     { stars: 0, traffic: 8 },
     { stars: 6, traffic: 9 },
@@ -164,7 +179,7 @@ export const rank = {
 
 // Werkstatt upgrades by id (names in strings.upgrades), bought one level at a time. `rank` is the lowest
 // rank tier that may buy a level. `factor` scales a constant of the current Vehicle (tables.fleet), whose own levels
-// they are: motor the torque curve, brakes brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and fragile damage,
+// they are: motor the torque curve, brakes brakeForce, tyres steerFadeSpeed, suspension rollPerAccel and cargo damage,
 // tank its tank, cargoBed its maxCargo.
 // The save module drops ids not listed here.
 export const upgrades = {

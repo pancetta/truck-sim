@@ -533,7 +533,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   opacity: 0.7;
 }
 
-/* Fragile cargo: label and damage meter under the hint. */
+/* Cargo of a kind (tables.orders.kinds): its label and meter under the hint. */
 .goal p {
   grid-column: 2;
   display: flex;

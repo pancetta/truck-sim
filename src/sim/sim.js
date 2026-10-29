@@ -51,9 +51,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
   // 'fragile', 'dock', 'fragileDock', 'express', 'oversized' or 'round' (see requestOffers()). `order` is the active offer
   // plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops` of the drop-off it heads for or unloads at, whose
-  // spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on fragile cargo once loaded) and `faults`, what has
-  // cost it the clean Star so far: the reason of each fine taken since it was accepted ('collision' for a Contact the
-  // truck made) and 'zebra' for a zebra crossing driven through, Witness or not, each once;
+  // spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
+  // loaded, see damageCargo()) and `faults`, what has cost it the clean Star so far: the reason of each fine taken since
+  // it was accepted ('collision' for a Contact the truck made) and 'zebra' for a zebra crossing driven through, Witness
+  // or not, each once;
   // `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road route to that zone's place on the road graph, as points ({ x, z }) from the next one
   // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()); with an oversized
@@ -293,7 +294,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     checkRedLight(frontBefore, front()); // before touchCars, which may stop the truck
     if (traffic) touchCars(met, before, pushed);
     checkZebras();
-    damageCargo(shed > o.hardBrake * dt ? shed : 0, hit);
+    damageCargo(dt, shed, Math.abs(yawRate * truck.speed), hit);
     const moved = Math.hypot(truck.x - x, truck.z - z);
     p.distance += moved;
     burn(moved, reversing ? input.brake : input.gas);
@@ -415,13 +416,16 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.lastTow = { station: to?.id ?? null, fee };
   }
 
-  // Loaded fragile cargo takes damage from speed shed by hard braking (m/s) and from each new hit faster than a touch;
-  // the Fahrwerk slows both.
-  function damageCargo(braked, hit) {
+  // Loaded cargo of a kind (tables.orders.kinds) spoils with time, and takes damage from the speed `shed` (m/s, negative
+  // when gained) by braking or speeding up hard, from cornering hard (`lateral` m/s²) and from each new hit faster than a
+  // touch; the Fahrwerk slows all but the spoiling.
+  function damageCargo(dt, shed, lateral, hit) {
     const order = state.order;
-    if (!order?.cargo.fragile || order.phase !== 'dropoff') return;
-    const harm = o.brakeDamage * braked + (hit ? o.hitDamage : 0);
-    order.damage = Math.min(1, order.damage + harm * (levelOf('suspension')?.factor ?? 1));
+    const k = o.kinds[order?.cargo.kind];
+    if (!k || order.phase !== 'dropoff') return;
+    const hard = (amount, limit) => (amount > limit * dt ? amount : 0);
+    const harm = k.brake * hard(shed, o.hardBrake) + k.speedUp * hard(-shed, o.hardAccel) + k.turn * hard(lateral * dt, o.hardTurn) + (hit ? k.hit : 0);
+    order.damage = Math.min(1, order.damage + k.spoil * dt + harm * (levelOf('suspension')?.factor ?? 1));
   }
 
   // Junction n runs `junctionOffset` s ahead of junction n - 1; a light's `axis` 1 (the second street's) runs half
@@ -786,8 +790,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         { label: 'base', amount: drop.pay },
         { label: 'time', amount: Math.round(o.timeBonus * timeShare * drop.pay) },
       ];
-      // Damage takes its share of the fragile premium and never more, so the pay never drops below the base.
-      if (order.cargo.fragile) lines.push({ label: 'fragile', amount: Math.round(o.fragilePremium * (1 - order.damage) * drop.pay) });
+      // Damage takes its share of the kind's premium and never more, so the pay never drops below the base.
+      const kind = o.kinds[order.cargo.kind];
+      if (kind) lines.push({ label: order.cargo.kind, amount: Math.round(kind.premium * (1 - order.damage) * drop.pay) });
       const to = targetOf(order);
       const docked = to.dock && reversedInto(to.bay);
       if (docked) lines.push({ label: 'dock', amount: Math.round(o.dockBonus * drop.pay) });
@@ -803,7 +808,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const stars = [
         { star: 'delivered', reasons: [] },
         { star: 'onTime', reasons: order.elapsed <= order.expectedTime ? [] : ['late'] },
-        { star: 'clean', reasons: order.damage > tables.rank.cleanDamage ? [...order.faults, 'damage'] : order.faults },
+        { star: 'clean', reasons: order.damage > tables.rank.cleanDamage && !kind?.spoil ? [...order.faults, 'damage'] : order.faults },
       ];
       if (to.dock) stars.push({ star: 'dock', reasons: docked ? [] : ['notDocked'] });
       state.profile.stars += stars.filter((x) => !x.reasons.length).length;
@@ -972,12 +977,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
   const typeOf = (cargo, to) =>
-    to?.dock ? (cargo.fragile ? 'fragileDock' : 'dock') : cargo.fragile ? 'fragile' : cargo.weight > base.maxCargo ? 'heavy' : 'normal';
+    to?.dock ? (cargo.kind === 'fragile' ? 'fragileDock' : 'dock') : cargo.kind === 'fragile' ? 'fragile' : cargo.weight > base.maxCargo ? 'heavy' : 'normal';
 
   // New offers between distinct spots, paid by the road route length; none while an order is active. Service spots
   // are never a pickup or a drop-off.
-  // Cargo is only what the Ladefläche carries, and cargo and drop-off make an offer type the rank tier allows; from
-  // their tiers, a share of offers is express, oversized or a round instead (tables.orders.types). An oversized offer's
+  // Cargo is only what the Ladefläche carries, of a kind the rank tier allows (tables.orders.kinds), and cargo and
+  // drop-off make an offer type the rank tier allows; from their tiers, a share of offers is express, oversized or a
+  // round instead (tables.orders.types), with cargo that isn't fragile. An oversized offer's
   // spots and route keep to edges at least oversizedWidth wide, and it is not made where no such route leads. A round
   // has roundDrops drop-offs, driven nearest by road first, and is not made where one can't be reached.
   // Each drop (`drops`: { spot, distance, pay, expectedTime }) pays base + distance of its own leg, and is expected
@@ -991,14 +997,14 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
     const maxCargo = base.maxCargo * (levelOf('cargoBed')?.factor ?? 1);
-    const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && o.types[typeOf(c)] <= state.rank.tier);
+    const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && o.types[typeOf(c)] <= state.rank.tier && (o.kinds[c.kind]?.tier ?? 0) <= state.rank.tier);
     for (let i = 0; i < o.offerCount; i++) {
       const draw = random();
       let share = 0;
       const drawn = Object.keys(o.shares).find((type) => draw < (share += o.shares[type]));
       const special = drawn && o.types[drawn] <= state.rank.tier ? drawn : null;
       const width = special === 'oversized' ? o.oversizedWidth : 0;
-      const cargo = pick(special ? cargoes.filter((c) => !c.fragile) : cargoes);
+      const cargo = pick(special ? cargoes.filter((c) => c.kind !== 'fragile') : cargoes);
       const wide = places.filter((s) => s.pose.edge.width >= width);
       const stops = [];
       for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)
