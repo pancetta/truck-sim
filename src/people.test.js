@@ -13,11 +13,13 @@ describe('People: figures (#101)', () => {
     expect(figureOf(7, pedestrians)).toEqual(figures[7]);
   });
 
-  it('draws kids small and older people stooped, from their build', () => {
+  it('draws kids small and older people stooped, from their build, with steps to match', () => {
     for (const f of figures) {
       const build = pedestrians.figures[f.build];
       expect(f.scale).toBeCloseTo(build.scale * (pedestrians.height / 1.75), 6);
       expect(f.lean).toBe(build.lean);
+      // A step as long as the build's legs swing, so the feet don't slide.
+      expect(f.step).toBeCloseTo(pedestrians.step * build.scale * build.stride, 6);
     }
     const scale = (name) => figures.find((f) => f.build === name).scale;
     expect(scale('kid')).toBeLessThan(0.75 * scale('man'));
@@ -42,7 +44,7 @@ describe('People: figures (#101)', () => {
 describe('People: walk cycle (#101)', () => {
   // `seconds` at 60 fps moving at `speed` m/s along z, from the gait `g`.
   const run = (g, speed, seconds) => {
-    for (let i = 0; i < seconds * 60; i++) stepGait(g, g.x, g.z + speed / 60, 1 / 60, pedestrians);
+    for (let i = 0; i < seconds * 60; i++) stepGait(g, g.x, g.z + speed / 60, 1 / 60, pedestrians.step, pedestrians.speed);
     return g;
   };
 
@@ -67,9 +69,15 @@ describe('People: walk cycle (#101)', () => {
     expect(jump.stride).toBeLessThanOrEqual(1.4);
   });
 
+  it('keeps a full stride where the frames come quicker than the Sim steps (120 Hz: one moves every other frame)', () => {
+    const g = { x: 0, z: 0, phase: 0, stride: 0 };
+    for (let i = 0; i < 240; i++) stepGait(g, 0, g.z + (i % 2 ? (2 * pedestrians.speed) / 120 : 0), 1 / 120, pedestrians.step, pedestrians.speed);
+    expect(g.stride).toBeCloseTo(1, 1);
+  });
+
   it('starts afresh where one appears somewhere else, with no stride from the jump', () => {
     const g = run({ x: 0, z: 0, phase: 0, stride: 0 }, 0, 0.1);
-    stepGait(g, 50, 80, 1 / 60, pedestrians);
+    stepGait(g, 50, 80, 1 / 60, pedestrians.step, pedestrians.speed);
     expect(g).toMatchObject({ x: 50, z: 80, phase: 0, stride: 0 });
   });
 });

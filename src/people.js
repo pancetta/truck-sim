@@ -27,6 +27,8 @@ const MAX_STRIDE = 1.4; // times a walking pace's, however fast one moves
 const SETTLE = 10; // per s, how fast the stride follows the pace
 const TELEPORT = 2; // m in a frame: one that moved farther appeared there and starts afresh
 
+const STRIDE = 13; // floats per instance
+
 // Where a part's colour comes from: the figure's top, bottom (trousers, a hat), skin and hair, the legs (bottom, or
 // skin with `bare`), the forearms (top, or skin with `tee`), or its own vertex colour.
 const [TOP, BOTTOM, SKIN, HAIR_COLOUR, LEGS, FOREARMS, OWN] = [0, 1, 2, 3, 4, 5, 6];
@@ -46,20 +48,22 @@ function hash(id, salt) {
 }
 const pick = (list, id, salt) => list[Math.floor(hash(id, salt) * list.length)];
 
-// Pedestrian `id`'s look: { build (its name), wear (PIECES bits), scale, lean, stride, colours [top, bottom, skin, hair]
-// as 0xrrggbb }.
+// Pedestrian `id`'s look: { build (its name), wear (PIECES bits), scale, lean, stride, step (m, as far as its legs
+// swing), colours [top, bottom, skin, hair] as 0xrrggbb }.
 export function figureOf(id, p) {
   const builds = Object.entries(p.figures);
   let r = hash(id, 0) * builds.reduce((sum, [, b]) => sum + b.share, 0);
   const [name, build] = builds.find(([, b]) => (r -= b.share) < 0) ?? builds.at(-1);
   const wear = pick(build.wear, id, 1).split(' ').reduce((mask, piece) => mask | (PIECES[piece] ?? 0), 0);
   const colours = [pick(p.outfits, id, 2), pick(p.trousers, id, 3), pick(p.skins, id, 4), pick(build.hairs ?? p.hairs, id, 5)];
-  return { build: name, wear, scale: build.scale * (p.height / 1.75), lean: build.lean, stride: build.stride, colours };
+  const scale = build.scale * (p.height / 1.75);
+  return { build: name, wear, scale, lean: build.lean, stride: build.stride, step: p.step * build.scale * build.stride, colours };
 }
 
 // Moves the walk cycle `g` { x, z, phase (rad, a step per π), stride (1 at walking pace) } to where its pedestrian is
-// now, `dt` s on: a step per `p.step` m moved, the stride easing towards the pace.
-export function stepGait(g, x, z, dt, p) {
+// now, `dt` s on: a step per `step` m moved, the stride easing towards the pace (1 at `speed` m/s). The Sim moves
+// people only on its steps, so on a screen faster than them a frame's pace is 0 or more: it is eased in uncapped.
+export function stepGait(g, x, z, dt, step, speed) {
   const d = Math.hypot(x - g.x, z - g.z);
   g.x = x;
   g.z = z;
@@ -67,8 +71,8 @@ export function stepGait(g, x, z, dt, p) {
     g.phase = g.stride = 0;
     return;
   }
-  g.phase = (g.phase + (Math.PI * d) / p.step) % (2 * Math.PI);
-  if (dt > 0) g.stride += (Math.min(MAX_STRIDE, d / dt / p.speed) - g.stride) * Math.min(1, dt * SETTLE);
+  g.phase = (g.phase + (Math.PI * d) / step) % (2 * Math.PI);
+  if (dt > 0) g.stride = Math.min(MAX_STRIDE, g.stride + (d / dt / speed - g.stride) * Math.min(1, dt * SETTLE));
 }
 
 // A part: geometry with its colour `slot` (or OWN `colour`), the `limb` it swings with, and the `piece` bits that show
@@ -83,9 +87,9 @@ const capsule = (r, top, bottom, x, z = 0) => new THREE.CapsuleGeometry(r, Math.
 // A body of revolution through [radius, y] points, `depth` times as deep as wide.
 const lathe = (points, depth) => new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), 12).scale(1, 1, depth);
 const box = (w, h, d, x, y, z = 0) => new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z);
-// An open tube from `top` down to `bottom` m up, `rt` and `rb` round, `depth` times as deep as wide; `half` only behind.
-const tube = (rt, rb, top, bottom, depth, half = false) =>
-  new THREE.CylinderGeometry(rt, rb, top - bottom, 12, 1, true, half ? Math.PI / 2 : 0, half ? Math.PI : 2 * Math.PI).scale(1, 1, depth).translate(0, (top + bottom) / 2, 0);
+// An open tube from `top` down to `bottom` m up, `rt` and `rb` round, `depth` times as deep as wide; // `back` only behind, its edges tucked behind the head.
+const tube = (rt, rb, top, bottom, depth, back = false) =>
+  new THREE.CylinderGeometry(rt, rb, top - bottom, 12, 1, true, back ? Math.PI / 2 + 0.4 : 0, back ? Math.PI - 0.8 : 2 * Math.PI).scale(1, 1, depth).translate(0, (top + bottom) / 2, 0);
 const head = (r, y) => new THREE.SphereGeometry(r, 12, 10).scale(0.9, 1.12, 1).translate(0, y, 0);
 
 function nearFigure() {
@@ -108,8 +112,7 @@ function nearFigure() {
     part(new THREE.CylinderGeometry(0.15, 0.15, 0.012, 14).translate(0, 1.7, 0), BOTTOM, { piece: PIECES.hat }),
     part(tube(0.165, 0.25, 0.93, 0.45, 0.75), TOP, { piece: PIECES.skirt }),
     part(tube(0.16, 0.175, 0.95, 0.79, 0.7), TOP, { piece: PIECES.jacket }),
-    part(box(0.07, 0.22, 0.26, 0.27, 0.84, -0.04), OWN, { piece: PIECES.bag, colour: BAG }),
-    part(box(0.03, 0.5, 0.012, 0, -0.25, 0).rotateZ(0.74).translate(0.04, 1.24, 0.108), OWN, { piece: PIECES.bag, colour: BAG }), // its strap
+    part(box(0.06, 0.2, 0.24, 0.24, 0.6, 0.02), OWN, { limb: ARM, piece: PIECES.bag, colour: BAG }), // in the hand
     part(box(0.28, 0.36, 0.13, 0, 1.04, -0.17), OWN, { piece: PIECES.backpack, colour: BACKPACK }),
   ]);
 }
@@ -172,10 +175,10 @@ export function createPeople(scene, tables, road) {
   // Per level its mesh and per instance attributes.
   const levels = [nearFigure(), farFigure()].map((figure, level) => {
     const geometry = new THREE.InstancedBufferGeometry().copy(figure);
-    const data = { place: 4, gait: 4, look: 4, wear: 1 };
-    for (const [name, size] of Object.entries(data)) {
-      data[name] = new THREE.InstancedBufferAttribute(new Float32Array(p.count * size), size).setUsage(THREE.DynamicDrawUsage);
-      geometry.setAttribute(name, data[name]);
+    // One buffer, so the figure takes 5 of WebGPU's 8 vertex buffers: per instance place, gait, look and wear.
+    const data = new THREE.InstancedInterleavedBuffer(new Float32Array(p.count * STRIDE), STRIDE).setUsage(THREE.DynamicDrawUsage);
+    for (const [name, size, offset] of [['place', 4, 0], ['gait', 4, 4], ['look', 4, 8], ['wear', 1, 12]]) {
+      geometry.setAttribute(name, new THREE.InterleavedBufferAttribute(data, size, offset));
     }
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false; // update() puts the ones in view into it, and its shader places them
@@ -188,11 +191,11 @@ export function createPeople(scene, tables, road) {
   let warm = true;
   const people = new WeakMap(); // per pedestrian its { gait, figure }
   const bounds = new THREE.Sphere(new THREE.Vector3(), p.height / 2 + 0.3);
-  const set = (array, i, a, b, c, d) => {
-    array[i * 4] = a;
-    array[i * 4 + 1] = b;
-    array[i * 4 + 2] = c;
-    array[i * 4 + 3] = d;
+  const set = (array, i, x, y, z, w) => {
+    array[i] = x;
+    array[i + 1] = y;
+    array[i + 2] = z;
+    array[i + 3] = w;
   };
 
   // Draws the Sim's `pedestrians` that pass `inView` (a test on a bounding sphere), in detail within `near` of `truck`,
@@ -203,27 +206,27 @@ export function createPeople(scene, tables, road) {
       let person = people.get(q);
       if (!person) people.set(q, (person = { gait: { x: q.x, z: q.z, phase: 0, stride: 0 }, figure: figureOf(q.id, p) }));
       const { gait, figure } = person;
-      stepGait(gait, q.x, q.z, dt, p);
+      stepGait(gait, q.x, q.z, dt, figure.step, p.speed);
       const y = q.onRoad ? road : ground;
       bounds.center.set(q.x, y + p.height / 2, q.z);
       if (!inView(bounds)) continue;
       const level = levels[Math.hypot(q.x - truck.x, q.z - truck.z) < p.near ? 0 : 1];
-      const i = level.count++;
-      const { place, gait: g, look, wear } = level.data;
-      set(place.array, i, q.x, y, q.z, q.heading);
-      set(g.array, i, gait.phase, gait.stride * figure.stride, figure.lean, figure.scale);
-      set(look.array, i, ...figure.colours);
-      wear.array[i] = figure.wear;
+      const a = level.data.array;
+      const i = level.count++ * STRIDE;
+      const c = figure.colours;
+      set(a, i, q.x, y, q.z, q.heading);
+      set(a, i + 4, gait.phase, gait.stride * figure.stride, figure.lean, figure.scale);
+      set(a, i + 8, c[0], c[1], c[2], c[3]);
+      a[i + 12] = figure.wear;
     }
     for (const { mesh, geometry, data, count } of levels) {
       geometry.instanceCount = warm ? Math.max(count, 1) : count;
       mesh.visible = geometry.instanceCount > 0;
-      // Only the instances in use go up to the GPU.
-      for (const attribute of Object.values(data)) {
-        attribute.clearUpdateRanges();
-        attribute.addUpdateRange(0, count * attribute.itemSize);
-        attribute.needsUpdate = true;
-      }
+      // Only the instances in use go up to the GPU; none for none (WebGL 2 reads a length of 0 as all of it).
+      if (!count) continue;
+      data.clearUpdateRanges();
+      data.addUpdateRange(0, count * STRIDE);
+      data.needsUpdate = true;
     }
     warm = false;
   }
