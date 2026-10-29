@@ -1043,6 +1043,23 @@ Frames held 16.7 ms throughout. The light costs about 1 ms of the M2's GPU in ev
 
 After these numbers, QA flattened the light's falloff (decay 1 at 25 cd, from decay 2 at 300 cd), so a light-coloured car 8 m ahead no longer turns white while one 20 m ahead stays lit. These are uniform values, so the table still holds.
 
+## Pedestrian figures (#101)
+
+The box figures are replaced by our own rounded ones: capsule limbs, a lathed torso and hips, hair, hats, skirts and coats, jacket hems, bags and backpacks, in four builds (men, women, kids, older people). Each detail level is a single mesh of instanced geometry with every piece in it; per instance the vertex shader hides the pieces that aren't worn, colours the rest from four packed colours, swings the hips, knees and arms at the walk cycle's phase and stride, and places the figure. The CPU sends 13 floats per person per frame. Near and far share one material, so one pipeline (plus its shadow pipeline) serves both, and the first frame draws a collapsed figure at each level so both compile before anyone comes into view. That is 2 meshes where #78 had 4, and 1 shadow caster where it had 2.
+
+**How measured:** as for #98: production builds of main (`911384e`) and this change with WebGPU timestamp queries, Chrome headless on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), 900 frames after 6 s of driving, alternating main and this change. "Long frames" counts frames over 25 ms from 1 s after loading to the end of the run, which covers the first pedestrians walking into view. The stress rows set `pedestrians.count` 200 and `near` 60 in both builds, so most people in view are drawn in full detail. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | GPU ms median / p95 | render ms median / p95 | draw calls / triangles | long frames |
+|---|---|---|---|---|
+| main, cab (2 runs) | 7.9–9.6 / 9.9–14.7 | 3.0–3.1 / 3.6–4.1 | 136–137 / 424–425k | 0 |
+| #101, cab (2 runs) | 7.4–9.6 / 9.9–10.4 | 2.9–3.0 / 3.5–3.6 | 135–136 / 424–425k | 0 |
+| main, chase (2 runs) | 8.1–11.1 / 9.5–11.5 | 2.9–3.0 / 3.5–3.6 | 121–122 / 434k | 0 |
+| #101, chase (2 runs) | 9.3–11.1 / 11.4–11.5 | 2.9–3.0 / 3.5 | 120–121 / 434k | 0 |
+| main, cab, 200 people near (2 runs) | 9.6 / 9.9 | 3.0 / 3.7 | 141 / 426k | 0 |
+| #101, cab, 200 people near (2 runs) | 9.7–9.8 / 10.0 | 3.0–3.1 / 3.7–3.8 | 138 / 444k | 0 |
+
+Frames held 16.7 ms throughout. At the default 60 people this change sits within the run-to-run noise of main. With 200 people, most of them in full detail, the figures cost about 0.1 ms of the M2's GPU and 18k triangles more than the box figures, with 3 fewer draw calls.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

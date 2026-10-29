@@ -265,6 +265,10 @@ A car standing still at the kerb as an obstacle; it never moves.
 A person walking a **Pavement line**, driven by the **Sim**. Pedestrians step onto the road only to cross at a **Zebra crossing**, or to jump out of the truck's way, and they appear and leave out of the truck's view, like the **AI cars**. On the pavement one the truck or its trailer comes at jumps aside; one with nowhere to go (a wall behind it) stands still and stops the truck.
 _Avoid_: NPC, walker, passer-by
 
+**Figure**:
+How a **Pedestrian** looks, fixed by its id: a build (man, woman, kid, older person) and an outfit of pieces (hair or a hat, a skirt or coat, a jacket, a bag or backpack, bare legs or arms) in its own colours. Near the truck it swings its legs and arms in step with how fast it moves.
+_Avoid_: model, avatar, skin (that is the colour)
+
 **Junction**:
 A place where three or more roads meet.
 _Avoid_: intersection

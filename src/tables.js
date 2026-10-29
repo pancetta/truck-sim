@@ -635,8 +635,11 @@ export const police = {
 // `keepRight` m right of the line so people meeting pass; a line keeps them `clear` m more off the road. They appear
 // `spawnDistance` m from the truck (nearest, farthest) and leave past `despawnDistance`, out of its view as the AI cars
 // do (traffic.spawnView). `seed` seeds their own random, so they don't change the traffic's or the offers' draws.
-// Their look (people.js), our own: `height` m tall, in full detail within `near` m of the truck, clothes in one of
-// `outfits` (trousers a darker shade) and one of `skins`.
+// Their look (people.js, #101), our own: `height` m tall for a build of scale 1, in full detail within `near` m of the
+// truck. A pedestrian's id picks one of the `figures` builds by its share, scaled (kids), leaning forward by `lean` rad
+// (older people) and swinging its legs and arms `stride` times as far; then one of its `wear` outfits, each a list of
+// people.js PIECES ('' is bald and plain), a top in one of `outfits`, trousers (or the skirt's hem, a hat) in one of
+// `trousers`, one of `skins` and hair in one of its `hairs` or the common ones. They take a step every `step` m.
 export const pedestrians = {
   count: 60,
   speed: 1.3,
@@ -658,7 +661,16 @@ export const pedestrians = {
   height: 1.75,
   near: 25,
   outfits: [0x2f4f7f, 0x8a2f2f, 0x3d5a3a, 0xd8cfb8, 0x2b2d31, 0x9a7a4a, 0x6b4f7a, 0xc9ccce, 0xb8602e, 0x406a8a],
+  trousers: [0x2e3a52, 0x23252a, 0x5b5e63, 0xb9a988, 0x4a3b2e, 0x39465c],
   skins: [0xf1c9a5, 0xd9a47e, 0xb07a52, 0x7d5236, 0x4f3324],
+  hairs: [0x1d1a17, 0x3b2a1e, 0x5e3f25, 0x8b6a3e, 0xc8a46a, 0x7a2e1a],
+  step: 0.7,
+  figures: {
+    man: { share: 0.36, scale: 1, lean: 0, stride: 1, wear: ['crop', 'crop jacket', 'crop jacket bag', 'crop tee', 'crop tee bare', 'crop backpack', 'hat jacket', ''] },
+    woman: { share: 0.36, scale: 0.94, lean: 0, stride: 0.9, wear: ['long skirt', 'bun skirt bag', 'long bag', 'bun jacket', 'long tee bare', 'crop skirt tee bare', 'long tee backpack'] },
+    kid: { share: 0.1, scale: 0.62, lean: 0, stride: 1.1, wear: ['crop tee bare backpack', 'long skirt bare', 'crop backpack', 'bun tee bare'] },
+    older: { share: 0.18, scale: 0.97, lean: 0.16, stride: 0.6, hairs: [0xd8d6d0, 0xa8a49c, 0x6f6c66], wear: ['crop skirt', 'hat skirt', 'bun skirt bag', '', 'crop jacket bag'] },
+  },
 };
 
 // Zebra crossings (#79). The map builder (osm.js) puts one across each arm of a light junction, and across the arm of

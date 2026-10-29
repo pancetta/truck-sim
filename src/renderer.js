@@ -1146,7 +1146,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
     updateGates(state.traffic, dt);
     drawCars(state.traffic, drawingRear);
-    people.update(state.pedestrians, truck.position, inView);
+    people.update(state.pedestrians, truck.position, inView, dt);
     riders.update(state.traffic, truck.position, inView);
     streetEvents.update(state.events);
     streets.update(camera.position, inView, night);
