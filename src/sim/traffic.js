@@ -550,6 +550,9 @@ export function createTraffic(tables, map, random) {
   let truckAt = null; // the crossing group the truck is the first vehicle of an approach to, since step `truckSince`
   let truckSince = 0;
   let truckStill = 0; // s the truck has stood still
+  let truckDriving = false; // whether it drives forwards this step
+  // The width of the path a car `width` wide keeps clear of the truck: a car's while the truck drives forwards (see behind).
+  const truckRoom = (width) => (truckDriving ? Math.max(width, size.width) : width);
   // In steps, as `since` counts.
   const patience = t.patience / tables.loop.step;
   function at(g) {
@@ -623,7 +626,7 @@ export function createTraffic(tables, map, random) {
         if (!stoppable(car, short)) {
           hold(g, approachAt[p.id], moveAt[p.id]);
           if (g.occupied) mark(g, car, i, g.occupied);
-        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOfTruck(car, car.size.width) - half >= short) {
+        } else if (!exitBlocked(car, i, truck) && !(g.truck === now && truckBlocks(car, i, truck)) && aheadOfTruck(car, truckRoom(car.size.width)) - half >= short) {
           arrive(g, approachAt[p.id], car, short, moveAt[p.id], i);
         }
       }
@@ -1069,7 +1072,8 @@ export function createTraffic(tables, map, random) {
   }
 
   // Caps targets[ci] to keep `followGap` behind the car or truck ahead of `view`; `extra` is the lane from
-  // cars[ci] to that view.
+  // cars[ci] to that view. A two-wheeler rides past the standing truck in its own room, but keeps a car's from the truck
+  // driving forwards (#102: on a wide street they overtook it on the right along the centre line and cut in ahead).
   const reach = t.lookAhead + size.length;
   function behind(ci, view, extra) {
     const { length, width } = cars[ci].size;
@@ -1078,7 +1082,7 @@ export function createTraffic(tables, map, random) {
       if (found[k] === ci || (other.x - view.x) ** 2 + (other.z - view.z) ** 2 > reach ** 2 || !follows(view, other)) continue;
       targets[ci] = Math.min(targets[ci], limit(extra + aheadOf(view, footprints[found[k]], width) - length / 2 - t.followGap));
     }
-    targets[ci] = Math.min(targets[ci], limit(extra + aheadOfTruck(view, width) - length / 2 - t.followGap));
+    targets[ci] = Math.min(targets[ci], limit(extra + aheadOfTruck(view, truckRoom(width)) - length / 2 - t.followGap));
   }
 
   // Caps targets[ci] to keep `followGap` behind a car that turned off the car's route less than a car's length ago,
@@ -1122,6 +1126,7 @@ export function createTraffic(tables, map, random) {
 
     now++;
     truckStill = Math.abs(truck.speed) > stopSpeed ? 0 : truckStill + dt;
+    truckDriving = truck.speed > stopSpeed;
     for (let i = 0; i < cars.length; i++) {
       if (!cars[i].prim) {
         // added from outside (the tests do), a car unless they say

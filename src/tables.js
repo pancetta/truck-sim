@@ -605,6 +605,8 @@ export const traffic = {
     scooter: { share: 0.15, length: 1.9, width: 0.75, accel: 2.5 },
     bicycle: { share: 0.05, length: 1.8, width: 0.6, accel: 1, top: 18 },
   },
+  // The riders' helmets (#102), bright so they show near and far; a rider's id picks one
+  helmets: [0xffc61a, 0xff6a13, 0xe8202a, 0xf4f4f0, 0x7ed321, 0x22a6e8],
 };
 
 // Police cars (#68): AI cars on top of the rank tier's, which patrol the whole city and never leave it. A rule

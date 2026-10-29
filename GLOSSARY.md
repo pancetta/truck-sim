@@ -238,7 +238,7 @@ A vehicle of the city's traffic, driven by the **Sim**: a car, a **Two-wheeler**
 _Avoid_: NPC, bot, traffic car
 
 **Two-wheeler** ("Zweirad"):
-An **AI car** of a smaller kind with its own size, speed and acceleration: a scooter ("Roller"), which rides at the road's limit, or a cyclist ("Radfahrer"), who rides slower. The cars behind a cyclist follow it; no **AI car** overtakes.
+An **AI car** of a smaller kind with its own size, speed and acceleration: a scooter ("Roller"), which rides at the road's limit, or a cyclist ("Radfahrer"), who rides slower, each rider in a bright helmet. They keep the same rules as cars. The cars behind a cyclist follow it; no **AI car** overtakes, not the truck either while it drives, but a two-wheeler rides past it standing where its lane leaves room.
 _Avoid_: Vespa (a brand), bike, motorbike
 
 **Garbage truck** ("Müllwagen"):

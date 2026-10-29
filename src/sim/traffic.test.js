@@ -8,6 +8,8 @@ import { way, build, withSpots, createSim, mapOf, drive, timeUntil, vehiclesOver
 const tables = { ...base, zebras: { ...base.zebras, use: 0 } };
 const { classes } = tables.osm;
 const CAR = tables.city.obstacles.car;
+// The length of an AI vehicle of `kind` ('car' or a two-wheeler's).
+const lengthOf = (kind) => (kind === 'car' ? CAR : tables.traffic.twoWheelers[kind]).length;
 // Headings of travel: 0 faces +z (south on the map), as in the Sim.
 const [NORTH, EAST, SOUTH, WEST] = [Math.PI, Math.PI / 2, 0, -Math.PI / 2];
 
@@ -127,7 +129,7 @@ describe('Sim: traffic', () => {
   function short(car, l) {
     let dist = car.lane.length - car.s; // centre to the start of the next path
     for (const p of car.route.slice(1)) {
-      if (p.kind === 'turn' && p.node === l.node && p.slot === l.slot) return dist - lineBack - CAR.length / 2;
+      if (p.kind === 'turn' && p.node === l.node && p.slot === l.slot) return dist - lineBack - lengthOf(car.kind) / 2;
       dist += p.length;
     }
     return null;
@@ -172,6 +174,23 @@ describe('Sim: traffic', () => {
 
     expect(light.phase).not.toBe('green');
     expect(short(car, light)).toBeCloseTo(stopGap, 1);
+  });
+
+  test.each(['scooter', 'bicycle'])('a %s stops at the stop line of a red light and rides on only at green (#102)', (kind) => {
+    const map = build(LIGHT(), quiet);
+    const sim = createSim(quiet, map, seeded(1));
+    Object.assign(sim.state.truck, offRoad(map, 40, 40));
+    // Via A, east–west, is red for its first 19 s: the rider comes east along it from 60 m out.
+    const rider = addCar(sim, 1, [[-60, 0], [0, 0], [60, 0]], false, kind);
+    const light = sim.state.lights.find((l) => short(rider, l) !== null);
+    let [still, entered] = [null, null];
+    for (let t = 0; t < 40 && !entered; t += DT) {
+      sim.step(DT, IDLE);
+      if (rider.speed === 0 && short(rider, light) !== null) still ??= short(rider, light);
+      if (short(rider, light) === null) entered = light.phase;
+    }
+    expect(still).toBeCloseTo(stopGap, 1);
+    expect(entered).toBe('green');
   });
 
   test('AI cars cruise at the limit, take each turn at up to its curve speed, and right turns slower than left ones', () => {
@@ -777,11 +796,12 @@ describe('Sim: traffic on the road graph', () => {
     return { sim, centre };
   }
 
-  // Adds an AI car that drives in by arm `from` of the junction and out by arm `to`, `s` m along its way in at `speed`.
-  function through(sim, centre, id, from, to, s = 0, speed = 0) {
+  // Adds an AI car (of `kind`) that drives in by arm `from` of the junction and out by arm `to`, `s` m along its way in
+  // at `speed`.
+  function through(sim, centre, id, from, to, s = 0, speed = 0, kind = 'car') {
     const run = centre.slots[from].in;
     const turn = run.next.find((t) => t.outSlot === to);
-    const car = { id, x: 0, z: 0, heading: 0, speed, lane: run, route: [run, turn, turn.out], s, police: false };
+    const car = { id, kind, x: 0, z: 0, heading: 0, speed, lane: run, route: [run, turn, turn.out], s, police: false };
     sim.state.traffic.push(car);
     sim.step(0, IDLE);
     return car;
@@ -845,6 +865,31 @@ describe('Sim: traffic on the road graph', () => {
     }
   });
 
+  // #102: two-wheelers keep the junction rules as cars do, both ways round.
+  describe.each(['scooter', 'bicycle'])('a %s at a junction', (kind) => {
+    // Adds an AI vehicle of `kind` on arm `from` going out by `to`, standing with its front bumper 3 m short of the box.
+    const standing = (sim, centre, id, from, to, k) => through(sim, centre, id, from, to, centre.slots[from].in.length - 3 - lengthOf(k) / 2, 0, k);
+
+    test('right before left: it gives way to a car on its right, and a car on its left to it', () => {
+      const j = junctions['4 arms'];
+      for (const [left, right] of [[kind, 'car'], ['car', kind]]) {
+        const { sim, centre } = star(j.arms);
+        const a = standing(sim, centre, 1, j.car, j.ways[0], left);
+        const b = standing(sim, centre, 2, j.right, j.ways[1], right);
+        expect(order(sim, [a, b])).toEqual([2, 1]);
+      }
+    });
+
+    test('at a give-way sign it lets a car on the priority road go first, from the left too', () => {
+      for (const arm of [0, 2]) {
+        const { sim, centre } = star([90, 0, -90, 180], ['tertiary', 'residential', 'tertiary', 'residential']);
+        const yielding = standing(sim, centre, 1, 1, 3, kind);
+        const priority = through(sim, centre, 2, arm, (arm + 2) % 4, centre.slots[arm].in.length - 20 - CAR.length / 2, 8);
+        expect(order(sim, [yielding, priority])).toEqual([2, 1]);
+      }
+    });
+  });
+
   // Puts the truck in its lane on arm `arm` of the junction, its middle `out` m from the junction's, facing in at `speed`.
   function truckOn(sim, centre, arm, out, speed = 0) {
     const { angle, edge } = centre.slots[arm];
@@ -876,12 +921,12 @@ describe('Sim: traffic on the road graph', () => {
   describe('stop signs', () => {
     // A secondary street north–south crossed by a residential one, which has stop signs.
     const stopCross = () => star([90, 0, -90, 180], ['secondary', 'residential', 'secondary', 'residential']);
-    const short = (car) => car.lane.length - car.s - CAR.length / 2; // front bumper to the end of its run
+    const short = (car) => car.lane.length - car.s - lengthOf(car.kind) / 2; // front bumper to the end of its run
 
-    test('an AI car comes to a full stop at the line, then gives way', () => {
+    test.each(['car', 'scooter', 'bicycle'])('an AI %s comes to a full stop at the line, then gives way', (kind) => {
       // Alone, coming west at 8 m/s: it stands still at the line, then drives on.
       const alone = stopCross();
-      const car = through(alone.sim, alone.centre, 1, 1, 3, 20, 8);
+      const car = through(alone.sim, alone.centre, 1, 1, 3, 20, 8, kind);
       let stoppedAt = null;
       for (let t = 0; t < 15 && car.lane.kind === 'run'; t += DT) {
         alone.sim.step(DT, IDLE);
@@ -892,7 +937,7 @@ describe('Sim: traffic on the road graph', () => {
       expect(car.stopped).toBe(null); // the next time by this stop sign it stops again
       // Stopped at the line while a car on the secondary street comes: that one goes first.
       const { sim, centre } = stopCross();
-      const stopping = through(sim, centre, 1, 1, 3, centre.slots[1].in.length - 10 - CAR.length / 2, 6);
+      const stopping = through(sim, centre, 1, 1, 3, centre.slots[1].in.length - 10 - lengthOf(kind) / 2, 6, kind);
       const priority = through(sim, centre, 2, 0, 2, centre.slots[0].in.length - 40 - CAR.length / 2, 11);
       expect(order(sim, [stopping, priority])).toEqual([2, 1]);
     });
@@ -956,9 +1001,11 @@ describe('Sim: traffic on the road graph', () => {
     });
   });
 
-  test('AI cars drive one-way edges only their way; the truck may drive against them, unfined', () => {
-    // A crossing whose east arm is one-way out of it and west arm one-way into it, busy with cars.
-    const busy = { ...noPolice, traffic: { ...tables.traffic, spawnDistance: [20, 500] }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 8 })) } };
+  test('AI cars drive one-way edges only their way, two-wheelers too; the truck may drive against them, unfined', () => {
+    // A crossing whose east arm is one-way out of it and west arm one-way into it, busy with cars, scooters and cyclists.
+    const { twoWheelers } = tables.traffic;
+    const mixed = { scooter: { ...twoWheelers.scooter, share: 0.3 }, bicycle: { ...twoWheelers.bicycle, share: 0.3 } };
+    const busy = { ...noPolice, traffic: { ...tables.traffic, spawnDistance: [20, 500], twoWheelers: mixed }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 8 })) } };
     const map = build([
       way('residential', [[0, 0], [0, 60]]),
       way('residential', [[0, 0], [60, 0]], { oneway: 'yes' }),
@@ -970,17 +1017,20 @@ describe('Sim: traffic on the road graph', () => {
     Object.assign(sim.state.truck, { x: -75, z: -75, heading: 0 });
 
     const seen = new Set();
+    const kinds = new Set();
     for (let t = 0; t < 120; t += DT) {
       sim.step(DT, IDLE);
       for (const c of sim.state.traffic) {
         if (!c.lane.edge?.oneWay) continue;
         const { from, to } = c.lane.edge;
         seen.add(`${nodes[to].x},${nodes[to].z}`);
+        kinds.add(c.kind);
         const way = Math.atan2(nodes[to].x - nodes[from].x, nodes[to].z - nodes[from].z);
         expect(Math.cos(c.heading - way)).toBeCloseTo(1, 6);
       }
     }
     expect([...seen].sort()).toEqual(['0,0', '60,0']); // cars drove both one-ways
+    expect([...kinds].sort()).toEqual(['bicycle', 'car', 'scooter']);
 
     // The truck drives the east one-way the wrong way, into the crossing.
     sim.state.traffic.length = 0;
@@ -1084,5 +1134,53 @@ describe('Sim: two-wheelers (#77)', () => {
     timeUntil(carSim, IDLE, () => car.x > -30 && car.speed === 0, 60);
     expect(car.speed).toBe(0);
     expect(carSim.state.truck.x - tables.fleet.truck.length / 2 - (car.x + CAR.length / 2)).toBeCloseTo(followGap, 1);
+  });
+
+  // #102: on a tertiary street the truck driving along the centre line leaves room in the lane for a two-wheeler's
+  // path, not a car's; overtaking it there on the right, the riders cut in ahead of it.
+  test.each(['scooter', 'bicycle'])('a %s never overtakes the truck driving along the centre line; it rides past it standing (#102)', (kind) => {
+    const wide = build([way('tertiary', [[-90, -40], [90, -40], [90, 40], [-90, 40]]), way('tertiary', [[-90, 40], [-90, -40]])], quiet);
+    const sim = createSim(quiet, wide, seeded(1));
+    const rider = addCar(sim, 1, [[-80, -40], [90, -40]], false, kind);
+    const { truck } = sim.state;
+    Object.assign(truck, { x: -50, z: -40, heading: EAST, speed: 3 });
+    expect(rider.z - classes.tertiary.lane).toBeCloseTo(-40, 6); // in the eastbound lane, the truck on the centre line
+    let [ahead, touches] = [false, 0];
+    for (let t = 0; t < 30; t += DT) {
+      truck.speed = 3; // driving on at a crawl
+      sim.step(DT, IDLE);
+      ahead ||= rider.x > truck.x;
+      touches += vehiclesOverlap(rider, rider.size, truck, tables.fleet.truck);
+    }
+    expect(ahead).toBe(false);
+    expect(touches).toBe(0);
+    // Standing there, it is an obstacle the rider rides past.
+    truck.speed = 0;
+    timeUntil(sim, BRAKE, () => rider.x > truck.x + 10, 30);
+    expect(rider.x).toBeGreaterThan(truck.x + 10);
+  });
+
+  test.each(['scooter', 'bicycle'])('a %s stops for a pedestrian at a zebra crossing and rides on once it is clear (#102)', (kind) => {
+    // Via A (tertiary) east–west, and Vicolo (residential) south from it, with a zebra crossing near its mouth.
+    const map = build([way('tertiary', [[-90, 0], [0, 0], [90, 0]], { name: 'Via A' }), way('residential', [[0, 0], [0, 90]], { name: 'Vicolo' })], quiet);
+    const sim = createSim(quiet, map, seeded(1));
+    Object.assign(sim.state.truck, offRoad(map, 40, 40));
+    const [zebra] = sim.state.zebras;
+    // Someone waits at it for 20 s (no pedestrians walk here: the Sim's count of them would be 0).
+    let people = 1;
+    Object.defineProperty(zebra, 'people', { get: () => people, set: () => {} });
+    const rider = addCar(sim, 1, [[0, 60], [0, 0], [60, 0]], false, kind); // north up Vicolo, then east
+    const gap = () => rider.z - rider.size.length / 2 - (zebra.z + tables.zebras.depth / 2); // front bumper to the strip
+    let [nearest, stood] = [Infinity, false];
+    for (let t = 0; t < 20; t += DT) {
+      sim.step(DT, IDLE);
+      nearest = Math.min(nearest, gap());
+      stood ||= rider.speed === 0;
+    }
+    expect(stood).toBe(true);
+    expect(nearest).toBeGreaterThan(0);
+    people = 0;
+    timeUntil(sim, IDLE, () => rider.lane.kind === 'turn', 20);
+    expect(rider.lane.kind).toBe('turn');
   });
 });

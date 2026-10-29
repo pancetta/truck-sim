@@ -120,8 +120,10 @@ describe('Sim: street events (#80)', () => {
     expect(sim.state.truck.z + tables.fleet.truck.length / 2).toBeLessThan(-40 + node.radius + tables.events.back);
   });
 
-  test('AI cars never turn into a closed edge nor appear on it, and the ones on it as it closes drive out', () => {
-    const { tables, map, M } = ladder(events(cars(8), { market: [600, 600] }));
+  // Two-wheelers among them (#102), at more than the tables' share.
+  const mixed = { ...quiet, traffic: { ...quiet.traffic, twoWheelers: { scooter: { ...quiet.traffic.twoWheelers.scooter, share: 0.3 }, bicycle: { ...quiet.traffic.twoWheelers.bicycle, share: 0.3 } } } };
+  test('AI cars never turn into a closed edge nor appear on it, and the ones on it as it closes drive out; two-wheelers too', () => {
+    const { tables, map, M } = ladder(events(cars(8, mixed), { market: [600, 600] }));
     const sim = createSim(tables, map, seeded(3));
     Object.assign(sim.state.truck, westEnd);
     timeUntil(sim, IDLE, () => sim.state.closed.size > 0, 20);
@@ -143,6 +145,7 @@ describe('Sim: street events (#80)', () => {
     expect(sim.state.traffic.filter((c) => edgesOf(c).includes(M))).toEqual([]);
     expect(sim.state.events[0].on).toBe(true);
     expect(turns).toBeGreaterThan(10); // the others kept driving round
+    expect(new Set(sim.state.traffic.map((c) => c.kind)).size).toBeGreaterThan(1);
   });
 
   test('a garbage truck holds the car behind it while it stands, both drive on after, and the truck passes it', () => {
