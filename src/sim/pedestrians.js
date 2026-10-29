@@ -203,7 +203,8 @@ export function createPedestrians(tables, map, random, free = () => true) {
       if (a <= -l + Math.min(ahead, 0) || a >= l + Math.max(ahead, 0) || Math.abs(b) >= w) continue;
       threatened = true;
       // The side it stands on (jumped aside already, or not), so it never jumps through the body.
-      const [cx, cz] = [person.x + person.asideX - body.x, person.z + person.asideZ - body.z];
+      const cx = person.x + person.asideX - body.x;
+      const cz = person.z + person.asideZ - body.z;
       const right = -cx * fz + cz * fx >= 0;
       let shift = (right ? w : -w) - b; // m right
       if (!free(x - fz * shift, z + fx * shift)) {

@@ -6,8 +6,8 @@ import { DT, GAS, IDLE, createSim, lane, seeded } from './fixtures.js';
 // Pedestrians and the truck on the pavement (#100): they jump out of its way, one with nowhere to go stops it, and
 // driving onto the pavement at them costs the clean Star, and a fine with a Witness.
 
-const { width } = base.osm.classes.residential;
-const kerb = width / 2; // Vicolo's west kerb is at x = -kerb, its wall at -(kerb + pavement)
+const kerbOf = (road) => base.osm.classes[road].width / 2; // Vicolo's west kerb is at x = -kerb, its wall at -(kerb + pavement)
+const kerb = kerbOf('residential');
 const truck = base.fleet.truck;
 // Whether pedestrian `q` (base.pedestrians.radius round) overlaps the footprint of `size` at `pose`.
 const overlap = (q, { x, z, heading }, size) => {
@@ -27,9 +27,11 @@ const crowd = (t, count = 40) => ({
 const CRUISE = 3; // m/s
 
 // A Sim on the lane with a crowd that has spread along both pavements, its truck then put at the north end facing
-// south (+z), `onto` m of its right side (west) over the kerb, with an order on, standing a second.
-function onPavement(onto, { t = base, profile = freshProfile(), witness = false } = {}) {
-  const { t: spots, map } = lane(crowd(t));
+// south (+z), `onto` m of its right side (west) over the kerb, with an order on, standing a second. Vicolo is of `road`
+// class.
+function onPavement(onto, { t = base, profile = freshProfile(), witness = false, road = 'residential' } = {}) {
+  const kerb = kerbOf(road);
+  const { t: spots, map } = lane(crowd(t), [], 28, road);
   const sim = createSim(spots, map, seeded(1), { ...profile, money: 1000 });
   sim.acceptOrder(sim.requestOffers()[0].id);
   for (let s = 0; s < 40; s += DT) sim.step(DT, IDLE);
@@ -44,16 +46,17 @@ function onPavement(onto, { t = base, profile = freshProfile(), witness = false 
   return sim;
 }
 
-// Drives the truck south at CRUISE for `seconds` with `steer`, and counts the steps a pedestrian overlapped it or its
+// Drives the truck south at CRUISE (stopping and going again every second, if `stopGo`) for `seconds` with `steer`, and counts the steps a pedestrian overlapped it or its
 // trailer, the pedestrians that stepped aside, the fines taken and whether it was stopped.
-function cruise(sim, seconds, steer = 0) {
+function cruise(sim, seconds, steer = 0, stopGo = false) {
   const { pedestrians, truck: pose } = sim.state;
   const trailerSize = { length: base.trailer.length, width: base.trailer.width };
   let [overlaps, fines, stopped] = [0, [], false];
   const aside = new Set();
   for (let s = 0; s < seconds; s += DT) {
     const last = sim.state.lastFine;
-    sim.step(DT, { ...(pose.speed < CRUISE ? GAS : IDLE), steer });
+    const braking = stopGo && s % 2 > 1;
+    sim.step(DT, { ...(braking ? { gas: 0, brake: 1 } : pose.speed < CRUISE ? GAS : IDLE), steer });
     if (sim.state.lastFine !== last) fines.push(sim.state.lastFine.reason);
     stopped ||= sim.state.collision;
     for (const q of pedestrians) {
@@ -104,20 +107,26 @@ describe('pedestrians and the truck on the pavement (#100)', () => {
   test('driving at them on the pavement costs the clean Star; with a Witness it is a fine too', () => {
     const seen = cruise(onPavement(1, { witness: true }), 14);
     expect(seen.faults).toEqual(['pedestrian']);
-    expect(seen.fines.length).toBeGreaterThan(0);
-    expect(new Set(seen.fines)).toEqual(new Set(['pedestrian']));
+    expect(seen.fines).toEqual(['pedestrian']);
 
     const unseen = cruise(onPavement(1), 14);
     expect(unseen.faults).toEqual(['pedestrian']);
     expect(unseen.fines).toEqual([]);
   }, 30_000);
 
-  test('driving past them in the lane costs nothing, and nobody jumps', () => {
-    const sim = onPavement(-(kerb - base.osm.classes.residential.lane - truck.width / 2), { witness: true }); // in its lane
-    expect(sim.state.truck.x).toBeCloseTo(-base.osm.classes.residential.lane, 6);
+  test('stopping and going again beside them is still the one pass: one fine', () => {
+    const { fines, faults } = cruise(onPavement(1, { witness: true }), 6, 0, true);
+    expect(faults).toEqual(['pedestrian']);
+    expect(fines).toEqual(['pedestrian']);
+  }, 30_000);
+
+  test.each(['residential', 'service'])('driving past them in its lane on a %s street costs nothing, and nobody jumps', (road) => {
+    const { lane: offset } = base.osm.classes[road];
+    const sim = onPavement(-(kerbOf(road) - offset - truck.width / 2), { witness: road === 'residential', road }); // in its lane (no police car passes it on a service lane)
+    expect(sim.state.truck.x).toBeCloseTo(-offset, 6);
     const { faults, fines, aside } = cruise(sim, 14);
     expect(faults).toEqual([]);
     expect(fines).toEqual([]);
-    expect(aside).toBe(0);
+    if (road === 'residential') expect(aside).toBe(0); // on a service lane the truck's side is over the kerb: they step aside a little
   }, 30_000);
 });

@@ -551,30 +551,42 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const trailerBody = { x: 0, z: 0, heading: 0, length: tr.length, width: tr.width };
   const [alone, hitched] = [[truckBody], [truckBody, trailerBody]];
   function bodiesOf() {
-    Object.assign(truckBody, { x: truck.x, z: truck.z, heading: truck.heading, length: v.length, width: v.width });
+    [truckBody.x, truckBody.z, truckBody.heading, truckBody.length, truckBody.width] = [truck.x, truck.z, truck.heading, v.length, v.width];
     if (!state.trailer) return alone;
-    Object.assign(trailerBody, { x: state.trailer.x, z: state.trailer.z, heading: state.trailer.heading });
+    [trailerBody.x, trailerBody.z, trailerBody.heading] = [state.trailer.x, state.trailer.z, state.trailer.heading];
     return hitched;
   }
 
   // Driving onto the pavement at a pedestrian (#100): the `moving` truck's or trailer's footprint within
-  // tables.pedestrians.danger m of where one on the pavement walks (jumped aside or not), its point nearest them off the
-  // road, costs the order's clean Star, and a fine if the police see it, once per pass: the pass lasts while any is.
+  // tables.pedestrians.danger m of where one on the pavement walks (jumped aside or not), its point nearest them over the
+  // kerb (see overKerb), costs the order's clean Star, and a fine if the police see it, once per pass: the pass lasts,
+  // moving or standing, while any is that near.
   let endangering = false;
   const walked = { x: 0, z: 0 }; // the pedestrian's place on its walk
   function checkPavement(moving) {
     const was = endangering;
-    endangering = moving && state.pedestrians.some((q) => {
+    endangering = (moving || was) && state.pedestrians.some((q) => {
       if (q.zebra >= 0 && !q.waiting) return false; // on a zebra crossing: checkZebras
       [walked.x, walked.z] = [q.x - q.asideX, q.z - q.asideZ];
       const t = state.trailer && outside(walked, state.trailer, tr) < outside(walked, truck) ? state.trailer : null;
       if (outside(walked, t ?? truck, t ? tr : v) > tables.pedestrians.danger) return false;
       const { x, z } = nearestOn(walked, t ?? truck, t ? tr : v);
-      return !map.graph.onRoad(x, z);
+      return overKerb(x, z);
     });
     if (!endangering || was) return;
     fault('pedestrian');
     if (state.policeSees) fine('pedestrian');
+  }
+
+  // Whether (x, z) lies more than tables.pedestrians.kerb m past the road's edge: its nearest edge's, and the disc of the
+  // junction at either end of that edge (as wide as its widest arm, as roads.js draws it). A truck in its lane on a
+  // narrow street has its side over the kerb by less.
+  const disc = (n) => Math.max(0, ...n.arms.map((id) => map.graph.edges[id].width / 2));
+  function overKerb(x, z) {
+    const { kerb } = tables.pedestrians;
+    const p = map.graph.nearest(x, z);
+    if (p.d <= p.edge.width / 2 + kerb) return false;
+    return [map.graph.nodes[p.edge.from], map.graph.nodes[p.edge.to]].every((n) => Math.hypot(x - n.x, z - n.z) > disc(n) + kerb);
   }
 
   // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs the order's clean

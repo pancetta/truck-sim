@@ -638,10 +638,12 @@ export const pedestrians = {
   radius: 0.3, // m round each, where they are solid to the truck
   // On the pavement (#100) one jumps aside at `jump` m/s to `room` m clear of the truck's or trailer's side, once it is
   // where the truck would be within that, or within zebras.reach plus zebras.warn s of its speed ahead of it. One the
-  // moving truck comes within `danger` m of, with its nearest point off the road, was endangered (fines.pedestrian).
+  // moving truck comes within `danger` m of, with its nearest point over `kerb` m past the road's edge, was endangered
+  // (fines.pedestrian). A truck in its lane on a 4 m service lane is 0.25 m over the kerb, so `kerb` leaves it be.
   room: 0.4,
   jump: 4,
   danger: 0.5,
+  kerb: 0.4,
   spawnDistance: [30, 120],
   despawnDistance: 140,
   seed: 78,

@@ -28,10 +28,10 @@ export const box = (x0, z0, x1, z1) => building([[x0, z0], [x1, z0], [x1, z1], [
 // its pavements (`wall` m from the middle). A's zone is at the north end, B's at the south end, each where a truck stands
 // against that end's wall; a spot in `docks` has its bay in that wall on the right-hand lane's line, facing out along
 // the street. The truck starts in the middle (the road nearest the map's centre), in the right-hand lane facing south
-// (+z) towards B. Returns the tables with the spots (`t`, from `base`), the map and `wall`.
-export function lane(base = tables, docks = [], half = 28) {
-  const { width, lane: offset } = tables.osm.classes.residential;
-  const vicolo = way('residential', [[0, -half], [0, half]], { name: 'Vicolo' });
+// (+z) towards B. Vicolo is of `road` class. Returns the tables with the spots (`t`, from `base`), the map and `wall`.
+export function lane(base = tables, docks = [], half = 28, road = 'residential') {
+  const { width, lane: offset } = tables.osm.classes[road];
+  const vicolo = way(road, [[0, -half], [0, half]], { name: 'Vicolo' });
   const wall = half + width / 2 + tables.osm.pavement;
   const bay = (id, z, heading) => (docks.includes(id) ? { bay: [-offset, z, heading] } : {});
   const t = withSpots(
