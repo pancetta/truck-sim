@@ -32,12 +32,17 @@ test('the pedestrian step at 300 people is fast and allocates next to nothing', 
 
   const pedestrians = createPedestrians(tables, map, seeded(1));
   const zebras = map.zebras.map((zebra) => ({ ...zebra, people: 0, passing: false })); // no car on any (see traffic.js)
-  for (let i = 0; i < 1000; i++) pedestrians.step(step, trucks[i], 300, zebras); // fills the city, one a step, and warms up the JIT
+  // The truck's body, so people get out of its way (#100), 5 m ahead of it as at about 2 m/s.
+  const { length, width } = tables.fleet.truck;
+  const body = { x: 0, z: 0, heading: 0, length, width };
+  const bodies = [body];
+  const at = (truck) => (Object.assign(body, { x: truck.x, z: truck.z, heading: truck.heading }), bodies);
+  for (let i = 0; i < 1000; i++) pedestrians.step(step, trucks[i], 300, zebras, null, at(trucks[i]), 5); // fills the city, one a step, and warms up the JIT
   expect(pedestrians.people).toHaveLength(300);
   let [ms, bytes] = [Infinity, Infinity];
   for (let i = 1000; i < 1800; i += 160) {
     const [t0, b0] = [performance.now(), allocated()];
-    for (let k = i; k < i + 160; k++) pedestrians.step(step, trucks[k], 300, zebras);
+    for (let k = i; k < i + 160; k++) pedestrians.step(step, trucks[k], 300, zebras, null, at(trucks[k]), 5);
     [ms, bytes] = [Math.min(ms, (performance.now() - t0) / 160), Math.min(bytes, (allocated() - b0) / 160)];
   }
   console.info(`pedestrian step, ${pedestrians.people.length} people: ${(ms * 1000).toFixed(1)} µs, ${Math.round(bytes)} B allocated (least batch)`);

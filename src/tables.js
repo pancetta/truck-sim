@@ -428,6 +428,7 @@ export const fines = {
   giveWay: 150, // only while a police car sees the truck (see giveWay)
   stopSign: 150, // only while a police car sees the truck (see stopSign)
   zebra: 150, // the truck entering a zebra crossing a pedestrian waits at or walks on, only while a police car sees it
+  pedestrian: 200, // the truck driving onto the pavement at a pedestrian (see pedestrians.danger), only while a police car sees it
 };
 
 // The game clock (profile.timeOfDay, game minutes since midnight): a full day takes 24 real minutes. A new profile
@@ -634,7 +635,13 @@ export const pedestrians = {
   speed: 1.3,
   keepRight: 0.3,
   clear: 0.2,
-  radius: 0.3, // m round one on a zebra crossing's strip, where they are solid to the truck
+  radius: 0.3, // m round each, where they are solid to the truck
+  // On the pavement (#100) one jumps aside at `jump` m/s to `room` m clear of the truck's or trailer's side, once it is
+  // where the truck would be within that, or within zebras.reach plus zebras.warn s of its speed ahead of it. One the
+  // moving truck comes within `danger` m of, with its nearest point off the road, was endangered (fines.pedestrian).
+  room: 0.4,
+  jump: 4,
+  danger: 0.5,
   spawnDistance: [30, 120],
   despawnDistance: 140,
   seed: 78,

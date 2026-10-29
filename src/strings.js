@@ -223,6 +223,7 @@ export const strings = {
   giveWay: 'Vorfahrt missachtet', // a fine reason
   stopSign: 'Stoppschild missachtet', // a fine reason
   zebra: 'Zebrastreifen missachtet', // a fine reason
+  pedestrian: 'Fußgänger gefährdet', // a fine reason
   zebraAhead: 'Zebrastreifen', // HUD, while a zebra crossing is near (state.zebraAhead)
   policeSees: 'Polizei sieht dich', // HUD, while a police car sees the truck
   policeLettering: 'POLIZEI', // on the police cars' sides

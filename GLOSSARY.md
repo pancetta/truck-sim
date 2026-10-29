@@ -28,7 +28,8 @@ Clear, rain ("Regen") or fog ("Nebel"), changing on a fixed schedule over play t
 **Star** ("Stern", ★):
 What a delivery earns besides its pay: ★ delivered; ★ on time, within the **Expected time**; ★ clean, with no **Rule
 fine** and no **Contact** the truck made during the **Order**, the cargo damaged no more than a small tolerance, and no
-**Zebra crossing** driven through while a **Pedestrian** waited at it or was on it; and a bonus ★ for reversing into the
+**Zebra crossing** driven through while a **Pedestrian** waited at it or was on it, nor the pavement driven onto close to
+one; and a bonus ★ for reversing into the
 **Dock bay** on a dock **Drop-off**. The Stars banner after each delivery shows the earned ones and why the others were
 missed.
 _Avoid_: points, rank points (the old name, before #81)
@@ -261,7 +262,7 @@ _Avoid_: cop, patrol
 A car standing still at the kerb as an obstacle; it never moves.
 
 **Pedestrian**:
-A person walking a **Pavement line**, driven by the **Sim**. Pedestrians step onto the road only to cross at a **Zebra crossing**, and they appear and leave out of the truck's view, like the **AI cars**.
+A person walking a **Pavement line**, driven by the **Sim**. Pedestrians step onto the road only to cross at a **Zebra crossing**, or to jump out of the truck's way, and they appear and leave out of the truck's view, like the **AI cars**. On the pavement one the truck or its trailer comes at jumps aside; one with nowhere to go (a wall behind it) stands still and stops the truck.
 _Avoid_: NPC, walker, passer-by
 
 **Junction**:
@@ -326,13 +327,14 @@ Money taken for breaking a rule or for a **Contact** the truck made.
 _Avoid_: penalty, ticket
 
 **Rule fine**:
-A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are five:
+A **Fine** for breaking a traffic rule, charged only when a **Police car** **Witnesses** it. Today there are six:
 the red light (entering a **Light junction** on red, having crossed its **Stop line** on red too, after a short grace
 at the start of red), speeding (over the **Speed limit** by more than a tolerance; at most one
 **Fine** per cooldown) and give way (driving into a **Crossing** from a **Give way** **Approach** so that an **AI car**
 with **Priority** brakes hard; once per **Junction**) and stop (driving into a **Crossing** from a **Stop**
 **Approach** without having stood still just before it; once per pass) and zebra (driving onto a **Zebra crossing**
-while a **Pedestrian** waits at it or crosses; once per pass).
+while a **Pedestrian** waits at it or crosses; once per pass) and pedestrian ("Fußgänger gefährdet": driving onto the
+pavement close to a **Pedestrian** walking there; once per pass).
 
 **Witness**:
 A **Police car** within range of the truck with a clear line of sight at the moment of a rule break.
@@ -435,8 +437,8 @@ _Avoid_: elevation model, DEM (the raw data it is resampled from), heightmap
 
 ## Relationships
 
-- An **Order** earns its **Stars** when it is delivered; a **Rule fine**, a **Contact** the truck made or a **Zebra
-  crossing** driven through during it costs the clean one.
+- An **Order** earns its **Stars** when it is delivered; a **Rule fine**, a **Contact** the truck made, a **Zebra
+  crossing** driven through or the pavement driven onto close to a **Pedestrian** during it costs the clean one.
 - A **Profile** has one **Rank**; the **Rank**'s **Tier** gates **Upgrade** levels, **Order types** and the amount of traffic.
 - An **Offer** becomes an **Order** when accepted; an **Order** has one **Pickup** and one **Drop-off**, both **Spots**.
 - A **Dock** is a **Spot** with a **Dock bay**; dock **Order types** drop off at a **Dock**.
@@ -450,4 +452,5 @@ _Avoid_: elevation model, DEM (the raw data it is resampled from), heightmap
   **Offers** come first.
 - A **Vehicle** longer than a map's **Dock bays** gets no **Offers** to or from its **Docks**.
 - A **Pedestrian** walks one **Pavement line**; each side of an **Edge** belongs to at most one **Pavement line**.
-- A **Zebra crossing** joins the **Pavement lines** on its two kerbs; a **Pedestrian** on it is solid to the truck, and one the truck comes at steps back to a kerb, so it is never hurt and makes no **Contact**.
+- A **Zebra crossing** joins the **Pavement lines** on its two kerbs; one the truck comes at on it steps back to a kerb.
+- A **Pedestrian** is solid to the truck and its trailer, and gets out of their way, so it is never hurt and makes no **Contact**.

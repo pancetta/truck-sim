@@ -181,7 +181,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let contacts = new Map(); // id of each AI car the truck is in contact with → who made it: 'car' or 'truck'
   traffic?.setTruck(v, state.trailer);
   if (traffic) state.traffic = traffic.cars;
-  const pedestrians = map ? createPedestrians(tables, map, seeded(tables.pedestrians.seed)) : null;
+  // A pedestrian may jump aside to a place no collider covers (solids, below, filled before the first step).
+  const standable = (x, z) => !solids.some(x, z, x, z, (c) => x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ && inside(x, z, c.points));
+  const pedestrians = map ? createPedestrians(tables, map, seeded(tables.pedestrians.seed), standable) : null;
   if (pedestrians) state.pedestrians = pedestrians.people;
   const events = traffic ? createEvents(tables, map, traffic, seeded(tables.events.seed)) : null;
   if (events) [state.events, state.closed] = [events.list, events.closed];
@@ -316,7 +318,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const solid = !fits(truck) || (trailer && !fits(trailer, tr)) || met.some((c) => !before.includes(c)) || pushed.length > 0;
     const folded = trailer && Math.abs(hitchAngle(truck, trailer));
     const kinked = folded > tr.jackknife && folded > Math.abs(hitchAngle({ heading }, was));
-    const blocked = solid || onZebra(); // a pedestrian stops the truck too, but it's no Hit
+    const blocked = solid || onPeople({ x, z, heading }, was); // a pedestrian stops the truck too, but it's no Hit
     const hit = solid && !state.collision && speedBefore >= o.hitSpeed;
     state.collision = blocked;
     state.jackknifed = kinked || (state.jackknifed && truck.speed === 0);
@@ -336,9 +338,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     truckAtZebras(grip);
     // A moving truck sends people on a strip within tables.zebras.reach m plus `warn` s of its speed back off it.
     const { reach, warn } = tables.zebras;
-    const near = Math.abs(truck.speed) > v.stopSpeed ? corners(truck, reach + Math.abs(truck.speed) * warn) : null;
-    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, near);
+    // People on the pavement get out of the way of the truck and its trailer, as far ahead (or behind) of it as that.
+    const moving = Math.abs(truck.speed) > v.stopSpeed;
+    const near = moving ? corners(truck, reach + Math.abs(truck.speed) * warn) : null;
+    pedestrians?.step(dt, truck, tables.pedestrians.count, state.zebras, near, bodiesOf(), moving ? Math.sign(truck.speed) * (reach + Math.abs(truck.speed) * warn) : 0);
     state.policeSees = policeSees(); // checkRedLight reads it a step later: the same car poses, the truck a step back
+    if (pedestrians) checkPavement(moving);
     if (map) state.junctionRule = junctionAhead();
     if (map) state.zebraAhead = zebraAhead();
     if (map) checkGiveWay(dt);
@@ -532,12 +537,44 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     }
   }
 
-  // Whether a pedestrian on a zebra crossing's strip stands in the truck's footprint: there they are solid to it.
-  function onZebra() {
-    if (!state.zebras.some((zebra) => zebra.people)) return false;
+  // Whether the truck's move from `pose` (its trailer from `was`) brought it within tables.pedestrians.radius of a
+  // pedestrian it wasn't that near before: they are solid to it. One it was already that near (put there by a reset)
+  // doesn't hold it.
+  function onPeople(pose, was) {
     const r = tables.pedestrians.radius;
-    const boxes = state.trailer ? [corners(truck, r), corners(state.trailer, r, tr)] : [corners(truck, r)];
-    return state.pedestrians.some((q) => q.zebra >= 0 && !q.waiting && boxes.some((box) => inside(q.x, q.z, box)));
+    const reach = (v.length + (state.trailer ? 2 * (tr.hitch + tr.drawbar + tr.length) : 0) + r) ** 2; // past it, none is near
+    return state.pedestrians.some((q) => (q.x - truck.x) ** 2 + (q.z - truck.z) ** 2 < reach && apart(q, truck, state.trailer) < r && apart(q, pose, was) >= r);
+  }
+
+  // The truck's and its trailer's footprints, for the pedestrians to keep out of (pedestrians.js).
+  const truckBody = { x: 0, z: 0, heading: 0, length: 0, width: 0 };
+  const trailerBody = { x: 0, z: 0, heading: 0, length: tr.length, width: tr.width };
+  const [alone, hitched] = [[truckBody], [truckBody, trailerBody]];
+  function bodiesOf() {
+    Object.assign(truckBody, { x: truck.x, z: truck.z, heading: truck.heading, length: v.length, width: v.width });
+    if (!state.trailer) return alone;
+    Object.assign(trailerBody, { x: state.trailer.x, z: state.trailer.z, heading: state.trailer.heading });
+    return hitched;
+  }
+
+  // Driving onto the pavement at a pedestrian (#100): the `moving` truck's or trailer's footprint within
+  // tables.pedestrians.danger m of where one on the pavement walks (jumped aside or not), its point nearest them off the
+  // road, costs the order's clean Star, and a fine if the police see it, once per pass: the pass lasts while any is.
+  let endangering = false;
+  const walked = { x: 0, z: 0 }; // the pedestrian's place on its walk
+  function checkPavement(moving) {
+    const was = endangering;
+    endangering = moving && state.pedestrians.some((q) => {
+      if (q.zebra >= 0 && !q.waiting) return false; // on a zebra crossing: checkZebras
+      [walked.x, walked.z] = [q.x - q.asideX, q.z - q.asideZ];
+      const t = state.trailer && outside(walked, state.trailer, tr) < outside(walked, truck) ? state.trailer : null;
+      if (outside(walked, t ?? truck, t ? tr : v) > tables.pedestrians.danger) return false;
+      const { x, z } = nearestOn(walked, t ?? truck, t ? tr : v);
+      return !map.graph.onRoad(x, z);
+    });
+    if (!endangering || was) return;
+    fault('pedestrian');
+    if (state.policeSees) fine('pedestrian');
   }
 
   // The truck entering a zebra crossing's strip while a pedestrian waits at it or walks on it costs the order's clean
@@ -1433,6 +1470,15 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const along = Math.abs((p.x - x) * fx + (p.z - z) * fz) - size.length / 2;
     const right = Math.abs(-(p.x - x) * fz + (p.z - z) * fx) - size.width / 2;
     return along > 0 || right > 0 ? Math.hypot(Math.max(0, along), Math.max(0, right)) : Math.max(along, right);
+  }
+
+  // The point of the truck's footprint (or one of `size`) at `pose` nearest point `p`.
+  function nearestOn(p, { x, z, heading }, size = v) {
+    const [fx, fz] = [Math.sin(heading), Math.cos(heading)];
+    const clamp = (d, half) => Math.max(-half, Math.min(half, d));
+    const along = clamp((p.x - x) * fx + (p.z - z) * fz, size.length / 2);
+    const right = clamp(-(p.x - x) * fz + (p.z - z) * fx, size.width / 2);
+    return { x: x + fx * along - fz * right, z: z + fz * along + fx * right };
   }
 
   // Footprint corners (the truck's, or of `size`), `grow` m larger all round; right is (-cos heading, sin heading).

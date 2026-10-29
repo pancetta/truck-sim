@@ -20,8 +20,8 @@ test('the autopilot drives the same way every run', () => {
 });
 
 describe('the autopilot into the docks', () => {
-  // No AI cars, police or street events, so nothing but the streets is under test.
-  const empty = { ...tables, police: { ...tables.police, count: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) }, events: { ...tables.events, count: 0 } };
+  // No AI cars, police, street events or pedestrians (solid to the truck since #100), so nothing but the streets is under test.
+  const empty = { ...tables, police: { ...tables.police, count: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) }, events: { ...tables.events, count: 0 }, pedestrians: { ...tables.pedestrians, count: 0 } };
   const spot = (id) => map.spots.find((s) => s.id === id);
   const inZone = ({ x, z }, { zone }) => x > zone.minX && x < zone.maxX && z > zone.minZ && z < zone.maxZ;
 
