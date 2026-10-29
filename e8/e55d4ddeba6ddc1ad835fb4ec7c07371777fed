@@ -2,6 +2,7 @@ src/sim/events.test.js
   s_1e440d4c3efca4::t_401745e8453c79 23-24,55
   s_1e440d4c3efca4::t_f792eba2abf518 39-46
   s_1e440d4c3efca4::t_5914a7fd891e14 1-22,25-38,47-54,56-116,118-180
+  s_1e440d4c3efca4::t_bcba81be88c0e3 117
 src/sim/graph.js
   s_1e440d4c3efca4::t_ef988511fca2b2 143-146
   s_1e440d4c3efca4::t_30c2c5d3301b05 118
@@ -22,6 +23,7 @@ src/sim/traffic.js
   s_1e440d4c3efca4::t_757603127102ef 12-13,15-16,45-46,374,377,379-386,431,442,447,451
   s_1e440d4c3efca4::t_28cdb91769e5f3 62,434,1096,1101,1127-1128,1163-1203
   s_1e440d4c3efca4::t_88a86947377833 428-429
+  s_1e440d4c3efca4::t_bb6221be4fe12e 1204
 src/tables.js
   s_1e440d4c3efca4::t_31b07d9eb1e394 464-488
 src/sim/events.js
