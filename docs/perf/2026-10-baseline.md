@@ -1002,6 +1002,17 @@ Pedestrian ways are pedestrian edges now: paved as before, with bollard gates an
 | main, cab (2 runs) | 16.7 / 16.7 | 2.0–3.0 / 1.99–3.01 | 0.12–0.14 | 1.8–2.9 / 1.84–2.83 | 87 / 321k | 297–298 ms |
 | #89, cab (2 runs) | 16.7 / 16.7–16.8 | 2.1–3.1 / 2.19–3.04 | 0.11–0.12 | 1.9–2.9 / 2.04–2.88 | 80 / 325k | 259–264 ms |
 
+## Schwerlaster (#90)
+
+The Schwerlaster is a fourth code-built body (vehicles.js) with its cab interior in the truck's group, hidden while another Vehicle is driven. Driving the truck, the draw calls and triangles are the same as main; the hidden lorry adds 4 programs, 16 geometries and 4 textures. The traffic's junction boxes reach the largest Vehicle's radius, now the lorry's (6.1 m against 4.2 m), which only widens a cheap distance test; the sim time is unchanged.
+
+**How measured:** production builds of `73fb292` (main, with #89) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), cab view, the truck, the overlay's 1,200 frames 55 s after it first showed, alternating main, this change, main, this change, load average 1.9–2.4. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.7–16.8 | 3.0–3.2 / 3.25–3.34 | 0.14 | 2.8–3.0 / 3.08–3.16 | 80 / 325k | 274–281 ms |
+| #90, cab (2 runs) | 16.7 / 16.8 | 3.0–3.2 / 3.25–3.34 | 0.13–0.14 | 2.9–3.1 / 3.08–3.18 | 80 / 325k | 270–271 ms |
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

@@ -160,7 +160,7 @@ export const fleet = {
     steerFadeSpeed: 6,
     length: 12,
     width: 2.55,
-    maxCargo: 32,
+    maxCargo: 26, // the lightest Schwertransport; the Ladefläche takes it to the heavier ones
     tank: 600,
     thirst: 1.6,
     cab: [0, 0.15, 2],
@@ -168,7 +168,7 @@ export const fleet = {
     looks: false,
     // Side profile from the rear, as the van's: a tall box, a gap, and a flat-fronted cab over two front axles.
     body: {
-      body: [[0, 0.55], [0, 3.95], [0.08, 4.0], [8.6, 4.0], [8.75, 3.45], [11.2, 3.45], [11.75, 3.1], [12, 1.7], [12, 0.55]],
+      body: [[0, 0.4], [0, 3.95], [0.08, 4.0], [8.6, 4.0], [8.75, 3.45], [11.2, 3.45], [11.75, 3.1], [12, 1.7], [12, 0.4]],
       glass: [[10.4, 2.05], [10.4, 3.2], [11.25, 3.2], [11.75, 2.2]],
       axles: [1.7, 3.05, 8.9, 10.3], wheel: 0.52, pillar: null, doors: [[9.9, 11.1]],
     },

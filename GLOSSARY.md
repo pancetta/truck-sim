@@ -182,7 +182,7 @@ _Avoid_: three-wheeler (in the UI), any brand name
 
 **Schwerlaster**:
 A **Vehicle**: a four-axle box lorry, heavy, wide and slow to turn, carrying the biggest loads and the only one for a
-**Schwertransport**. It is longer than Monti's **Dock bays**, so it gets no **Offers** to or from a **Dock** there.
+**Schwertransport**. It is longer than a map's **Dock bays** (Monti's among them), so it gets no **Offers** to or from that map's **Docks**.
 _Avoid_: lorry (in the UI), semi, any brand name
 
 **Werkstatt**:

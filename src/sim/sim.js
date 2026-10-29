@@ -51,9 +51,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
   // 'fragile', 'dock', 'fragileDock', 'express', 'oversized', 'round', 'pedestrian' or 'schwertransport' (see
-  // requestOffers()). `order` is
-  // the active offer plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops` of the drop-off it heads for or
-  // unloads at, whose spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
+  // requestOffers()). `order` is the active offer plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops`
+  // of the drop-off it heads for or unloads at, whose spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
   // loaded, see damageCargo()) and `faults`, what has cost it the clean Star so far: the reason of each fine taken since
   // it was accepted ('collision' for a Contact the truck made) and 'zebra' for a zebra crossing driven through, Witness
   // or not, each once; and `surprise`, the one it still has in store ({ kind, wait }, see springSurprise()) or null;
@@ -984,7 +983,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // edges; the gate's bollards themselves are plain colliders.
   const narrow = () => v.width < tables.osm.gate;
   // Whether the current Vehicle fits the map's dock bays, so docks may be an offer's spots (#90).
-  const docks = () => v.length <= tables.osm.bayLength;
+  const fitsBays = () => v.length <= tables.osm.bayLength;
   const schwer = (cargo) => cargo.weight > o.schwertransport;
   const wideLoad = (type) => type === 'oversized' || type === 'schwertransport';
   const spot = (id) => map.spots.find((s) => s.id === id);
@@ -1010,7 +1009,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // bays.
   function requestOffers() {
     state.offers = [];
-    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()) && (!s.dock || docks()));
+    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()) && (!s.dock || fitsBays()));
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
