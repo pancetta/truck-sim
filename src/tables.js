@@ -432,7 +432,7 @@ export const fines = {
   collision: 150, // the truck driving into an AI car, once per contact; a car driving into the truck costs nothing
   giveWay: 150, // only while a police car sees the truck (see giveWay)
   stopSign: 150, // only while a police car sees the truck (see stopSign)
-  zebra: 150, // the truck entering a zebra crossing a pedestrian waits at or walks on, only while a police car sees it
+  zebra: 150, // the truck entering a zebra crossing a pedestrian is on (see zebras.brake), only while a police car sees it
   pedestrian: 200, // the truck driving onto the pavement at a pedestrian (see pedestrians.danger), only while a police car sees it
 };
 
