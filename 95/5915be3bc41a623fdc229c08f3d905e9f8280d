@@ -1,0 +1,46 @@
+src/tables.js
+  s_d19bb0c1cc76d9::t_41fa06a324c8dd 431,638-644
+src/autopilot.test.js
+  s_d19bb0c1cc76d9::t_1e1bb6ad0476a6 23-24
+src/sim/pedestrians.bench.test.js
+  s_d19bb0c1cc76d9::t_1449f24760b91f 35-40,45
+src/sim/pedestrians.test.js
+  s_d19bb0c1cc76d9::t_d9e42f2dd1e54e 112,116-117,132-133
+  s_d19bb0c1cc76d9::t_9e55a56166909e 124-126,129
+  s_d19bb0c1cc76d9::t_13f62c37700bfa 109,121
+src/strings.js
+  s_d19bb0c1cc76d9::t_41fa06a324c8dd 226
+src/sim/pedestrians.js
+  s_d19bb0c1cc76d9::t_5cde2c1f8cee12 16,101,189,223,232
+  s_d19bb0c1cc76d9::t_bb6a89257c1967 205-208,210-211
+  s_d19bb0c1cc76d9::t_4e3fe9e5950551 9-14,30-31,87-90,102-106,140-143,146-147,186-188,190-204,209,212-222,224-229
+src/sim/dodging.test.js
+  s_d19bb0c1cc76d9::t_fc4aadd8ded40b 1-3,5-11,19-29,31-36,39-42,44-59,62-83,85-87,95-96,101-123
+  s_d19bb0c1cc76d9::t_f897c0eaa34cc0 30,43
+  s_d19bb0c1cc76d9::t_2a090c240aec2b 100
+  s_d19bb0c1cc76d9::t_48f0a6045dc07a 4,12-18,60-61
+  s_d19bb0c1cc76d9::t_d055bc6b45b332 84,88-94,97-99
+  s_d19bb0c1cc76d9::t_756de1f8e446ca 37-38
+GLOSSARY.md
+  s_d19bb0c1cc76d9::t_346230067a183b 31-32,265,330,336-337,440-441,455-456
+src/sim/sim.js
+  s_d19bb0c1cc76d9::t_d358f302f34d1b 564,569-572
+  s_d19bb0c1cc76d9::t_317ea29c2896e1 184-186,321,341-344,346,540-543,545-563,565-568,573-577,1475-1482
+  s_d19bb0c1cc76d9::t_33d5c92d0eab08 1483
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "955915be3bc41a623fdc229c08f3d905e9f8280d",
+  "prompts": {},
+  "sessions": {
+    "s_d19bb0c1cc76d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ee8c027-4787-4170-8348-4456694de0ad",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
