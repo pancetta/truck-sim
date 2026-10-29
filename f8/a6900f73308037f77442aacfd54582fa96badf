@@ -1,0 +1,28 @@
+src/sim/trailer.test.js
+  s_b9aa36dc04bfdc::t_45ed4d4f03d7ae 92-115
+src/sim/soak.test.js
+  s_b9aa36dc04bfdc::t_b47fd15e2d5cd6 234
+src/trailerModel.js
+  s_b9aa36dc04bfdc::t_11f7eb07a985a5 12,27-31,33,35,37-38
+src/sim/sim.js
+  s_b9aa36dc04bfdc::t_7956b0f3174ec5 1347-1349,1352-1356
+  s_b9aa36dc04bfdc::t_11f7eb07a985a5 1045,1346,1350-1351
+docs/perf/2026-10-baseline.md
+  s_b9aa36dc04bfdc::t_7fe6167cf37b2a 1016-1026
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f8a6900f73308037f77442aacfd54582fa96badf",
+  "prompts": {},
+  "sessions": {
+    "s_b9aa36dc04bfdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7bfb97c5-6fa8-44d4-9790-bfd2181cf49e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
