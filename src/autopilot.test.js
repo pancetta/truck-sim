@@ -59,13 +59,20 @@ describe('the autopilot into the docks', () => {
   // shortcut: the legs start at spot A, the start before home (#51): from home the autopilot scrapes a corner on the way to F
   // and H (its known limit, #64); start from tables.osm.start again once it picks its lane per corner.
   const from = 'A';
-  // Every Vehicle takes dock offers, so each is docked (#88): a switch at the start drives it.
-  const cases = Object.keys(tables.fleet).flatMap((vehicle) => tables.osm.docks.map((id) => [vehicle, id]));
+  // Every Vehicle that gets dock offers is docked into each dock (#88): a switch at the start drives it. One longer than
+  // the bays gets none (#90), so isn't.
+  const fleet = (vehicle) => ({ ...freshProfile(), vehicles: Object.fromEntries(Object.keys(tables.fleet).map((k) => [k, {}])), vehicle });
+  const docking = Object.keys(tables.fleet).filter((vehicle) => {
+    const sim = createSim(tables, map, seeded(1), { ...fleet(vehicle), stars: tables.rank.tiers.at(-1).stars });
+    return Array.from({ length: 30 }, () => sim.requestOffers()).flat().some((o) => spot(o.dropoff).dock);
+  });
+  expect(docking.length).toBeLessThan(Object.keys(tables.fleet).length);
+  const cases = docking.flatMap((vehicle) => tables.osm.docks.map((id) => [vehicle, id]));
   test.each(cases)('drives the %s from spot A into dock %s, and backs into its bay from the street for the dock bonus', (vehicle, id) => {
     const dock = spot(id);
     const { length } = tables.fleet[vehicle];
     // Forwards along the legal route, service lanes included, into the bay.
-    const sim = createSim(empty, map, seeded(1), { ...freshProfile(), vehicles: Object.fromEntries(Object.keys(tables.fleet).map((k) => [k, {}])), vehicle });
+    const sim = createSim(empty, map, seeded(1), fleet(vehicle));
     const there = createAutopilot(sim, map, empty, [from, id], false);
     there.place();
     expect(run(sim, there.update, () => inZone(sim.state.truck, dock), 200)).toEqual({ done: true, contacts: 0 });

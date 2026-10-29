@@ -25,7 +25,7 @@ export const strings = {
   payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Sorgfalts-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag', umweg: 'Umweg' }, // state.lastPayment line labels
   // The surprise notice (state.lastSurprise): a street closed ahead (then its name), or the Client's call (then the new place and the Umweg pay).
   surprises: { closed: 'Voraus gesperrt', newRoute: 'neue Route', dropoff: 'Anruf vom Kunden: bitte nach' },
-  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour', pedestrian: 'Fußgängerzone' },
+  offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour', pedestrian: 'Fußgängerzone', schwertransport: 'Schwertransport' },
   // What is special about an offer of each type, on its line in the orders panel.
   offerTags: {
     normal: 'Hinfahren, abladen, fertig',
@@ -37,6 +37,7 @@ export const strings = {
     oversized: 'Zu breit für Gassen: Route nur über breite Straßen',
     round: 'Mehrere Entladestellen nacheinander, jede zahlt ihren Teil',
     pedestrian: 'Nur mit dem Dreirad: zwischen den Pollern hindurch',
+    schwertransport: 'Nur mit dem Schwerlaster: Riesenlast, Route nur über breite Straßen',
   },
   // Cargo kinds (tables.orders.kinds): the name and meter in the goal banner while one is loaded, and the twist at the
   // end of an offer's tag line (fragile has its own offer type, which says it).
@@ -66,7 +67,7 @@ export const strings = {
   upgrades: { motor: 'Motor', brakes: 'Bremsen', tyres: 'Reifen', suspension: 'Fahrwerk', cargoBed: 'Ladefläche', tank: 'Tank' },
   effects: { motor: 'Drehmoment', brakes: 'Bremskraft', tyres: 'Lenkung bei Tempo', suspension: 'Seitenneigung', cargoBed: 'Ladung bis', tank: 'Tankinhalt' },
   // The Vehicles (tables.fleet) by id, and the Werkstatt's words for them.
-  fleet: { truck: 'Lkw', van: 'Transporter', dreirad: 'Dreirad' },
+  fleet: { truck: 'Lkw', van: 'Transporter', dreirad: 'Dreirad', lorry: 'Schwerlaster' },
   fahrzeuge: 'Fahrzeuge',
   choose: 'Fahren',
   current: 'Im Einsatz',

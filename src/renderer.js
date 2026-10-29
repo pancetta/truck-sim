@@ -478,7 +478,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       return { minX: x - (side1 - side0) / 2, maxX: x + (side1 - side0) / 2, minZ: z - (out1 - out0) / 2, maxZ: z + (out1 - out0) / 2, angle: bay.heading };
     };
     dockEdges.push({ ...part(-dock.depth, 0, -dockHalf(tables), dockHalf(tables)), height: dock.edge });
-    for (const side of [-bayHalf, bayHalf]) bayLines.push(part(0, 10, side - 0.12, side + 0.12));
+    for (const side of [-bayHalf, bayHalf]) bayLines.push(part(0, tables.osm.bayLength, side - 0.12, side + 0.12));
   }
   addBoxes(palette.dark, dockEdges);
   addBoxes(palette.stopLine, bayLines, 0.07);

@@ -133,6 +133,47 @@ export const fleet = {
     },
     paint: 0x5f8fae,
   },
+  // The Schwerlaster (#90): a four-axle box lorry, heavy, wide and slow to turn, for big loads; the only Vehicle that
+  // carries a Schwertransport (orders.schwertransport). Longer than a map's dock bays (osm.bayLength), it gets no dock
+  // offers there.
+  lorry: {
+    ...truck,
+    rank: 3,
+    price: 15000,
+    emptyMass: 14000,
+    torqueCurve: [
+      [600, 600],
+      [1000, 1100],
+      [1600, 1100],
+      [2100, 700],
+      [2300, 0],
+    ],
+    gearRatios: [24, 16, 11, 7.8, 5.6, 4.2],
+    reverseRatio: 24,
+    upshiftRpm: 1800,
+    downshiftRpm: 950,
+    wheelRadius: 0.52,
+    brakeForce: 90000,
+    drag: 6,
+    wheelbase: 6.2,
+    maxSteerAngle: 0.62,
+    steerFadeSpeed: 6,
+    length: 12,
+    width: 2.55,
+    maxCargo: 32,
+    tank: 600,
+    thirst: 1.6,
+    cab: [0, 0.15, 2],
+    rearEye: [0, 3.9, -5.95],
+    looks: false,
+    // Side profile from the rear, as the van's: a tall box, a gap, and a flat-fronted cab over two front axles.
+    body: {
+      body: [[0, 0.55], [0, 3.95], [0.08, 4.0], [8.6, 4.0], [8.75, 3.45], [11.2, 3.45], [11.75, 3.1], [12, 1.7], [12, 0.55]],
+      glass: [[10.4, 2.05], [10.4, 3.2], [11.25, 3.2], [11.75, 2.2]],
+      axles: [1.7, 3.05, 8.9, 10.3], wheel: 0.52, pillar: null, doors: [[9.9, 11.1]],
+    },
+    paint: 0xb8452f,
+  },
 };
 
 export const orders = {
@@ -176,9 +217,12 @@ export const orders = {
   // fragile, an oversized one with cargo of no kind, to drop-offs that aren't docks); otherwise the type comes from the drop-off and the cargo: dock or
   // fragileDock to a dock, else fragile if its kind is (no other kind changes the type), heavy above maxCargo, or normal.
   // An offer to or from a spot on a pedestrian edge, made only to a Vehicle narrow enough for the bollard gates, is a
-  // pedestrian one (#89), never express, oversized or a round.
-  types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3, round: 3 },
-  shares: { express: 0.2, oversized: 0.15, round: 0.15 },
+  // pedestrian one (#89), never express, oversized or a round. A schwertransport (#90) is an oversized one with cargo
+  // heavier than `schwertransport`, drawn at its share only where the Vehicle carries such cargo (the Schwerlaster);
+  // no other offer carries it.
+  types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3, round: 3, schwertransport: 3 },
+  shares: { express: 0.2, oversized: 0.15, round: 0.15, schwertransport: 0.3 },
+  schwertransport: 25, // t; over the most the truck's biggest Ladefläche carries (24 t), so only the Schwerlaster does
   roundDrops: [2, 3], // a round's number of drop-offs, one drawn per round offer
   // Factors on the expected time and the pay (base and distance). At 0.8 a 1.2 km express needs about 7.9 m/s on average,
   // a dash at the 30 km/h (8.3 m/s) limit of most streets; 0.7 would need 9.1 m/s, over it.
@@ -203,6 +247,10 @@ export const orders = {
     { name: 'Pakete', weight: 0.4 },
     { name: 'Blumen', weight: 0.2 },
     { name: 'Wein', weight: 0.6, kind: 'fragile' },
+    // Schwertransport loads, which only the Schwerlaster carries (#90).
+    { name: 'Kranteile', weight: 26 },
+    { name: 'Brückenträger', weight: 28 },
+    { name: 'Transformator', weight: 30 },
   ],
 };
 
@@ -664,6 +712,7 @@ export const osm = {
     { id: 'R', name: 'Casa', street: 'Via dei Capocci', way: 95509138, at: 100, side: 'right' },
   ],
   docks: ['C', 'F', 'H'], // spot ids with a loading dock
+  bayLength: 10, // m of a dock bay's painted lines out from its dock edge; a longer Vehicle gets no dock offers (#90)
   stations: ['N', 'O', 'P'], // spot ids of the petrol stations
   restaurant: 'Q', // spot id of the restaurant
   home: 'R', // spot id of home, where the driver sleeps and the Werkstatt is

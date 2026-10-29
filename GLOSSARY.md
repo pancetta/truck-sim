@@ -70,8 +70,8 @@ _Avoid_: active offer, job
 
 **Order type**:
 The kind of delivery: normal ("Normal"), heavy ("Schwerlast"), fragile ("Zerbrechlich"), dock ("Rampe"), fragile dock,
-**Express**, **Oversized**, **Round** ("Tour") or pedestrian ("Fußgängerzone": to or from a **Spot** on a
-**Pedestrian edge**, only in the **Dreirad**). Each comes from its **Tier** on.
+**Express**, **Oversized**, **Round** ("Tour"), pedestrian ("Fußgängerzone": to or from a **Spot** on a
+**Pedestrian edge**, only in the **Dreirad**) or **Schwertransport**. Each comes from its **Tier** on.
 
 **Express**:
 An **Order type** with a shorter **Expected time** and higher pay, for a share of **Offers**.
@@ -79,6 +79,11 @@ An **Order type** with a shorter **Expected time** and higher pay, for a share o
 **Oversized** ("Übergröße"):
 An **Order type** whose load is too wide for narrow streets: its route, the pay distance and the route arrow keep to
 edges of at least a set width, and it is only offered between **Spots** such a route joins. Today's truck takes it.
+
+**Schwertransport**:
+An **Oversized** **Order type** whose cargo is heavier than any other **Vehicle** carries, so only the **Schwerlaster**
+gets it; it keeps to the same wide route.
+_Avoid_: heavy haul, special transport
 
 **Round** ("Tour"):
 An **Order type** with one **Pickup** and 2–3 **Drop-offs**, driven in turn, nearest by road first. Each drop unloads
@@ -174,6 +179,11 @@ _Avoid_: Van (in the UI), Sprinter (a brand)
 A **Vehicle**: a small three-wheeler with a cab up front and a box behind, light, slow and nimble, carrying light loads;
 the only one narrow enough for a **Bollard gate**, so it alone reaches the **Spots** on **Pedestrian edges**.
 _Avoid_: three-wheeler (in the UI), any brand name
+
+**Schwerlaster**:
+A **Vehicle**: a four-axle box lorry, heavy, wide and slow to turn, carrying the biggest loads and the only one for a
+**Schwertransport**. It is longer than Monti's **Dock bays**, so it gets no **Offers** to or from a **Dock** there.
+_Avoid_: lorry (in the UI), semi, any brand name
 
 **Werkstatt**:
 The garage at **Home** where the player buys and switches **Vehicles** and buys **Upgrades** and **Visuals**; open only
@@ -400,5 +410,6 @@ The **Spot** where a new game puts the truck, in its lane.
 - An **Edge**'s **Road class** sets its width, **Speed limit** and **Priority**.
 - A **Spot** on a **Pedestrian edge** only gets **Offers** in the **Dreirad**, of their own **Order type**
   ("Fußgängerzone").
+- A **Vehicle** longer than a map's **Dock bays** gets no **Offers** to or from its **Docks**.
 - A **Pedestrian** walks one **Pavement line**; each side of an **Edge** belongs to at most one **Pavement line**.
 - A **Zebra crossing** joins the **Pavement lines** on its two kerbs; a **Pedestrian** on it is solid to the truck, and one the truck comes at steps back to a kerb, so it is never hurt and makes no **Contact**.

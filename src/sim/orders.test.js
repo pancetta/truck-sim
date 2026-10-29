@@ -892,6 +892,22 @@ describe('Sim: express and oversized offers', () => {
     for (const p of sim.state.route) expect(p.x).toBeLessThan(40 - classes.service.width); // never on the service lane
   });
 
+  test('a Schwertransport (#90), in the Schwerlaster, keeps to the same wide route', () => {
+    const { t, map } = narrowRing();
+    const lorry = { ...atTier(types.schwertransport), vehicle: 'lorry', vehicles: { truck: {}, lorry: {} } };
+    const sim = simOn({ t: { ...t, orders: only('schwertransport').orders }, map }, 1, lorry);
+    const offer = acceptFrom(sim, 'A');
+    expect(offer).toMatchObject({ type: 'schwertransport', dropoff: 'B' });
+    expect(offer.cargo.weight).toBeGreaterThan(tables.orders.schwertransport);
+    expect(offer.distance).toBeCloseTo(180, 0);
+
+    Object.assign(sim.state.truck, map.spots.find((s) => s.id === 'A').lane, { speed: 0 });
+    drive(sim, tables.orders.loadTime + 0.1, IDLE);
+    expect(sim.state.order.phase).toBe('dropoff');
+    expect(sim.state.route.length).toBeGreaterThan(1);
+    for (const p of sim.state.route) expect(p.x).toBeLessThan(40 - classes.service.width);
+  });
+
   test('no oversized offer is made where no wide route leads', () => {
     // The lane as a service lane: both spots on an edge too narrow.
     const vicolo = way('service', [[0, -28], [0, 28]], { name: 'Vicolo' });

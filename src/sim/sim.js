@@ -50,7 +50,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let base = tables.fleet[profile.vehicle];
   const truck = { x: 0, z: 0, heading: 0, speed: 0, mass: base.emptyMass, gear: 'N', rpm: base.idleRpm, roll: 0 };
   // read-only for callers: only step() and Sim commands change it. An offer's `type` is 'normal', 'heavy',
-  // 'fragile', 'dock', 'fragileDock', 'express', 'oversized', 'round' or 'pedestrian' (see requestOffers()). `order` is
+  // 'fragile', 'dock', 'fragileDock', 'express', 'oversized', 'round', 'pedestrian' or 'schwertransport' (see
+  // requestOffers()). `order` is
   // the active offer plus its phase ('pickup' or 'dropoff'), `drop` (the index in `drops` of the drop-off it heads for or
   // unloads at, whose spot `dropoff` then is), `elapsed` (s since it was accepted), `damage` (0..1, grows only on cargo of a kind once
   // loaded, see damageCargo()) and `faults`, what has cost it the clean Star so far: the reason of each fine taken since
@@ -59,7 +60,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // `progress` runs 0..1 while the truck stands in that phase's zone.
   // `route` is the shortest road route to that zone's place on the road graph, as points ({ x, z }) from the next one
   // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()); with an oversized
-  // load on, over edges at least tables.orders.oversizedWidth wide where such a route leads there.
+  // load or a schwertransport on, over edges at least tables.orders.oversizedWidth wide where such a route leads there.
   // `lastPayment` ({ amount, lines: [{ label, amount }], stars: [{ star, reasons }] }, label a key of strings.payLines)
   // is replaced by a new object on every payment, so the UI can tell each one apart; a round pays each drop. `stars` are
   // empty but for an order's last drop, where they are the delivery's Stars in
@@ -743,7 +744,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     const key = `${at},${target.id},${events?.version}`;
     if (key === routeKey) return;
     routeKey = key;
-    const width = order.type === 'oversized' && order.phase === 'dropoff' ? o.oversizedWidth : 0;
+    const width = wideLoad(order.type) && order.phase === 'dropoff' ? o.oversizedWidth : 0;
     state.route = routeFrom(here, onRoad, target.pose, width)?.points ?? [];
   }
 
@@ -982,6 +983,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // Whether the current Vehicle fits through a bollard gate (tables.osm.gate), so routes and offers may use pedestrian
   // edges; the gate's bollards themselves are plain colliders.
   const narrow = () => v.width < tables.osm.gate;
+  // Whether the current Vehicle fits the map's dock bays, so docks may be an offer's spots (#90).
+  const docks = () => v.length <= tables.osm.bayLength;
+  const schwer = (cargo) => cargo.weight > o.schwertransport;
+  const wideLoad = (type) => type === 'oversized' || type === 'schwertransport';
   const spot = (id) => map.spots.find((s) => s.id === id);
   const targetOf = (order) => spot(order.phase === 'pickup' ? order.pickup : order.dropoff);
   const pick = (list) => list[Math.floor(random() * list.length)];
@@ -992,17 +997,20 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // are never a pickup or a drop-off.
   // Cargo is only what the Ladefläche carries, of a kind the rank tier allows (tables.orders.kinds), and cargo and
   // drop-off make an offer type the rank tier allows; from their tiers, a share of offers is express, oversized or a
-  // round instead (tables.orders.types), with cargo that isn't fragile (an oversized one of no kind). An oversized offer's
+  // round instead (tables.orders.types), with cargo that isn't fragile (an oversized one of no kind). In a Vehicle that
+  // carries cargo heavier than tables.orders.schwertransport, a share is a schwertransport, an oversized one with that
+  // cargo, which no other offer carries. An oversized offer's (and a schwertransport's)
   // spots and route keep to edges at least oversizedWidth wide, and it is not made where no such route leads. A round
   // has roundDrops drop-offs, driven nearest by road first, and is not made where one can't be reached.
   // Each drop (`drops`: { spot, distance, pay, expectedTime }) pays base + distance of its own leg, and is expected
   // after the truck's route to the pickup plus the legs to it at reference speed, plus loading, the unloadings up to it
   // and slack; an express offer's is shorter and its pay higher, by tables.orders.express. The offer's `dropoff` is the
   // first drop, its distance, pay and expected time are the whole order's. Spots on pedestrian edges only take orders
-  // in a narrow Vehicle, of their own type ('pedestrian'), never a special one.
+  // in a narrow Vehicle, of their own type ('pedestrian'), never a special one; docks only in a Vehicle that fits their
+  // bays.
   function requestOffers() {
     state.offers = [];
-    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()));
+    const places = map.spots.filter((s) => !s.station && !s.restaurant && !s.home && (!s.pose.edge.pedestrian || narrow()) && (!s.dock || docks()));
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
@@ -1012,9 +1020,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const draw = random();
       let share = 0;
       const drawn = Object.keys(o.shares).find((type) => draw < (share += o.shares[type]));
-      const special = drawn && o.types[drawn] <= state.rank.tier ? drawn : null;
-      const width = special === 'oversized' ? o.oversizedWidth : 0;
-      const cargo = pick(special ? cargoes.filter((c) => (special === 'oversized' ? !c.kind : c.kind !== 'fragile')) : cargoes);
+      const special = drawn && o.types[drawn] <= state.rank.tier && (drawn !== 'schwertransport' || cargoes.some(schwer)) ? drawn : null;
+      const width = wideLoad(special) ? o.oversizedWidth : 0;
+      const cargo = pick(cargoes.filter((c) => schwer(c) === (special === 'schwertransport') && (wideLoad(special) ? !c.kind : !special || c.kind !== 'fragile')));
       const wide = places.filter((s) => s.pose.edge.width >= width && !(special && s.pose.edge.pedestrian));
       const stops = [];
       for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)
