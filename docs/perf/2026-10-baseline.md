@@ -980,6 +980,16 @@ The van is a code-built body and details mesh (vehicles.js) with its own cab int
 | #88, cab (2 runs) | 16.7 / 16.7–16.8 | 2.4–2.5 / 2.43–2.73 | 0.13–0.14 | 2.2–2.3 / 2.26–2.56 | 87 / 321k | 314–320 ms |
 
 The second #88 run's busy p95 of 4.7 ms (2.9 ms in the other three) came with the machine's load at its highest.
+## Street events (#80)
+
+Up to two street events at a time (`tables.events.count`). A market or roadworks is one merged mesh, built when its barriers go up (+1 draw call each while one is in view); a garbage truck is an AI car drawn by `src/riders.js` (two more instanced meshes, +5 programs). The Sim checks the truck against at most four barriers a step, and while a street is closing it looks once a step whether any car still uses it. The traffic bench is unchanged: about 153 µs and 24 KB a step at 103 cars, run alone (34 KB once under the full suite's load, the flake #81 noted).
+
+**How measured:** production builds of `d0dd2e0` (base) and this change, Chrome headless (`--headless=new`, WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's 1,200 frames after 110 s (the first event opens after 30–90 s), cab view, alternating base, this change, base, this change, load average 2.5–3.4. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / mean | sim ms mean | render ms median / mean | draw calls / triangles | map build |
+|---|---|---|---|---|---|---|
+| base, cab (2 runs) | 16.7 / 16.7 | 2.8–2.9 / 2.88–3.11 | 0.10–0.12 | 2.7–2.8 / 2.74–2.94 | 150–164 / 583–605k | 322–351 ms |
+| #80, cab (2 runs) | 16.7 / 16.7–16.8 | 2.9 / 2.94–3.07 | 0.12 | 2.7–2.8 / 2.78–2.90 | 154–161 / 581–582k | 352–363 ms |
 
 ## Files
 
