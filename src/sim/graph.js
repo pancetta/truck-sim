@@ -123,6 +123,9 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
   // are in `closed` (a Set; street events, #80) are not driven along: from a pose on one, only out by its nearer end.
   // Pedestrian edges are followed, and ended on, only with `walk` (a Vehicle narrow enough for their bollard gates);
   // without it, a pose on one (at its mouth, whose middle is nearer there than the road's) leaves it as a closed one.
+  // A start pose with `forward` (true: facing along its edge, false: against it, as along() has it) leaves the way it
+  // faces and never turns back along a street on the way (#99); where no such way leads there (a dead end ahead), it
+  // goes either way, as without it. The way's `forward` is whether it arrives along `to`'s edge or against it.
   function towards(to, legal = true, minWidth = 0, closed = null, walk = false) {
     const t = to.edge;
     if (t.width < minWidth || (t.pedestrian && !walk)) return () => null;
@@ -145,7 +148,67 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       }
     }
 
-    return (from) => {
+    // The same search over directed edges, for a start facing one way, run on its first call: each edge driven along
+    // it (state 2·id) or against it (2·id + 1) has the `cost` (m) from where it is entered to `to` and the state `after`
+    // it (-1 where it ends at `to`), never back along the street it came by (the same edge, or its twin()).
+    let cost;
+    let after;
+    function noTurning() {
+      cost = new Float64Array(2 * edges.length).fill(Infinity);
+      after = new Int32Array(2 * edges.length).fill(-1);
+      // Only the states reached and not yet settled are searched for the nearest: a handful, not all 2·edges.
+      const open = [];
+      const reach = (st, c, next) => {
+        if (c >= cost[st]) return;
+        if (cost[st] === Infinity) open.push(st);
+        [cost[st], after[st]] = [c, next];
+      };
+      reach(2 * t.id, to.s, -1);
+      if (!against(t)) reach(2 * t.id + 1, t.length - to.s, -1);
+      while (open.length) {
+        let k = 0;
+        for (let i = 1; i < open.length; i++) if (cost[open[i]] < cost[open[k]]) k = i;
+        const st = open[k];
+        open[k] = open.at(-1);
+        open.pop();
+        const e = edges[st >> 1];
+        const n = st & 1 ? e.to : e.from; // where st is entered
+        for (const id of walk ? [...nodes[n].arms, ...nodes[n].walks] : nodes[n].arms) {
+          const p = edges[id];
+          if (twin(p, e) || p.width < minWidth || closed?.has(id)) continue; // back along the street, too narrow or closed
+          // p driven along it into n, or against it (unless that is against a one-way)
+          if (p.to === n) reach(2 * id, cost[st] + p.length, st);
+          if (p.from === n && !against(p)) reach(2 * id + 1, cost[st] + p.length, st);
+        }
+      }
+    }
+    function faced(from) {
+      const f = from.edge;
+      const on = from.forward;
+      if (closed?.has(f.id) || (f.pedestrian && !walk) || (!on && against(f))) return null;
+      if (f === t && (on ? to.s >= from.s : to.s <= from.s)) return { length: Math.abs(to.s - from.s), points: tidy(cut(t, from.s, to.s)), forward: on };
+      if (!cost) noTurning();
+      // On to f's end, then the best state entered there, but none back along f's street.
+      const n = on ? f.to : f.from;
+      let st = -1;
+      for (const id of walk ? [...nodes[n].arms, ...nodes[n].walks] : nodes[n].arms) {
+        if (twin(edges[id], f)) continue;
+        for (const s of [edges[id].from === n ? 2 * id : -1, edges[id].to === n ? 2 * id + 1 : -1]) if (s >= 0 && (st < 0 || cost[s] < cost[st])) st = s;
+      }
+      if (st < 0 || cost[st] === Infinity) return null;
+      const points = cut(f, from.s, on ? f.length : 0);
+      const length = (on ? f.length - from.s : from.s) + cost[st];
+      let last = st;
+      for (; st >= 0; last = st, st = after[st]) {
+        const e = edges[st >> 1];
+        const rev = st & 1;
+        points.push(...cut(e, rev ? e.length : 0, after[st] < 0 ? to.s : rev ? 0 : e.length).slice(1));
+      }
+      return { length, points: tidy(points), forward: !(last & 1) };
+    }
+
+    return (from) => (from.forward === undefined ? null : faced(from)) ?? either(from);
+    function either(from) {
       const f = from.edge;
       const shut = (closed?.has(f.id) ?? false) || (f.pedestrian && !walk);
       const direct = f === t && !shut && (!against(f) || to.s >= from.s) ? Math.abs(from.s - to.s) : Infinity;
@@ -153,7 +216,7 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       const ahead = shut && from.s <= f.length / 2 ? Infinity : f.length - from.s + dist[f.to];
       const length = Math.min(direct, back, ahead);
       if (length === Infinity) return null;
-      if (length === direct) return { length, points: tidy(cut(t, from.s, to.s)) };
+      if (length === direct) return { length, points: tidy(cut(t, from.s, to.s)), forward: to.s >= from.s };
       let n = length === back ? f.from : f.to;
       const points = cut(f, from.s, length === back ? 0 : f.length);
       for (let e = via[n]; e; e = via[n]) {
@@ -164,11 +227,20 @@ export function createGraph(nodes, edges, laneOffset, cellSize) {
       // On a loop both ends are n: leave it by the nearer one.
       const start = n === t.from && (against(t) || n !== t.to || to.s <= t.length - to.s) ? 0 : t.length;
       points.push(...cut(t, start, to.s).slice(1));
-      return { length, points: tidy(points) };
-    };
+      return { length, points: tidy(points), forward: start === 0 };
+    }
   }
 
   const route = (from, to, minWidth = 0, closed = null, walk = false) => towards(to, true, minWidth, closed, walk)(from);
+
+  // Whether edges a and b are one street: the same edge, or one drawn as two one-way edges between the same nodes
+  // (#99: Via Cavour), their middles less than both widths apart.
+  function twin(a, b) {
+    if (a === b) return true;
+    if (Math.min(a.from, a.to) !== Math.min(b.from, b.to) || Math.max(a.from, a.to) !== Math.max(b.from, b.to)) return false;
+    const [p, q] = [pointAt(a, a.length / 2), pointAt(b, b.length / 2)];
+    return Math.hypot(p.x - q.x, p.z - q.z) < a.width + b.width;
+  }
 
   return { nodes, edges, paths: lanePaths(nodes, edges), nearest, project, onRoad, along, pointAt, towards, route };
 }

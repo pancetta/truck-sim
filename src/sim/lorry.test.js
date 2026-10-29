@@ -32,7 +32,9 @@ describe('Sim: the Schwerlaster', () => {
     for (const o of heavy) {
       const [from, to] = [spot(o.pickup), spot(o.dropoff)];
       expect([from, to].map((s) => s.pose.edge.width >= tables.orders.oversizedWidth && !s.dock)).toEqual([true, true]);
-      expect(o.distance).toBeCloseTo(map.graph.route(from.pose, to.pose, tables.orders.oversizedWidth).length); // its arrow: orders.test.js
+      // the wide route, leaving the pickup the way the truck arrives there (#99); its arrow: orders.test.js
+      const ways = [true, false, undefined].map((forward) => map.graph.route({ ...from.pose, forward }, to.pose, tables.orders.oversizedWidth).length);
+      expect(ways.some((l) => Math.abs(l - o.distance) < 1e-6)).toBe(true);
     }
   });
 

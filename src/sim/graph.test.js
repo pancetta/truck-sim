@@ -75,6 +75,39 @@ test('routes obey one-ways: the shortest legal way, round the block where the sh
   expect(route({ edge: north, s: 50 }, { edge: east, s: 50 }).length).toBeCloseTo(100);
 });
 
+test('a start facing one way leaves that way and comes round the block, never back along a street; in a dead end it turns', () => {
+  // A 100 m square of two-way streets, a 10 m dead-end stub out of its north-east corner (node 1).
+  const nodes = [{ x: 0, z: 0 }, { x: 100, z: 0 }, { x: 100, z: 100 }, { x: 0, z: 100 }, { x: 110, z: 0 }];
+  const edges = [0, 1, 2, 3].map((from) => ({ from, to: (from + 1) % 4, class: 'residential', width: 7, name: '', oneWay: false, points: [nodes[from], nodes[(from + 1) % 4]] }));
+  edges.push({ from: 1, to: 4, class: 'residential', width: 7, name: '', oneWay: false, points: [nodes[1], nodes[4]] });
+  const { route } = createGraph(nodes, edges, laneOffset, cell);
+  const [north, , , , stub] = edges;
+
+  // Facing east, 80 m along, to 20 m along: not back (60), nor into the stub and back (120), but round (340).
+  const round = route({ edge: north, s: 80, forward: true }, { edge: north, s: 20 });
+  expect(round.length).toBeCloseTo(20 + 300 + 20);
+  expect(round.points[1]).toEqual({ x: 100, z: 0 });
+  expect(round.forward).toBe(true); // it arrives heading east
+  // Facing west it is straight on; with no facing, the shortest either way, as before.
+  expect(route({ edge: north, s: 80, forward: false }, { edge: north, s: 20 })).toMatchObject({ length: 60, forward: false });
+  expect(route({ edge: north, s: 80 }, { edge: north, s: 20 }).length).toBeCloseTo(60);
+  // Facing the stub's dead end, with no way on, it turns as it does today.
+  expect(route({ edge: stub, s: 5, forward: true }, { edge: north, s: 50 }).length).toBeCloseTo(5 + 50);
+});
+
+test('a street drawn as two one-way edges between the same nodes is not turned back along either', () => {
+  // A 100 m square, its north side two one-way edges between nodes 0 and 1 (east 2 m south of west), a stub west of 0.
+  const nodes = [{ x: 0, z: 0 }, { x: 100, z: 0 }, { x: 100, z: 100 }, { x: 0, z: 100 }, { x: -50, z: 0 }];
+  const edge = (from, to, oneWay, d = 0) => ({ from, to, class: 'residential', width: 7, name: '', oneWay, points: [nodes[from], nodes[to]].map((p) => ({ x: p.x, z: p.z + d })) });
+  const edges = [edge(0, 1, true, 2), edge(1, 0, true, -2), edge(1, 2, false), edge(2, 3, false), edge(3, 0, false), edge(4, 0, false)];
+  const { route } = createGraph(nodes, edges, laneOffset, cell);
+
+  // Heading north up the west side 20 m before node 0, to 30 m behind: round the block (370 m), not east along the
+  // north side and back by its twin (270 m).
+  const r = route({ edge: edges[4], s: 80, forward: true }, { edge: edges[4], s: 50 });
+  expect(r.length).toBeCloseTo(20 + 100 + 100 + 100 + 50);
+});
+
 const pose = (p, s) => {
   const out = { x: 0, z: 0, heading: 0 };
   poseAt(p, s, out);

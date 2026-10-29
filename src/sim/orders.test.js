@@ -29,15 +29,20 @@ function typesOffered(sim) {
 
 // A ring of four streets round a block 80 m east–west by 40 m north–south. A's zone is on the south street 10 m from
 // its west end, B's on the east street 10 m from its south end: from A to B is 80 m by the south and east streets,
-// 160 m the other way round.
-function ring() {
+// 160 m the other way round. With `oneWay`, Via Sud is one-way west; `base` are the tables.
+function ring(base = tables, oneWay = false) {
   const corners = [[-40, -20], [40, -20], [40, 20], [-40, 20], [-40, -20]]; // north-west, north-east, south-east, south-west
-  const ways = ['Via Nord', 'Via Est', 'Via Sud', 'Via Ovest'].map((name, i) => way('residential', [corners[i], corners[i + 1]], { name }));
+  const ways = ['Via Nord', 'Via Est', 'Via Sud', 'Via Ovest'].map((name, i) => way('residential', [corners[i], corners[i + 1]], { name, ...(oneWay && i === 2 && { oneway: 'yes' }) }));
   const [, east, south] = ways;
-  const t = withSpots([
-    { id: 'A', name: 'Magazzino Sud', street: 'Via Sud', way: south.id, at: 70, side: 'right' },
-    { id: 'B', name: 'Bottega Est', street: 'Via Est', way: east.id, at: 30, side: 'right' },
-  ]);
+  const t = withSpots(
+    [
+      { id: 'A', name: 'Magazzino Sud', street: 'Via Sud', way: south.id, at: 70, side: 'right' },
+      { id: 'B', name: 'Bottega Est', street: 'Via Est', way: east.id, at: 30, side: 'right' },
+    ],
+    [],
+    null,
+    base,
+  );
   return { t, map: build(ways, t) };
 }
 
@@ -62,9 +67,12 @@ describe('Sim: orders', () => {
   });
 
   test('an offer pays base + per-km × the shortest road route between the zones', () => {
-    const sim = simOn(ring());
+    // Facing west mid north street, the truck comes round the west to A heading east, on towards B.
+    const { t, map } = ring();
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 0, z: -20 - laneOffset, heading: -Math.PI / 2 });
 
-    const offers = sim.requestOffers();
+    const offers = sim.requestOffers().filter((o) => o.pickup === 'A');
 
     expect(offers.length).toBeGreaterThan(0);
     for (const o of offers) {
@@ -186,6 +194,33 @@ describe('Sim: time bonus', () => {
     const offer = laneSim().requestOffers().find((o) => o.pickup === 'A');
 
     expect(offer.expectedTime).toBeCloseTo((28 + 56) / referenceSpeed + 2 * loadTime + slack);
+  });
+
+  test('an offer pays and expects the routes that start ahead: to the pickup, and on from the way the truck arrives', () => {
+    // On the ring, facing east mid north street: round the east to A (150 m), arriving westwards, so on to B round the
+    // west and north (160 m), not back east (80 m).
+    const { t, map } = ring();
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 0, z: -20 + laneOffset, heading: Math.PI / 2 });
+    let offer;
+    for (let i = 0; i < 20 && !offer; i++) offer = sim.requestOffers().find((o) => o.pickup === 'A');
+
+    expect(offer.distance).toBeCloseTo(160);
+    expect(offer.pay).toBe(Math.round(tables.orders.basePay + (tables.orders.payPerKm * 160) / 1000));
+    expect(offer.expectedTime).toBeCloseTo((150 + 160) / referenceSpeed + 2 * loadTime + slack);
+  });
+
+  test('offers are dropped once the truck turns round, as their routes start the way it faced', () => {
+    const { t, map } = ring();
+    const sim = createSim(t, map, seeded(1));
+    Object.assign(sim.state.truck, { x: 0, z: -20 + laneOffset, heading: Math.PI / 2 });
+    sim.requestOffers();
+    sim.step(DT, IDLE);
+    expect(sim.state.offers.length).toBeGreaterThan(0);
+
+    Object.assign(sim.state.truck, { heading: -Math.PI / 2 });
+    sim.step(DT, IDLE);
+    expect(sim.state.offers).toEqual([]);
   });
 
   test('offers are dropped once the truck moves onto another edge, so their times stay true', () => {
@@ -707,9 +742,9 @@ describe('Sim: route', () => {
     return points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.z - points[i].z), 0);
   };
   // On the ring, the truck placed in the middle of the north street, facing east: A's zone is 90 m away round the
-  // west, 150 m round the east; B's 70 m round the east and 170 m round the west.
-  const ringSim = (pickup) => {
-    const { t, map } = ring();
+  // west, 150 m round the east; B's 70 m round the east and 170 m round the west. Routes start the way it faces (#99).
+  const ringSim = (pickup, ...rest) => {
+    const { t, map } = ring(...rest);
     const sim = createSim(t, map, seeded(1));
     Object.assign(sim.state.truck, { x: 0, z: -20 + laneOffset, heading: Math.PI / 2 });
     acceptFrom(sim, pickup);
@@ -740,14 +775,66 @@ describe('Sim: route', () => {
     expect(sim.state.route).toEqual([]);
   });
 
-  test.each(['A', 'B'])('on a known ring the route to %s is a shortest road route from where the truck is', (pickup) => {
+  test.each(['A', 'B'])('on a known ring the route to %s is the shortest road route ahead of the truck', (pickup) => {
     const { map, sim } = ringSim(pickup);
     const { route } = sim.state;
 
     expectAt(route.at(-1), zoneOf(map, pickup));
-    expect(lengthOf(map, sim)).toBeCloseTo(pickup === 'A' ? 90 : 70);
-    // It leaves the truck's own place on the road out, and starts at the corner on its way.
-    expectAt(route[0], pickup === 'A' ? { x: -40, z: -20 } : { x: 40, z: -20 });
+    // A is nearer behind, but the route leaves ahead and comes round, with no U-turn.
+    expect(lengthOf(map, sim)).toBeCloseTo(pickup === 'A' ? 150 : 70);
+    // It leaves the truck's own place on the road out, and starts at the corner ahead.
+    expectAt(route[0], { x: 40, z: -20 });
+  });
+
+  // 8 m past A's place on the south street, heading west: round the block is 232 m.
+  const pastA = { x: -38, z: 20 - laneOffset, heading: -Math.PI / 2, speed: 0 };
+
+  test('a target just behind the truck: the route turns, as the way round is much longer (tables.orders.turn)', () => {
+    const { map, sim } = ringSim('A');
+    Object.assign(sim.state.truck, pastA);
+    sim.step(DT, IDLE);
+    expect(lengthOf(map, sim)).toBeCloseTo(8);
+  });
+
+  test('just past it on a one-way, the route backs up to it rather than going round', () => {
+    const { map, sim } = ringSim('A', tables, true);
+    Object.assign(sim.state.truck, pastA);
+    sim.step(DT, IDLE);
+    expect(lengthOf(map, sim)).toBeCloseTo(8);
+
+    // Farther back than turn.backUp, it keeps to the one-way and goes round.
+    const far = ringSim('A', { ...tables, orders: { ...tables.orders, turn: { ...tables.orders.turn, backUp: 5 } } }, true);
+    Object.assign(far.sim.state.truck, pastA);
+    far.sim.step(DT, IDLE);
+    expect(lengthOf(far.map, far.sim)).toBeCloseTo(232);
+  });
+
+  test('a loop more than turn.extra m longer than turning turns', () => {
+    // A is 90 m back round the west and 150 m on round the east: within 2×, but 60 m longer.
+    const { map, sim } = ringSim('A', { ...tables, orders: { ...tables.orders, turn: { ...tables.orders.turn, extra: 50 } } });
+    expect(lengthOf(map, sim)).toBeCloseTo(90);
+  });
+
+  test('after a reset the route is found again for where and which way the truck stands', () => {
+    const { map, sim } = ringSim('A');
+    expect(lengthOf(map, sim)).toBeCloseTo(150);
+    Object.assign(sim.state.truck, { heading: -Math.PI / 2 + 0.1 });
+    sim.resetToRoad();
+    expect(sim.state.truck.heading).toBeCloseTo(-Math.PI / 2);
+    expect(lengthOf(map, sim)).toBeCloseTo(90 + sim.state.truck.x);
+  });
+
+  test('turned round, the route starts the other way; in a dead end it turns as before', () => {
+    const { map, sim } = ringSim('A');
+    Object.assign(sim.state.truck, { heading: -Math.PI / 2 });
+    sim.step(DT, IDLE);
+    expect(lengthOf(map, sim)).toBeCloseTo(90);
+    expectAt(sim.state.route[0], { x: -40, z: -20 });
+
+    // On the lane, facing B's end, A is only behind.
+    const lane = laneSim();
+    acceptFrom(lane, 'A');
+    expect(lengthOf(mapOf(lane), lane)).toBeCloseTo(28);
   });
 
   test('off the road the route joins the road where the trip is shortest, not at the nearest road', () => {

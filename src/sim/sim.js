@@ -63,9 +63,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // it was accepted ('collision' for a Contact the truck made) and 'zebra' for a zebra crossing driven through, Witness
   // or not, each once; and `surprise`, the one it still has in store ({ kind, wait }, see springSurprise()) or null;
   // `progress` runs 0..1 while the truck stands in that phase's zone.
-  // `route` is the shortest road route to that zone's place on the road graph, as points ({ x, z }) from the next one
-  // ahead of the truck on its edge, or off the road from where it joins the road (see routeFrom()); with an oversized
-  // load or a schwertransport on, over edges at least tables.orders.oversizedWidth wide where such a route leads there.
+  // `route` is the shortest road route to that zone's place on the road graph that starts the way the truck faces (#99;
+  // turning only where no way leads on), as points ({ x, z }) from the next one along its edge, or off the road from
+  // where it joins the road (see routeFrom()); with an oversized load or a schwertransport on, over edges at least
+  // tables.orders.oversizedWidth wide where such a route leads there.
   // `lastPayment` ({ amount, lines: [{ label, amount }], stars: [{ star, reasons }] }, label a key of strings.payLines)
   // is replaced by a new object on every payment, so the UI can tell each one apart; a round pays each drop. `stars` are
   // empty but for an order's last drop, where they are the delivery's Stars in
@@ -173,6 +174,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
   let offersEdge = null; // edge the current offers were made on; their expected times count from there
+  let offersFacing; // and the way the truck faced along it (see facing()), as their routes start that way (#99)
   let limitEdge = null; // edge whose limit and name state.speedLimit and state.street show (see updateLimit)
   let speedingFined = -Infinity; // clock at the last speeding fine
   const traffic = map ? createTraffic(tables, map, random) : null;
@@ -354,7 +356,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (here) updateLimit(here);
     if (state.order?.surprise) springSurprise(dt, here);
     if (map) checkSpeeding();
-    if (!state.order && state.offers.length && here.edge !== offersEdge) state.offers = []; // the panel asks again
+    const turned = offersFacing !== undefined && facing(here) === !offersFacing;
+    if (!state.order && state.offers.length && (here.edge !== offersEdge || turned)) state.offers = []; // the panel asks again
     serve(dt);
     // Loading and unloading need no fuel, so a dry truck in its order's zone finishes them first.
     const canFill = state.service || state.serviceOffer.some((s) => s.id === 'fuel' && s.price <= p.money);
@@ -758,7 +761,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Finds the route again only when the target changes or the truck moves: on the road onto another segment of an
-  // edge, off it into another index cell (tables.city.cell), as the best join changes with every move there.
+  // edge, 10 m along it or round to face the other way, off it into another index cell (tables.city.cell), as the best join changes
+  // with every move there.
   // `here` is the truck's nearest graph pose, if the step already has it.
   function updateRoute(here) {
     const order = state.order;
@@ -771,7 +775,8 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     here ??= map.graph.nearest(truck.x, truck.z);
     const onRoad = here.d <= here.edge.width / 2;
     const { cell } = tables.city;
-    const at = onRoad ? `${here.edge.id},${here.k}` : `off,${Math.floor(truck.x / cell)},${Math.floor(truck.z / cell)}`;
+    // On the road, every 10 m along its segment too: whether ahead() turns hangs on how far the target is.
+    const at = onRoad ? `${here.edge.id},${here.k},${Math.round(here.s / 10)},${facing(here)}` : `off,${Math.floor(truck.x / cell)},${Math.floor(truck.z / cell)}`;
     const key = `${at},${target.id},${events?.version}`;
     if (key === routeKey) return;
     routeKey = key;
@@ -781,19 +786,47 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
 
   // The truck's shortest legal road route ({ length (m), points }) to the graph pose `to`, from `here`, its nearest graph
   // pose; where none leads there (the truck may drive against one-ways, into streets that only lead out of the map), the
-  // shortest against them; null where no road leads there at all. On the road it runs from `here`, its first point (the
-  // truck's own) left out. Off it, it joins the road where straight across plus on by road is shortest, along a line
-  // clear of buildings, and starts at that join. With a `width`, only over edges that wide (see graph.towards()), else as
-  // without one. Never along an edge a street event closes, and along pedestrian edges only in a narrow Vehicle.
+  // shortest against them; null where no road leads there at all. On the road it runs from `here`, the way the truck
+  // faces unless turning is much shorter (see ahead()), its first point (the truck's own) left out; `forward` is
+  // whether it arrives along `to`'s edge. Off it, it joins the road where straight across plus on by road is shortest,
+  // along a line clear of buildings, and starts at that join. With a `width`, only over edges that wide (see
+  // graph.towards()), else as without one. Never along an edge a street event closes, and along pedestrian edges only
+  // in a narrow Vehicle.
   function routeFrom(here, onRoad, to, width = 0) {
     const g = map.graph;
     const walk = narrow();
-    return wayFrom(here, onRoad, g.towards(to, true, width, closed, walk)) ?? wayFrom(here, onRoad, g.towards(to, false, width, closed, walk)) ?? (width ? routeFrom(here, onRoad, to) : null);
+    const legal = onRoad ? (p) => ahead(p, facing(here), to, width) : g.towards(to, true, width, closed, walk);
+    return wayFrom(here, onRoad, legal) ?? wayFrom(here, onRoad, g.towards(to, false, width, closed, walk)) ?? (width ? routeFrom(here, onRoad, to) : null);
+  }
+  // The shortest legal way ({ length, points, forward }, see graph.towards()) from graph pose `from` to `to`, over edges
+  // at least `width` wide, none closed: leaving the way it faces (`forward`, see facing(); either way where undefined)
+  // and round the block (#99), unless turning is more than tables.orders.turn.extra m or turn.factor times shorter,
+  // where it turns; to a target behind on its own street (a one-way too), turning is backing up, at most turn.backUp m.
+  // Null where no legal way leads there.
+  function ahead(from, forward, to, width) {
+    const way = (legal) => map.graph.towards(to, legal, width, closed, narrow());
+    const legal = way(true);
+    const on = legal({ ...from, forward });
+    const back = from.edge === to.edge && Math.abs(to.s - from.s) <= o.turn.backUp && way(false)(from);
+    const backUp = back && { ...back, forward: forward ?? back.forward }; // backed up, it still faces the same way
+    const turn = [legal(from), backUp].filter(Boolean).sort((a, b) => a.length - b.length)[0];
+    if (!on || !turn) return on ?? turn ?? null;
+    return on.length - turn.length > o.turn.extra || on.length > o.turn.factor * turn.length ? turn : on;
+  }
+  // Whether the truck faces along `here`'s edge (true), against it (false), within 45° as graph.along() has it, or
+  // neither (undefined: across the road). Runs every step, so no allocation.
+  function facing(here) {
+    const { points } = here.edge;
+    if (points.length < 2) return undefined;
+    const a = points[here.k];
+    const b = points[here.k + 1];
+    const c = ((b.x - a.x) * Math.sin(truck.heading) + (b.z - a.z) * Math.cos(truck.heading)) / Math.sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2);
+    return Math.abs(c) <= Math.SQRT1_2 ? undefined : c > 0;
   }
   function wayFrom(here, onRoad, way) {
     if (onRoad) {
       const r = way(here);
-      return r && { length: r.length, points: r.points.slice(1) };
+      return r && { length: r.length, points: r.points.slice(1), forward: r.forward };
     }
     const joins = map.graph.edges
       .filter((e) => !closed.has(e.id) && (!e.pedestrian || narrow()))
@@ -802,7 +835,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       .filter(({ r }) => r)
       .sort((a, b) => a.p.d + a.r.length - (b.p.d + b.r.length));
     const join = joins.find(({ p }) => inSight(truck, p));
-    return join ? { length: join.p.d + join.r.length, points: join.r.points } : null;
+    return join ? { length: join.p.d + join.r.length, points: join.r.points, forward: join.r.forward } : null;
   }
 
   const inZone = (zone) => truck.x > zone.minX && truck.x < zone.maxX && truck.z > zone.minZ && truck.z < zone.maxZ;
@@ -1128,6 +1161,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (state.order || places.length < 2) return state.offers;
     const here = map.graph.nearest(truck.x, truck.z);
     offersEdge = here.edge;
+    offersFacing = here.d <= here.edge.width / 2 ? facing(here) : undefined;
     const bed = base.maxCargo * (levelOf('cargoBed')?.factor ?? 1);
     const maxCargo = bed + (state.trailer ? tr.levels[state.profile.trailer.level - 1].capacity : 0);
     const cargoes = o.cargo.filter((c) => c.weight <= maxCargo && !(state.trailer && schwer(c)) && o.types[typeOf(c)] <= state.rank.tier && (o.kinds[c.kind]?.tier ?? 0) <= state.rank.tier);
@@ -1168,12 +1202,13 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
         stops.push(pick(alike.length ? alike : free));
       }
       const from = client ?? pick(wide.filter((s) => !stops.includes(s)));
-      const legs = from && stops.every(Boolean) && tour(from, stops, width);
+      const way = from && routeFrom(here, here.d <= here.edge.width / 2, from.pose);
+      const legs = from && stops.every(Boolean) && tour(from, stops, width, way?.forward);
       if (!legs) return; // a spot cut off from the road network gets no orders, nor one with no drop-off allowed
       const { time, pay: express } = special === 'express' ? o.express : { time: 1, pay: 1 };
       const reputation = standing(from.id);
       const factor = express * tables.reputation.levels[reputation].pay * (cargo?.weight > bed ? tr.pay : 1);
-      let driven = routeFrom(here, here.d <= here.edge.width / 2, from.pose)?.length ?? 0;
+      let driven = way?.length ?? 0;
       const drops = legs.map(({ stop, distance }, k) => ({
         spot: stop.id,
         distance,
@@ -1188,16 +1223,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // The legs ({ stop, distance }) from spot `from` through every spot of `stops`, each time on to the nearest one left by
-  // road (over edges at least `width` wide, none closed); null where one can't be reached.
-  function tour(from, stops, width) {
+  // road (over edges at least `width` wide, none closed); null where one can't be reached. Each leg starts the way the
+  // last one arrived (`forward` along its edge, or against it), the first the way the truck arrives at `from` (#99).
+  function tour(from, stops, width, forward) {
     const legs = [];
     for (let at = from, left = stops; left.length; ) {
       const [next] = left
-        .map((stop) => ({ stop, path: map.graph.route(at.pose, stop.pose, width, closed, narrow()) }))
+        .map((stop) => ({ stop, path: ahead(at.pose, forward, stop.pose, width) }))
         .filter((x) => x.path)
         .sort((a, b) => a.path.length - b.path.length);
       if (!next) return null;
       legs.push({ stop: next.stop, distance: next.path.length });
+      ({ forward } = next.path);
       at = next.stop;
       left = left.filter((s) => s !== at);
     }

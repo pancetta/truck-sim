@@ -77,7 +77,7 @@ describe('Sim: surprises on the way (#85)', () => {
     expect(sim.state.events).toMatchObject([{ edge: M }]);
     expect(['market', 'roadworks']).toContain(sim.state.events[0].kind);
     expect(passes(sim.state.route, 0, 0)).toBe(false);
-    expect(passes(sim.state.route, -80, 0)).toBe(true); // round the west end
+    expect(passes(sim.state.route, 80, 0)).toBe(true); // on round the east end, not back round the west (#99)
     expect(sim.state.order.surprise).toBe(null);
   });
 

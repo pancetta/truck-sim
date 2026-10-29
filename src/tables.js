@@ -187,6 +187,9 @@ export const orders = {
   timeBonus: 0.5,
   referenceSpeed: 7, // m/s along the road route, for an offer's expected time
   slack: 20, // s added to the expected time, for lights and parking
+  // Routes start the way the truck faces and come round the block (#99), unless that is more than `extra` m or `factor`
+  // times longer than turning; to a target behind it on its own one-way, turning is backing up, at most `backUp` m.
+  turn: { extra: 300, factor: 2, backUp: 30 },
   // Cargo kinds (a cargo's `kind`; names, meters and twist lines in strings.cargoKinds). Once loaded, cargo of a kind
   // takes damage (0..1): `spoil` per the drop's expected time (see requestOffers()) loaded, and, scaled by the Fahrwerk
   // factor, `brake` per m/s of speed shed braking harder than hardBrake, `speedUp` per m/s gained speeding up harder than

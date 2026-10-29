@@ -79,11 +79,14 @@ describe('Sim: street events (#80)', () => {
   test('the route and offers go round a closed edge, and the route is found again when it closes', () => {
     const { tables, map, M } = ladder(events(cars(0), { market: [600, 600] }, 10));
     const sim = createSim(tables, map, seeded(1));
+    // Facing north on the west end's street, the truck comes to A heading east, towards the rung (#99).
+    Object.assign(sim.state.truck, { ...westEnd, heading: Math.PI + 0.05 });
     const spot = (id) => map.spots.find((s) => s.id === id);
-    const before = sim.requestOffers();
+    let before;
+    for (let i = 0; i < 20 && !before?.length; i++) before = sim.requestOffers().filter((o) => o.pickup === 'A');
     expect(before.every((o) => o.distance < 110)).toBe(true); // by M
     // Loaded at A, a little off the rung's line, before the market comes.
-    const offer = before.find((o) => o.pickup === 'A') ?? before[0];
+    const [offer] = before;
     sim.acceptOrder(offer.id);
     const zone = spot(offer.pickup).zone;
     Object.assign(sim.state.truck, { x: (zone.minX + zone.maxX) / 2, z: (zone.minZ + zone.maxZ) / 2, heading: Math.PI / 2 + 0.05, speed: 0 });
@@ -95,7 +98,7 @@ describe('Sim: street events (#80)', () => {
     timeUntil(sim, IDLE, () => sim.state.closed.size > 0, 20);
     expect([...sim.state.closed]).toEqual([M]);
     expect(passes(sim.state.route, 0, 0)).toBe(false);
-    expect(passes(sim.state.route, -80, 0)).toBe(true); // round the west end
+    expect(passes(sim.state.route, 80, 0)).toBe(true); // on round the east end, not back round the west (#99)
 
     sim.state.order = null; // no order, so offers come again
     expect(sim.requestOffers().every((o) => o.distance > 200)).toBe(true);
