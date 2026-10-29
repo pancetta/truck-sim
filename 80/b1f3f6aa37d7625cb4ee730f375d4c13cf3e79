@@ -5,10 +5,12 @@ src/sim/events.test.js
 src/sim/graph.js
   s_1e440d4c3efca4::t_ef988511fca2b2 143-146
   s_1e440d4c3efca4::t_30c2c5d3301b05 118
+  s_1e440d4c3efca4::t_c2c2ec5d1a1d21 117,119,135,164
 src/sim/sim.js
   s_1e440d4c3efca4::t_ce68c0dfd234e7 67,103,155-156,750,968
   s_1e440d4c3efca4::t_fea36eb9c90a9f 7,66,102,154,188,293,726-727,1013-1017,1020-1021
   s_1e440d4c3efca4::t_61edb95579de09 1018-1019,1022-1023
+  s_1e440d4c3efca4::t_c2c2ec5d1a1d21 739,742,944
 src/sim/traffic.test.js
   s_1e440d4c3efca4::t_e56c83ffe2eae5 995-996
 GLOSSARY.md
@@ -26,6 +28,7 @@ src/sim/events.js
   s_1e440d4c3efca4::t_6f2b711e6daa23 1-120
 src/autopilot.js
   s_1e440d4c3efca4::t_ce68c0dfd234e7 5-6,25-30,32-39,71-74
+  s_1e440d4c3efca4::t_b43634b6830395 31
 src/streetEvents.js
   s_1e440d4c3efca4::t_7fe3a05385081e 23,50-51,73-82
   s_1e440d4c3efca4::t_8c65cca7bb8f58 1-22,24-49,52-72,83-105
