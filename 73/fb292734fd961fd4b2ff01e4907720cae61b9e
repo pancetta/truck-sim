@@ -1,0 +1,91 @@
+src/sim/dreirad.test.js
+  s_8639eeaba1a978::t_4ef49ec78c2fa8 32-33
+  s_8639eeaba1a978::t_974622db3d5f12 1-31,34-39,65-76
+  s_8639eeaba1a978::t_9c8ba9897cf9ec 40-64
+src/sim/home.test.js
+  s_8639eeaba1a978::t_e4a929ca87c856 121-123
+src/sim/fuel.test.js
+  s_8639eeaba1a978::t_e4a929ca87c856 205-207
+src/tables.js
+  s_8639eeaba1a978::t_8408fcee54a2b3 93-100,105-129,131-135
+  s_8639eeaba1a978::t_a64a388685bffd 178-179
+  s_8639eeaba1a978::t_043c1a25fd6c1f 130
+  s_8639eeaba1a978::t_1e37afcdc7ceb5 591-593,598-599
+  s_8639eeaba1a978::t_0f455e42851976 101-104
+  s_8639eeaba1a978::t_8525f0f86cfd39 634-635,637
+  s_8639eeaba1a978::t_45ee652b533e29 205
+  s_8639eeaba1a978::t_b9b0e38db2eeee 202-204
+  s_8639eeaba1a978::t_5171a3093f8325 636
+src/sim/events.js
+  s_8639eeaba1a978::t_8bda3200067030 29
+src/sim/energy.test.js
+  s_8639eeaba1a978::t_e4a929ca87c856 160-162
+src/strings.js
+  s_8639eeaba1a978::t_a64a388685bffd 26
+  s_8639eeaba1a978::t_b9b0e38db2eeee 37,67
+src/roads.js
+  s_8639eeaba1a978::t_4079cd3891f75b 36,39,42
+src/sim/sim.js
+  s_8639eeaba1a978::t_78b1ffde09e572 52-53,996-997,1030-1031,1042
+  s_8639eeaba1a978::t_9b3e5d0a9fc732 184,751,754-755,763,977-979,1000,1013
+  s_8639eeaba1a978::t_ebdfec58afb4b3 54
+src/sim/pavements.js
+  s_8639eeaba1a978::t_8bda3200067030 2,25,79
+src/roads.test.js
+  s_8639eeaba1a978::t_e4a929ca87c856 102,105
+src/sim/osm.js
+  s_8639eeaba1a978::t_a958caeddd883b 250-251,255,258-259,266
+  s_8639eeaba1a978::t_d833e7da4e7a24 218,242
+  s_8639eeaba1a978::t_f012ed73f7497e 7-9,12-13,53,61,90,96-97,99,178,180,184,191-193,196-197,216,220-221,226,231-232,235-241,243,245-246,291
+  s_8639eeaba1a978::t_4079cd3891f75b 305
+  s_8639eeaba1a978::t_a6a670372ede58 179,190,212,219,222-225,227-230,233-234,244,247-249,252-254,256-257,260
+src/sim/pedestrians.test.js
+  s_8639eeaba1a978::t_e4a929ca87c856 17-18,75
+src/minimap.js
+  s_8639eeaba1a978::t_6b655e0e0afe51 31
+src/streets.js
+  s_8639eeaba1a978::t_51ee1b49e3e63b 286
+  s_8639eeaba1a978::t_043c1a25fd6c1f 288-290
+src/sim/paved.js
+  s_8639eeaba1a978::t_8bda3200067030 51-52,55,62,68,76
+GLOSSARY.md
+  s_8639eeaba1a978::t_a9ed91958dd9bd 165-169,325-335,393-394
+  s_8639eeaba1a978::t_a64a388685bffd 73-74
+src/sim/lanes.js
+  s_8639eeaba1a978::t_c842370869ccae 19
+src/sim/graph.js
+  s_8639eeaba1a978::t_3b58af5b0cbf7c 9-12,18,21-22,123,125,137,168
+  s_8639eeaba1a978::t_7194748dff34ee 121-122,147
+docs/perf/2026-10-baseline.md
+  s_8639eeaba1a978::t_adf48f8b41d384 996
+  s_8639eeaba1a978::t_ba3bcabe72b8f0 994-995,997-1004
+src/vehicles.js
+  s_8639eeaba1a978::t_d155916305af0a 145-148
+src/sim/osm.test.js
+  s_8639eeaba1a978::t_ed48df5abe63cc 387-393,411-418,443-446,451-452,786
+  s_8639eeaba1a978::t_a08733791b7cb1 765-770,776-778
+  s_8639eeaba1a978::t_8c32c0ed2ddc8d 447-450
+  s_8639eeaba1a978::t_7194748dff34ee 771-775
+  s_8639eeaba1a978::t_4079cd3891f75b 383,421
+  s_8639eeaba1a978::t_58d9e8c57cac32 23-26,33,39-47,49-61,186,744,753,756,760-762,764,789
+  s_8639eeaba1a978::t_6d7a42a888c277 763
+src/streets.test.js
+  s_8639eeaba1a978::t_aadc2bd02d8634 107,109
+  s_8639eeaba1a978::t_76699ef574b490 110-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73fb292734fd961fd4b2ff01e4907720cae61b9e",
+  "prompts": {},
+  "sessions": {
+    "s_8639eeaba1a978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6264b82d-9331-4f3d-8cc6-1a1363db6b12",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
