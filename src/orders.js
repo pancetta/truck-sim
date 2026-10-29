@@ -29,11 +29,14 @@ export function createOrders(root, sim, map, tables, strings) {
     const s = map.spots.find((s) => s.id === id);
     return `${s.name}, ${s.street}`;
   };
-  // A round's drop-offs are listed in the order they are driven.
+  // A round's drop-offs are listed in the order they are driven. A cargo kind's twist ends the tag line, in place of a
+  // normal offer's tag, which says nothing more.
+  const tagOf = (o, twist = strings.cargoKinds[o.cargo.kind]?.twist) =>
+    [strings.offerTypes[o.type], twist && o.type === 'normal' ? null : strings.offerTags[o.type], twist].filter(Boolean).join(' · ');
   const offerHtml = (o) =>
     `<b>${o.cargo.name}</b> · ${o.cargo.weight} t<br><small class="places">${[o.pickup, ...o.drops.map((d) => d.spot)].map(place).join(' → ')}</small><br>` +
     `<small>${km(o.distance)} · ${strings.expectedTime} ${clock(o.expectedTime)}</small><br>` +
-    `<small class="tag">${strings.offerTypes[o.type]} · ${strings.cargoKinds[o.cargo.kind]?.twist ?? strings.offerTags[o.type]}</small><strong>${eur(o.pay)}</strong>`;
+    `<small class="tag">${tagOf(o)}</small><strong>${eur(o.pay)}</strong>`;
   const stop = (order) => (order.drops.length > 1 && order.phase === 'dropoff' ? ` ${order.drop + 1}/${order.drops.length}` : '');
   let shown = null; // what the open panel shows, so it only redraws on a change
   let lastMoney = sim.state.profile.money;

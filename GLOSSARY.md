@@ -93,7 +93,7 @@ _Avoid_: source/target, from/to
 The time an **Order** should take; finishing sooner earns the **Time bonus**.
 
 **Pay lines**:
-The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), the **Cargo kind**'s premium (fragile "Zerbrechlich-Prämie", perishable "Frische-Prämie", delicate "Vorsicht-Prämie", live "Tierwohl-Prämie"), **Dock bonus** ("Rampenbonus"), the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
+The parts of a delivery's payment: base pay, **Time bonus** ("Zeitbonus"), the **Cargo kind**'s premium (fragile "Zerbrechlich-Prämie", perishable "Frische-Prämie", delicate "Sorgfalts-Prämie", live "Tierwohl-Prämie"), **Dock bonus** ("Rampenbonus"), the night bonus ("Nachtzuschlag") for a delivery completed at **Night**, and the rain bonus ("Regenzuschlag") for one completed in rain (**Weather**).
 _Avoid_: reward, payout
 
 **Damage** ("Schaden"):
@@ -103,9 +103,9 @@ no damage.
 
 **Cargo kind**:
 What makes a cargo special once loaded, with its own premium and **Damage** rule: fragile ("Zerbrechlich": hard
-braking and **Hits**), perishable ("Frischware": spoils with the time it is loaded), delicate ("Empfindlich": hard
+braking and **Hits**), perishable ("Frischware": spoils with the time it is loaded, against the **Expected time**), delicate ("Empfindlich": hard
 braking, sharp cornering and Hits) or live ("Lebende Fracht": hard braking and hard speeding up). Each comes from its
-**Tier** on. An **Offer**'s tag line names its twist in place of the type's tag; fragile cargo makes its own **Order type** instead.
+**Tier** on. An **Offer**'s tag line ends with its twist; fragile cargo makes its own **Order type** instead.
 _Avoid_: cargo type (an Order type is something else)
 
 ### Places

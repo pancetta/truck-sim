@@ -417,8 +417,8 @@ describe('Sim: cargo kinds', () => {
   const top = atTier(tables.rank.tiers.length - 1);
 
   // Loads `cargo` at A on the long lane (see 'Sim: fragile cargo'), drives `driving`, and returns the damage.
-  function damageAfter(cargo, driving) {
-    const sim = simOn(lane(only(cargo), [], 56), 1, top);
+  function damageAfter(cargo, driving, vehicle = 'truck') {
+    const sim = simOn(lane(only(cargo), [], 56), 1, { ...top, vehicle, vehicles: { truck: {}, [vehicle]: {} } });
     acceptFrom(sim, 'A');
     parkAt(sim, 'A');
     drive(sim, loadTime + 0.1, IDLE);
@@ -440,6 +440,12 @@ describe('Sim: cargo kinds', () => {
     timeUntil(sim, IDLE, () => sim.state.truck.speed === 0);
   };
   const launch = (sim) => drive(sim, 4, GAS);
+  // Careful with a load that minds braking: the gas held into second gear, rolled down to 3 m/s, then braked to a stop.
+  const careful = (sim) => {
+    drive(sim, 3, GAS);
+    timeUntil(sim, IDLE, () => sim.state.truck.speed < 3);
+    timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
+  };
   const rough = (sim) => {
     launch(sim);
     timeUntil(sim, BRAKE, () => sim.state.truck.speed === 0);
@@ -470,21 +476,24 @@ describe('Sim: cargo kinds', () => {
     }
   });
 
-  test('perishable cargo spoils with the time it is loaded, rough driving or not; its line shrinks and the clean Star stays', () => {
-    const t = only(ice, { basePay: 100, loadTime: 30, slack: 60, kinds: { ...kinds, perishable: { ...kinds.perishable, spoil: 1 / 100 } } });
+  test('perishable cargo spoils with the time it is loaded against the expected time, rough driving or not; its line shrinks and the clean Star stays', () => {
+    // 120 s expected (see the fragile worked example), so 30 s loaded at spoil 1.2 is 30 % spoilt.
+    const t = only(ice, { basePay: 100, loadTime: 30, slack: 60, kinds: { ...kinds, perishable: { ...kinds.perishable, spoil: 1.2 } } });
     const sim = simOn(nook(t), 1, top);
     sim.acceptOrder(sim.requestOffers()[0].id);
     drive(sim, 29.9, IDLE);
     expect(sim.state.order).toMatchObject({ phase: 'pickup', damage: 0 });
-    drive(sim, 30.2, IDLE); // loaded at 30 s, unloaded 30 s later: 30 % spoilt
+    drive(sim, 30.2, IDLE); // loaded at 30 s, unloaded 30 s later
 
     expect(sim.state.lastPayment.lines).toContainEqual({ label: 'perishable', amount: Math.round(kinds.perishable.premium * 0.7 * 100) });
     expect(starsOf(sim).clean).toEqual([]);
 
-    const loaded = 4 + 0.5; // s: rough() takes about this long; coasting would take longer
-    const spoilt = damageAfter(ice, rough);
-    expect(spoilt).toBeGreaterThan((loaded - 0.5) * kinds.perishable.spoil);
-    expect(spoilt).toBeLessThan((loaded + 1) * kinds.perishable.spoil);
+    // Slower spoils more, in proportion; driving hard spoils no more than standing.
+    const wait = (seconds) => (sim) => drive(sim, seconds, IDLE);
+    const tenSeconds = damageAfter(ice, wait(10));
+    expect(tenSeconds).toBeGreaterThan(0);
+    expect(damageAfter(ice, wait(20))).toBeCloseTo(2 * tenSeconds, 2);
+    expect(damageAfter(ice, (sim) => (launch(sim), drive(sim, 6, IDLE)))).toBeCloseTo(tenSeconds, 2);
   });
 
   test('delicate cargo is hurt by a sharp swerve, hard braking and hits, not by a gentle swerve or rolling to a stop', () => {
@@ -502,30 +511,36 @@ describe('Sim: cargo kinds', () => {
     expect(starsOf(sim).clean).toEqual(['damage']);
   });
 
-  test('live cargo is hurt by speeding up hard and braking hard, hardly by a short push and rolling to a stop, not by hits', () => {
-    const gentle = damageAfter(hens, smooth);
-    const launched = damageAfter(hens, launch);
-    expect(gentle).toBeLessThan(0.001);
-    expect(launched).toBeGreaterThan(10 * gentle);
-    expect(damageAfter(hens, rough)).toBeGreaterThan(launched);
+  test('live cargo is hurt by speeding up hard and braking hard, not by swerves or hits; careful driving keeps the clean Star', () => {
+    expect(damageAfter(hens, smooth)).toBeLessThan(0.001);
+    for (const vehicle of ['truck', 'van']) {
+      const started = damageAfter(hens, launch, vehicle);
+      const stopped = damageAfter(hens, careful, vehicle);
+      expect(started).toBeGreaterThan(0); // the pedals are on or off: every start costs a little
+      expect(stopped).toBeGreaterThan(started);
+      expect(damageAfter(hens, rough, vehicle)).toBeGreaterThan(stopped);
+      // A start at the pickup and two careful stops on the way, the last at the drop-off, is three of these.
+      expect(3 * stopped).toBeLessThanOrEqual(tables.rank.cleanDamage);
+    }
     expect(damageAfter(hens, swerve(1))).toBe(damageAfter(hens, swerve(0.25)));
 
     expect(hitWith(hens).hit).toBeLessThan(0.001); // only that step's speeding up; the speeding up into the wall does more
   });
 
   test('rough driving past the tolerance costs the clean Star, and a higher Fahrwerk level means less damage', () => {
-    const roughTwice = (sim) => {
+    const roughThrice = (sim) => {
+      rough(sim);
       rough(sim);
       rough(sim);
     };
-    expect(damageAfter(hens, roughTwice)).toBeGreaterThan(tables.rank.cleanDamage);
+    expect(damageAfter(hens, roughThrice)).toBeGreaterThan(tables.rank.cleanDamage);
 
     const sim = simOn(lane(only(hens), [], 56), 1, { ...top, vehicles: { truck: { suspension: 3 } } });
     acceptFrom(sim, 'A');
     parkAt(sim, 'A');
     drive(sim, loadTime + 0.1, IDLE);
-    roughTwice(sim);
-    expect(sim.state.order.damage).toBeLessThan(damageAfter(hens, roughTwice));
+    roughThrice(sim);
+    expect(sim.state.order.damage).toBeLessThan(damageAfter(hens, roughThrice));
   });
 });
 
@@ -809,7 +824,7 @@ describe('Sim: express and oversized offers', () => {
   const atTier = (tier) => ({ ...freshProfile(), stars: tables.rank.tiers[tier].stars });
   const only = (type, orders = tables.orders) => ({ ...tables, orders: { ...orders, shares: { express: 0, oversized: 0, [type]: 1 } } });
 
-  test('each type comes from its tier on, at its share, with cargo that is not fragile to a drop-off that is not a dock', () => {
+  test('each type comes from its tier on, at its share, with cargo that is not fragile (oversized: of no kind) to a drop-off that is not a dock', () => {
     expect(typesOffered(laneSim(1, atTier(types.express - 1))).has('express')).toBe(false);
     expect(typesOffered(laneSim(1, atTier(types.oversized - 1))).has('oversized')).toBe(false);
 
@@ -821,6 +836,7 @@ describe('Sim: express and oversized offers', () => {
         if (o.type !== 'express' && o.type !== 'oversized') continue;
         count[o.type]++;
         expect(o.cargo.kind).not.toBe('fragile');
+        if (o.type === 'oversized') expect(o.cargo.kind).toBeUndefined(); // no cake or dog as an oversized load
         expect(o.dropoff).toBe('B'); // A is the dock
       }
     }

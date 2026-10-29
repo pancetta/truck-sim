@@ -416,7 +416,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     state.lastTow = { station: to?.id ?? null, fee };
   }
 
-  // Loaded cargo of a kind (tables.orders.kinds) spoils with time, and takes damage from the speed `shed` (m/s, negative
+  // Loaded cargo of a kind (tables.orders.kinds) spoils with time, by the drop's expected time, and takes damage from the speed `shed` (m/s, negative
   // when gained) by braking or speeding up hard, from cornering hard (`lateral` m/s²) and from each new hit faster than a
   // touch; the Fahrwerk slows all but the spoiling.
   function damageCargo(dt, shed, lateral, hit) {
@@ -425,7 +425,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (!k || order.phase !== 'dropoff') return;
     const hard = (amount, limit) => (amount > limit * dt ? amount : 0);
     const harm = k.brake * hard(shed, o.hardBrake) + k.speedUp * hard(-shed, o.hardAccel) + k.turn * hard(lateral * dt, o.hardTurn) + (hit ? k.hit : 0);
-    order.damage = Math.min(1, order.damage + k.spoil * dt + harm * (levelOf('suspension')?.factor ?? 1));
+    order.damage = Math.min(1, order.damage + (k.spoil * dt) / order.drops[order.drop].expectedTime + harm * (levelOf('suspension')?.factor ?? 1));
   }
 
   // Junction n runs `junctionOffset` s ahead of junction n - 1; a light's `axis` 1 (the second street's) runs half
@@ -983,7 +983,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // are never a pickup or a drop-off.
   // Cargo is only what the Ladefläche carries, of a kind the rank tier allows (tables.orders.kinds), and cargo and
   // drop-off make an offer type the rank tier allows; from their tiers, a share of offers is express, oversized or a
-  // round instead (tables.orders.types), with cargo that isn't fragile. An oversized offer's
+  // round instead (tables.orders.types), with cargo that isn't fragile (an oversized one of no kind). An oversized offer's
   // spots and route keep to edges at least oversizedWidth wide, and it is not made where no such route leads. A round
   // has roundDrops drop-offs, driven nearest by road first, and is not made where one can't be reached.
   // Each drop (`drops`: { spot, distance, pay, expectedTime }) pays base + distance of its own leg, and is expected
@@ -1004,7 +1004,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
       const drawn = Object.keys(o.shares).find((type) => draw < (share += o.shares[type]));
       const special = drawn && o.types[drawn] <= state.rank.tier ? drawn : null;
       const width = special === 'oversized' ? o.oversizedWidth : 0;
-      const cargo = pick(special ? cargoes.filter((c) => c.kind !== 'fragile') : cargoes);
+      const cargo = pick(special ? cargoes.filter((c) => (special === 'oversized' ? !c.kind : c.kind !== 'fragile')) : cargoes);
       const wide = places.filter((s) => s.pose.edge.width >= width);
       const stops = [];
       for (let k = special === 'round' ? pick(o.roundDrops) : 1; k > 0; k--)

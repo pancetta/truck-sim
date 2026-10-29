@@ -103,17 +103,18 @@ export const orders = {
   referenceSpeed: 7, // m/s along the road route, for an offer's expected time
   slack: 20, // s added to the expected time, for lights and parking
   // Cargo kinds (a cargo's `kind`; names, meters and twist lines in strings.cargoKinds). Once loaded, cargo of a kind
-  // takes damage (0..1): `spoil` per s loaded, and, scaled by the Fahrwerk factor, `brake` per m/s of speed shed braking
-  // harder than hardBrake, `speedUp` per m/s gained speeding up harder than hardAccel, `turn` per m/s of sideways speed
-  // turned away cornering harder than hardTurn, and `hit` per new hit. Its `premium`, a share of the pay, is lost in
+  // takes damage (0..1): `spoil` per the drop's expected time (see requestOffers()) loaded, and, scaled by the Fahrwerk
+  // factor, `brake` per m/s of speed shed braking harder than hardBrake, `speedUp` per m/s gained speeding up harder than
+  // hardAccel, `turn` per m/s of sideways speed turned away cornering harder than hardTurn, and `hit` per new hit. Its `premium`, a share of the pay, is lost in
   // proportion. Spoiling isn't rough driving, so only the others' damage costs the clean Star (rank.cleanDamage).
   // A kind's cargo is offered from rank tier `tier` on. The pedals are on or off, so a loaded truck's brake is always
-  // hard, and so is its gas in first gear: damage goes by the speed braked away or gained.
+  // hard, and so is its gas in first gear: damage goes by the speed braked away or gained, so every start costs a little
+  // and a careful drive of live cargo, with a start at the pickup and two stops on the way, stays under cleanDamage.
   kinds: {
-    fragile: { tier: 1, premium: 0.4, spoil: 0, brake: 0.005, speedUp: 0, turn: 0, hit: 0.2 },
-    perishable: { tier: 1, premium: 0.5, spoil: 1 / 300, brake: 0, speedUp: 0, turn: 0, hit: 0 }, // gone in 5 min
+    fragile: { tier: 1, premium: 0.4, spoil: 0, brake: 0.005, speedUp: 0, turn: 0, hit: 0.2 }, // tier as types.fragile
+    perishable: { tier: 1, premium: 0.5, spoil: 0.5, brake: 0, speedUp: 0, turn: 0, hit: 0 }, // gone at twice the expected time
     delicate: { tier: 2, premium: 0.5, spoil: 0, brake: 0.005, speedUp: 0, turn: 0.005, hit: 0.2 },
-    live: { tier: 2, premium: 0.4, spoil: 0, brake: 0.005, speedUp: 0.01, turn: 0, hit: 0 },
+    live: { tier: 2, premium: 0.4, spoil: 0, brake: 0.005, speedUp: 0.003, turn: 0, hit: 0 }, // a truck's start ~0.008, a van's ~0.015
   },
   hardBrake: 2.5, // m/s² of deceleration; coasting stays well below. A full stop from 50 km/h sheds 14 m/s
   hardAccel: 2, // m/s²; the loaded truck in first gear, a van in its first two
@@ -129,7 +130,7 @@ export const orders = {
   rainBonus: 0.2, // share of the pay for a delivery completed in rain (weather): rarer than night, and harder
   // Offer types by the lowest rank tier that offers them (names and tag lines in strings.offerTypes and offerTags). From
   // its tier on, an offer is express, oversized or a round at its `shares` (drawn first, each with cargo that isn't
-  // fragile to drop-offs that aren't docks); otherwise the type comes from the drop-off and the cargo: dock or
+  // fragile, an oversized one with cargo of no kind, to drop-offs that aren't docks); otherwise the type comes from the drop-off and the cargo: dock or
   // fragileDock to a dock, else fragile if its kind is (no other kind changes the type), heavy above maxCargo, or normal.
   types: { normal: 0, heavy: 0, fragile: 1, express: 1, dock: 2, oversized: 2, fragileDock: 3, round: 3 },
   shares: { express: 0.2, oversized: 0.15, round: 0.15 },

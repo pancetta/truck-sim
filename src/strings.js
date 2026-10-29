@@ -22,7 +22,7 @@ export const strings = {
   loading: 'Wird beladen…',
   unloading: 'Wird entladen…',
   paid: 'Bezahlt',
-  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Vorsicht-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag' }, // state.lastPayment line labels
+  payLines: { base: 'Grundlohn', time: 'Zeitbonus', fragile: 'Zerbrechlich-Prämie', perishable: 'Frische-Prämie', delicate: 'Sorgfalts-Prämie', live: 'Tierwohl-Prämie', dock: 'Rampenbonus', night: 'Nachtzuschlag', rain: 'Regenzuschlag' }, // state.lastPayment line labels
   offerTypes: { normal: 'Normal', heavy: 'Schwerlast', fragile: 'Zerbrechlich', dock: 'Rampe', fragileDock: 'Zerbrechlich · Rampe', express: 'Express', oversized: 'Übergröße', round: 'Tour' },
   // What is special about an offer of each type, on its line in the orders panel.
   offerTags: {
@@ -35,11 +35,11 @@ export const strings = {
     oversized: 'Zu breit für Gassen: Route nur über breite Straßen',
     round: 'Mehrere Entladestellen nacheinander, jede zahlt ihren Teil',
   },
-  // Cargo kinds (tables.orders.kinds): the name and meter in the goal banner while one is loaded, and the twist, which
-  // an offer's tag line shows in place of its type's tag (fragile has its own offer type, which says it).
+  // Cargo kinds (tables.orders.kinds): the name and meter in the goal banner while one is loaded, and the twist at the
+  // end of an offer's tag line (fragile has its own offer type, which says it).
   cargoKinds: {
     fragile: { name: 'Zerbrechlich', meter: 'Schaden' },
-    perishable: { name: 'Frischware', meter: 'Wärme', twist: 'Frischware: die Prämie schmilzt mit jeder Minute' },
+    perishable: { name: 'Frischware', meter: 'Wärme', twist: 'Frischware: die Prämie schrumpft mit jeder Minute' },
     delicate: { name: 'Empfindlich', meter: 'Schaden', twist: 'Empfindlich: sanft lenken und bremsen, nirgends anstoßen' },
     live: { name: 'Lebende Fracht', meter: 'Stress', twist: 'Lebende Fracht: sanft anfahren und sanft bremsen' },
   },
