@@ -1,0 +1,39 @@
+scripts/economy.js
+  s_eed48f0f9a9a70::t_b243caebb9c35c 173
+  s_eed48f0f9a9a70::t_3ec294dff7621a 174-175,177
+src/orders.js
+  s_eed48f0f9a9a70::t_bb4fdf902eb84c 32,34,37,118,146-147,163-164,178,183
+src/strings.js
+  s_eed48f0f9a9a70::t_bb4fdf902eb84c 26,36
+src/sim/sim.js
+  s_eed48f0f9a9a70::t_a05f91118e39d9 768-773,775-776,779,782-784,787-791,969-975,992-997,1002-1003,1005-1008,1014-1018,1020-1022,1025-1029,1034
+  s_eed48f0f9a9a70::t_6e471f69409c0d 51-53,61-62,1000-1001,1013,1019,1023-1024
+  s_eed48f0f9a9a70::t_b243caebb9c35c 999,1004
+src/tables.js
+  s_eed48f0f9a9a70::t_d66de7192bea00 122-127
+src/autopilot.test.js
+  s_eed48f0f9a9a70::t_b243caebb9c35c 89
+GLOSSARY.md
+  s_eed48f0f9a9a70::t_5b2e766ffaae6f 68,73,82-85
+  s_eed48f0f9a9a70::t_70cedac7d5cc3e 86
+  s_eed48f0f9a9a70::t_ef8c71bdf0580b 87
+src/sim/orders.test.js
+  s_eed48f0f9a9a70::t_e4ce2324d5ce95 4
+  s_eed48f0f9a9a70::t_cc4c6da397804f 765-881
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80df033bb22550e470791a79f3723ddd1265fe09",
+  "prompts": {},
+  "sessions": {
+    "s_eed48f0f9a9a70": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e410a00c-59e8-4a69-8878-fefb8ff8d3e0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
