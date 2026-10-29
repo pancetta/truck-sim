@@ -13,7 +13,8 @@
 // shortcut: only the place jumped to is checked against the colliders (street events' barriers aren't), and other
 // pedestrians are no obstacle; check the way there, or the crowd, if people are seen jumping through posts or each other.
 // A pedestrian is { id, x, z, heading, walk, s (m along it), zebra (index, -1 for none), waiting, onRoad (off the
-// kerb, crossing), asideX, asideZ (m from its place on its walk, jumped aside), stuck, jumping } and its crossing's
+// kerb, crossing), back (stepped back to the kerb from a crossing, until it sets out again), asideX, asideZ (m from
+// its place on its walk, jumped aside), stuck, jumping } and its crossing's
 // state. Walks are closed polylines { points, at, length } walked forwards: a
 // ring line's two (along it and against it, each keeping right), an open line's one (along its right side, round its
 // end, back along the other side and round its start).
@@ -84,7 +85,8 @@ export function createPedestrians(tables, map, random, free = () => true) {
 
   // Drops the pedestrians out of view past `despawnDistance`, adds one while fewer than `count`, and walks them.
   // `zebras` are the Sim's, map.zebras with `passing` (a vehicle on it or that can't stop before it, set by traffic.js
-  // and sim.js) and `people` (waiting at it or on it, which this sets); `near` is the moving truck's footprint grown as
+  // and sim.js), `people` (waiting at it or on it) and `crossing` (set out over it, or stepped `back` from it), which this
+// sets; `near` is the moving truck's footprint grown as
   // far as it should keep pedestrians off a strip (corners in order), null while it stands. `bodies` are the truck's and
   // its trailer's footprints ({ x, z, heading, length, width }) and `ahead` the m ahead of them (behind, negative, while
   // reversing) that people on the pavement get out of the way of too.
@@ -95,7 +97,7 @@ export function createPedestrians(tables, map, random, free = () => true) {
       people.pop();
     }
     if (people.length < count) spawn(truck);
-    for (let i = 0; i < zebras.length; i++) zebras[i].people = 0;
+    for (let i = 0; i < zebras.length; i++) zebras[i].people = zebras[i].crossing = 0;
     const d = p.speed * dt;
     for (let i = 0; i < people.length; i++) {
       const person = people[i];
@@ -106,6 +108,7 @@ export function createPedestrians(tables, map, random, free = () => true) {
       } else cross(person, dt, truck, zebras[person.zebra], near);
       if (person.zebra < 0 || person.waiting) dodge(person, dt, bodies, ahead);
       if (person.zebra >= 0) zebras[person.zebra].people++;
+      if (person.zebra >= 0 && (!person.waiting || person.back)) zebras[person.zebra].crossing++;
     }
   }
 
@@ -122,6 +125,7 @@ export function createPedestrians(tables, map, random, free = () => true) {
       person.zebra = stop.zebra;
       person.side = stop.side;
       person.waiting = true;
+      person.back = false;
       person.waited = 0;
       break;
     }
@@ -147,6 +151,7 @@ export function createPedestrians(tables, map, random, free = () => true) {
     person.span = Math.hypot(to.x - person.fromX, to.z - person.fromZ);
     person.heading = Math.atan2(to.x - person.fromX, to.z - person.fromZ);
     person.waiting = false;
+    person.back = false;
     person.t = 0;
     person.dir = 1;
     person.hurry = false;
@@ -166,6 +171,7 @@ export function createPedestrians(tables, map, random, free = () => true) {
     person.onRoad = false;
     if (person.t <= 0) {
       person.waiting = true;
+      person.back = true;
       person.waited = 0;
       person.hurry = false;
       return pose(person.walk, person.s, person);
@@ -231,7 +237,7 @@ export function createPedestrians(tables, map, random, free = () => true) {
 
   // One new pedestrian at a random place out of view in the spawn ring with no one else within ROOM m; with none found
   // in SPAWN_TRIES draws, the next step tries again. Each draw is tried on `probe`, so only the one that fits allocates.
-  const probe = { id: 0, x: 0, z: 0, heading: 0, walk: null, s: 0, zebra: -1, waiting: false, onRoad: false, side: 0, waited: 0, end: null, fromX: 0, fromZ: 0, toX: 0, toZ: 0, span: 0, t: 0, dir: 1, hurry: false, asideX: 0, asideZ: 0, stuck: false, jumping: false };
+  const probe = { id: 0, x: 0, z: 0, heading: 0, walk: null, s: 0, zebra: -1, waiting: false, back: false, onRoad: false, side: 0, waited: 0, end: null, fromX: 0, fromZ: 0, toX: 0, toZ: 0, span: 0, t: 0, dir: 1, hurry: false, asideX: 0, asideZ: 0, stuck: false, jumping: false };
   const crowded = () => {
     for (let i = 0; i < people.length; i++) if ((people[i].x - probe.x) ** 2 + (people[i].z - probe.z) ** 2 < ROOM ** 2) return true;
     return false;

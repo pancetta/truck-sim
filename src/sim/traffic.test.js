@@ -943,14 +943,14 @@ describe('Sim: traffic on the road graph', () => {
     });
 
     // The truck coming west on the residential street, its front bumper `back` m short of the junction at `speed`, with
-    // a police car behind it if `seen`: the stop-sign fines in the next 4 s at full gas.
+    // a police car behind it if `seen`: the stop-sign fines in the next 6 s at full gas.
     function rollIn(back, speed, seen = true) {
       const { sim, centre } = stopCross();
       if (seen) through(sim, centre, 99, 1, 3).police = true;
       truckOn(sim, centre, 1, centre.radius + tables.fleet.truck.length / 2 + back, speed);
       sim.step(DT, IDLE);
       let [fines, last, front] = [0, sim.state.lastFine, Infinity];
-      for (let t = 0; t < 4; t += DT) {
+      for (let t = 0; t < 6; t += DT) {
         sim.step(DT, GAS);
         if (sim.state.lastFine !== last && sim.state.lastFine.reason === 'stopSign') fines++;
         last = sim.state.lastFine;
@@ -966,8 +966,35 @@ describe('Sim: traffic on the road graph', () => {
       expect(rollIn(tables.stopSign.reach + 2, 0)).toBe(1); // it stood still, but too far back
     });
 
-    test('stopping at the line first is free', () => {
+    test('stopping at the line first is free, and so is a full stop further back in the zone (#111)', () => {
       expect(rollIn(3, 0)).toBe(0);
+      expect(rollIn(12, 0)).toBe(0);
+    });
+
+    test('a stop queued behind a car in the zone counts: rolling in after it is free (#111)', () => {
+      const { sim, centre } = stopCross();
+      through(sim, centre, 99, 1, 3).police = true;
+      const run = centre.slots[1].in;
+      const car = through(sim, centre, 1, 1, 3, run.length - tables.traffic.stopGap - CAR.length / 2, 0); // at the line
+      truckOn(sim, centre, 1, car.x + CAR.length / 2 + 3 + tables.fleet.truck.length / 2, 2); // 3 m behind it at 2 m/s
+      const { truck } = sim.state;
+      const front = () => truck.x - tables.fleet.truck.length / 2 - centre.radius; // m short of the junction
+      let stood = Infinity;
+      for (let t = 0; t < 3 && stood === Infinity; t += DT) {
+        sim.step(DT, BRAKE);
+        if (Math.abs(truck.speed) < tables.fleet.truck.stopSpeed) stood = front();
+      }
+      expect(stood).toBeGreaterThan(6); // further back than the old 6 m reach
+      expect(stood).toBeLessThan(tables.stopSign.reach);
+      for (let t = 0; t < 10 && car.lane.kind === 'run'; t += DT) sim.step(DT, IDLE);
+      let [fines, last] = [0, sim.state.lastFine];
+      for (let t = 0; t < 4; t += DT) {
+        sim.step(DT, GAS);
+        if (sim.state.lastFine !== last && sim.state.lastFine.reason === 'stopSign') fines++;
+        last = sim.state.lastFine;
+      }
+      expect(front()).toBeLessThan(0); // it drove in
+      expect(fines).toBe(0);
     });
   });
 

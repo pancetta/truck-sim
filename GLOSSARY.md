@@ -332,8 +332,9 @@ the red light (entering a **Light junction** on red, having crossed its **Stop l
 at the start of red), speeding (over the **Speed limit** by more than a tolerance; at most one
 **Fine** per cooldown) and give way (driving into a **Crossing** from a **Give way** **Approach** so that an **AI car**
 with **Priority** brakes hard; once per **Junction**) and stop (driving into a **Crossing** from a **Stop**
-**Approach** without having stood still just before it; once per pass) and zebra (driving onto a **Zebra crossing**
-while a **Pedestrian** waits at it or crosses; once per pass) and pedestrian ("Fußgänger gefährdet": driving onto the
+**Approach** without having stood still in the last stretch before it, queued behind a car too; once per pass) and
+zebra (driving onto a **Zebra crossing** while a **Pedestrian** is on it who set out while the truck could still have
+stopped with normal braking; one waiting at the kerb doesn't count; once per pass) and pedestrian ("Fußgänger gefährdet": driving onto the
 pavement close to a **Pedestrian** walking there; once per pass).
 
 **Witness**:

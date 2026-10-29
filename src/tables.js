@@ -549,10 +549,11 @@ export const speeding = { tolerance: 10, cooldown: 30 };
 export const giveWay = { hardBrake: 7, near: 2, within: 5 };
 
 // Stop signs: a give-way approach becomes a stop approach where the highest arm cars come in by ranks `gap` or more
-// above it (traffic.priority) and its sign stands (osm.js). AI cars come to a full stop at the line before they give
-// way. The truck must stand still with its front bumper within `reach` m of the junction before it drives in; driving
-// in without costs fines.stopSign while a police car sees it, once per pass.
-export const stopSign = { gap: 2, reach: 6 };
+// above it (traffic.priority) and its sign stands (osm.js). AI cars come to a full stop at the line, within `line` m of
+// the junction, before they give way. The truck must stand still with its front bumper within `reach` m of the
+// junction before it drives in, queued behind a car there too (#111); driving in without costs fines.stopSign while a
+// police car sees it, once per pass.
+export const stopSign = { gap: 2, reach: 15, line: 6 };
 
 // Road signs (map.signs, not solid), on the right-hand pavement facing the traffic (osm.js): speed limit signs where the
 // limit changes and on the way in from an edge exit, give-way or stop signs on the approaches that give way (see giveWay,
@@ -665,7 +666,9 @@ export const pedestrians = {
 // from the junction's mouth to the strip's middle, `depth` m deep along the road, where the arm is long enough and a
 // pavement line passes both kerbs. A pedestrian walking past a kerb crosses with chance `use`, waits there until no
 // vehicle is on the strip or can't stop before it (the truck at full brake, with `reach` and `warn` to spare); after
-// `patience` s it walks on. One on the strip as the truck comes within `reach` m of it, plus `warn` s of its speed, steps back,
+// `patience` s it walks on. The truck entering the strip while someone is on it, who set out over it while the truck
+// could still have stopped at `brake` m/s² (normal braking, as hard as cargo takes, see hardBrake), is a break (sim.js
+// checkZebras, #111). One on the strip as the truck comes within `reach` m of it, plus `warn` s of its speed, steps back,
 // away from the truck, at `stepBack` m/s; on the strip they are solid to the truck. Its stripes (renderer.js) are
 // `stripe` m wide with as much gap.
 export const zebras = {
@@ -676,6 +679,7 @@ export const zebras = {
   patience: 20,
   reach: 2,
   warn: 1.5,
+  brake: 2.5,
   stepBack: 3,
   stripe: 0.5,
 };

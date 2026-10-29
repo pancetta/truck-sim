@@ -997,9 +997,9 @@ export function createTraffic(tables, map, random) {
       // line (it stopped there for the box) waits at the junction. Turning left on green, it yields at the line too:
       // from the junction (#70 review) the autopilot run met 4 cars instead of none.
       if (held && stoppable(car, short - lineBack)) speed = Math.min(speed, limit(short - lineBack - t.stopGap));
-      // At a stop approach it stands still at the line (within tables.stopSign.reach of the junction) once, then goes on.
+      // At a stop approach it stands still at the line (within tables.stopSign.line of the junction) once, then goes on.
       if (stopAt[p.id] && car.stopped !== p) {
-        if (car.speed === 0 && short <= tables.stopSign.reach) car.stopped = p;
+        if (car.speed === 0 && short <= tables.stopSign.line) car.stopped = p;
         else if (stoppable(car, short)) speed = Math.min(speed, limit(short - t.stopGap));
       }
       dist += p.length;

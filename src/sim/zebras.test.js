@@ -219,6 +219,49 @@ describe('zebra crossings: the truck', () => {
     expect(fines).toEqual([]);
   }, 30_000);
 
+  // A witnessed Sim (tables `t`) with the truck standing across the strip until someone waits at the kerb, then `gap` m
+  // short of it at 10 m/s, coasting in. Returns the zebra fines, whether anyone was out on the strip before it got
+  // there and whether it got onto the strip, and the stopping distances from 10 m/s at full and at normal braking (zebras.brake).
+  function comeAt(t, gap) {
+    const sim = witnessed(t);
+    const { truck, pedestrians, zebras } = sim.state;
+    Object.assign(truck, { ...before(0), z: zebra.z });
+    for (let s = 0; s < 60 && !pedestrians.some((q) => q.zebra >= 0 && q.waiting); s += DT) sim.step(DT, IDLE);
+    expect(pedestrians.some((q) => q.zebra >= 0 && q.waiting)).toBe(true);
+    Object.assign(truck, before(gap), { speed: 10 });
+    let [fines, setOut, on, last] = [[], false, false, sim.state.lastFine];
+    steps(sim, 4, IDLE, () => {
+      if (sim.state.lastFine !== last && sim.state.lastFine.reason === 'zebra') fines.push(sim.state.lastFine);
+      last = sim.state.lastFine;
+      setOut ||= !on && pedestrians.some(onStrip);
+      on ||= zebras[0].truckOn;
+    });
+    const full = 10 ** 2 / ((2 * base.fleet.truck.brakeForce) / truck.mass);
+    return { fines: fines.map((f) => f.reason), setOut, on, full, normal: 10 ** 2 / (2 * base.zebras.brake) };
+  }
+
+  test('passing a pedestrian waiting at the kerb is no break, even where normal braking could have stopped the truck (#111)', () => {
+    const { fines, setOut, on, normal } = comeAt(crowd(withTraffic(0), 60), 22);
+    expect(normal).toBeLessThan(22); // it could have stopped
+    expect(on).toBe(true);
+    expect(setOut).toBe(false); // they waited at the kerb
+    expect(fines).toEqual([]);
+  }, 30_000);
+
+  test('entering while someone steps onto the strip is a break when normal braking could have stopped the truck, not when only full braking could (#111)', () => {
+    // People who step out as soon as the truck could stop at full brake, nothing to spare.
+    const t = crowd({ ...withTraffic(0), zebras: { ...base.zebras, reach: 0, warn: 0 } }, 60);
+    const late = comeAt(t, 14);
+    expect(late.full).toBeLessThan(14);
+    expect(late.normal).toBeGreaterThan(14);
+    expect([late.setOut, late.on]).toEqual([true, true]);
+    expect(late.fines).toEqual([]);
+    const early = comeAt(t, 30);
+    expect(early.normal).toBeLessThan(30);
+    expect([early.setOut, early.on]).toEqual([true, true]);
+    expect(early.fines).toEqual(['zebra']);
+  }, 30_000);
+
   test('a pedestrian who cannot get off the strip in time stops the truck, as something solid, without a Contact', () => {
     // People who step back at a crawl, so one in the truck's lane is still there when it comes.
     const t = crowd({ ...withTraffic(0), zebras: { ...base.zebras, use: 1, stepBack: 0.05, warn: 0 } });
