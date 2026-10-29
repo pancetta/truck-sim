@@ -54,7 +54,7 @@ export function figureOf(id, p) {
   const builds = Object.entries(p.figures);
   let r = hash(id, 0) * builds.reduce((sum, [, b]) => sum + b.share, 0);
   const [name, build] = builds.find(([, b]) => (r -= b.share) < 0) ?? builds.at(-1);
-  const wear = pick(build.wear, id, 1).split(' ').reduce((mask, piece) => mask | (PIECES[piece] ?? 0), 0);
+  const wear = pick(build.wear, id, 1).split(' ').reduce((mask, piece) => mask | PIECES[piece], 0);
   const colours = [pick(p.outfits, id, 2), pick(p.trousers, id, 3), pick(p.skins, id, 4), pick(build.hairs ?? p.hairs, id, 5)];
   const scale = build.scale * (p.height / 1.75);
   return { build: name, wear, scale, lean: build.lean, stride: build.stride, step: p.step * build.scale * build.stride, colours };
@@ -87,7 +87,8 @@ const capsule = (r, top, bottom, x, z = 0) => new THREE.CapsuleGeometry(r, Math.
 // A body of revolution through [radius, y] points, `depth` times as deep as wide.
 const lathe = (points, depth) => new THREE.LatheGeometry(points.map(([r, y]) => new THREE.Vector2(r, y)), 12).scale(1, 1, depth);
 const box = (w, h, d, x, y, z = 0) => new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z);
-// An open tube from `top` down to `bottom` m up, `rt` and `rb` round, `depth` times as deep as wide; // `back` only behind, its edges tucked behind the head.
+// An open tube from `top` down to `bottom` m up, `rt` and `rb` round, `depth` times as deep as wide;
+// `back` only behind, its edges tucked behind the head.
 const tube = (rt, rb, top, bottom, depth, back = false) =>
   new THREE.CylinderGeometry(rt, rb, top - bottom, 12, 1, true, back ? Math.PI / 2 + 0.4 : 0, back ? Math.PI - 0.8 : 2 * Math.PI).scale(1, 1, depth).translate(0, (top + bottom) / 2, 0);
 const head = (r, y) => new THREE.SphereGeometry(r, 12, 10).scale(0.9, 1.12, 1).translate(0, y, 0);
