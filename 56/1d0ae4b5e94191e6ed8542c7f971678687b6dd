@@ -23,12 +23,16 @@ src/tables.js
   s_8639eeaba1a978::t_0f455e42851976 101-104
   s_8639eeaba1a978::t_b9b0e38db2eeee 202-204
   s_8639eeaba1a978::t_1e37afcdc7ceb5 591-593,598-599
+  s_8639eeaba1a978::t_45ee652b533e29 205
+  s_8639eeaba1a978::t_a64a388685bffd 178-179
 src/strings.js
   s_8639eeaba1a978::t_b9b0e38db2eeee 37,67
+  s_8639eeaba1a978::t_a64a388685bffd 26
 src/roads.js
   s_8639eeaba1a978::t_4079cd3891f75b 36,39,42
 src/sim/sim.js
   s_8639eeaba1a978::t_9b3e5d0a9fc732 184,751,754-755,763,977-979,1000,1013
+  s_8639eeaba1a978::t_78b1ffde09e572 52-53,996-997,1030-1031,1042
 src/sim/energy.test.js
   s_8639eeaba1a978::t_e4a929ca87c856 160-162
 src/sim/home.test.js
@@ -38,6 +42,7 @@ src/sim/dreirad.test.js
   s_8639eeaba1a978::t_974622db3d5f12 1-31,34-51
 GLOSSARY.md
   s_8639eeaba1a978::t_a9ed91958dd9bd 165-169,325-335,393-394
+  s_8639eeaba1a978::t_a64a388685bffd 73-74
 src/sim/fuel.test.js
   s_8639eeaba1a978::t_e4a929ca87c856 205-207
 src/sim/osm.js
