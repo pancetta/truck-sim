@@ -1,0 +1,19 @@
+scripts/economy.js
+  s_eed48f0f9a9a70::t_760ea57f4e5c1a 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd75465f1da124d3507092c713392df02a0fac79",
+  "prompts": {},
+  "sessions": {
+    "s_eed48f0f9a9a70": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e410a00c-59e8-4a69-8878-fefb8ff8d3e0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
