@@ -163,7 +163,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   top: calc(max(24px, env(safe-area-inset-top)) + 60px);
 }
 
-/* Dashboard: speed, gear and RPM, bottom centre between wheel and pedals. The pedals take 26 px more
+/* Dashboard: speed, gear, RPM, fuel, distance and clock, bottom centre between wheel and pedals. The pedals take 26 px more
    than the wheel, so it sits 13 px left of centre, and narrows on phones to keep a 6 px gap to both. */
 .dash {
   position: fixed;
@@ -174,7 +174,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   box-sizing: border-box;
   padding: 10px 14px 12px;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 8px 10px;
   align-items: center;
   border-radius: 14px;
@@ -438,6 +438,9 @@ body:has(.rear-inset:not([hidden])) .goal {
   min-width: 260px;
   max-height: calc(100% - 180px); /* stays clear of the dashboard and pedals */
   overflow-y: auto;
+  /* Scrolls by touch, though the page's touch-action is none (main.js lets its touches through too). */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   padding: 12px 16px;
   pointer-events: auto;
 }
@@ -595,17 +598,20 @@ body:has(.rear-inset:not([hidden])) .goal {
   white-space: pre-line; /* one payment line per line */
 }
 
-/* Above the dashboard: the next junction's rule while one is near, and the police sign while a police car sees the
-   truck (rule fines apply). */
+/* The signs, in both views: just above the pedals (the gas pedal is 140 px tall), off the middle of the road. They fill
+   rows from the bottom right, leftwards and up, so the speed limit sits in the corner and the stack stays low. */
 .dash-signs {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 148px);
+  max-width: min(420px, 50vw);
   display: flex;
-  flex-direction: column;
+  flex-direction: row-reverse;
+  flex-wrap: wrap-reverse;
   align-items: center;
   gap: 6px;
+  color: #fff;
+  pointer-events: none;
 }
 
 .dash-rule,
@@ -626,7 +632,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 
 /* The street the truck is on, as a street name sign. */
 .dash-street {
-  max-width: 60vw;
+  max-width: 100%;
+  box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 4px 12px;
@@ -651,15 +658,12 @@ body:has(.rear-inset:not([hidden])) .goal {
   background: rgb(40 40 48 / 0.85);
 }
 
-/* The junction's rule and the zebra crossing sign side by side, so the stack is no taller with both (#79 QA: in the cab
-   view at 1180×820 a taller stack ran into the notices). */
+/* The speed limit, the junction's rule and the zebra crossing sign side by side, nearest the pedals. */
 .dash-rules {
   display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
   gap: 6px;
-}
-
-.dash-rules:not(:has(> :not([hidden]))) {
-  display: none;
 }
 
 .dash-fuel-low,
@@ -722,9 +726,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   display: none;
 }
 
-/* Only the list scrolls, so Schließen stays in view on short screens. shortcut: main.js cancels touchstart
-   off buttons, so the list only touch-scrolls from a drag that starts on a Kaufen button; fine while it
-   fits on tablets, revisit if phones matter. */
+/* Only the list scrolls, so Schließen stays in view on short screens. */
 .werkstatt-panel {
   box-sizing: border-box;
   width: min(440px, calc(100% - 48px));
@@ -750,6 +752,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 .werkstatt-panel ul {
   min-height: 0;
   overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -909,13 +913,13 @@ body:has(.rear-inset:not([hidden])) .goal {
   pointer-events: auto;
 }
 
-/* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals.
-   Hidden where it would be under 96 px (short phones); the goal arrow still follows the route there. */
+/* Minimap: right edge, under the camera and reset buttons, shrinking to stay clear of the pedals and two rows of signs
+   above them. Hidden on short screens (phones); the goal arrow still follows the route there. */
 #minimap {
   position: fixed;
   top: calc(max(24px, env(safe-area-inset-top)) + 120px);
   right: max(24px, env(safe-area-inset-right));
-  height: min(var(--size), calc(100% - max(24px, env(safe-area-inset-top)) - 120px - 196px));
+  height: min(var(--size), calc(100% - max(24px, env(safe-area-inset-top)) - 120px - 266px));
   padding: 6px;
   border-radius: 14px;
   background: rgb(40 40 48 / 0.85);
@@ -927,6 +931,12 @@ body:has(.rear-inset:not([hidden])) .goal {
     display: none;
   }
 
+  /* As wide as the wheel leaves room for (180 px and a 12 px gap), so the signs take fewer rows and stay under the
+     reset button. */
+  .dash-signs {
+    max-width: calc(100vw - max(24px, env(safe-area-inset-left)) - max(24px, env(safe-area-inset-right)) - 192px);
+  }
+
   /* Beside the orders button, so it stays clear of the wheel. */
   .werkstatt-toggle {
     top: calc(max(24px, env(safe-area-inset-top)) + 60px);
@@ -934,21 +944,7 @@ body:has(.rear-inset:not([hidden])) .goal {
   }
 }
 
-/* Cab view: the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the overlay keeps only the speed
-   limit and the signs, on the windscreen just above the dashboard (the cab camera's field of view is vertical, so vh
-   holds at any width); full width, centred 13 px left as above. */
+/* Cab view: the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the dashboard hides. */
 .dash.cab {
-  left: 0;
-  right: 26px;
-  bottom: 38vh;
-  width: auto;
-  transform: none;
-  display: flex;
-  justify-content: center;
-  padding: 0;
-  background: none;
-}
-
-.dash.cab > :not(.dash-limit, .dash-signs) {
   display: none;
 }

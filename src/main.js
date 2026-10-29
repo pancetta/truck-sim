@@ -21,11 +21,12 @@ const auto = perf && params.has('auto');
 // iPad Safari ignores user-scalable=no and doesn't fully honour touch-action: none, so a
 // pinch or a quick double tap on a pedal zooms the page. Cancel those gestures in script.
 // Pointer events still fire, so the wheel and pedals keep working; real buttons keep their
-// default touch handling so their clicks still work.
+// default touch handling so their clicks still work, and the scrolling panels theirs so they
+// scroll (their touch-action, pan-y, rules out double-tap zoom; the gesture handlers, pinch).
 for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
   document.addEventListener(type, (e) => e.preventDefault());
 }
-document.addEventListener('touchstart', (e) => e.target.closest?.('button') || e.preventDefault(), { passive: false });
+document.addEventListener('touchstart', (e) => e.target.closest?.('button, .orders-panel, .werkstatt-panel ul') || e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
 // The Monti map (spec #59), built from its OpenStreetMap files; ?perf shows how long the build took.

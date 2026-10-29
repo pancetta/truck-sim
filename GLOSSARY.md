@@ -345,7 +345,7 @@ The camera behind and above the truck, and the driver's seat inside the cab ("Ka
 _Avoid_: third person / first person
 
 **HUD**:
-The overlay showing speed, **Speed limit**, **Junction rule**, gear and money; the cab view shows its own 3D instruments instead.
+The overlay showing speed, **Speed limit**, **Junction rule**, gear and money; the cab view shows its own 3D instruments instead of the speed, gear and RPM.
 _Avoid_: dash, dashboard (the dashboard is the cab's 3D one)
 
 **Minimap**:
