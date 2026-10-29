@@ -1,0 +1,41 @@
+src/sim/sim.js
+  s_a812524ecab820::t_7699d8321afe43 89,131,613-616,641-644,649-651
+  s_a812524ecab820::t_54782df682b8b5 635-637
+src/sim/zebras.test.js
+  s_a812524ecab820::t_f874e824e1ffe4 222,225-231,233,237-244,246-264
+  s_a812524ecab820::t_25eef3d98c5270 223-224,234-236
+  s_a812524ecab820::t_6094e07733370e 232,245
+src/tables.js
+  s_a812524ecab820::t_7699d8321afe43 554,669-670
+  s_a812524ecab820::t_196a0bd87f8d9f 552-553,555
+  s_a812524ecab820::t_80cfae0a51d9da 556,671,682
+GLOSSARY.md
+  s_a812524ecab820::t_638fcf3840794d 335-337
+src/sim/traffic.test.js
+  s_a812524ecab820::t_add3ba714eb3e3 987
+  s_a812524ecab820::t_6094e07733370e 946,953
+  s_a812524ecab820::t_0adaf698915fb5 979,983-984
+  s_a812524ecab820::t_e4208060956770 969,971-978,980-982,985-986,988-997
+src/sim/pedestrians.js
+  s_a812524ecab820::t_7699d8321afe43 100
+  s_a812524ecab820::t_0adaf698915fb5 128
+  s_a812524ecab820::t_fb934cf5b9876e 16-17,88-89,111,154,174,240
+src/sim/traffic.js
+  s_a812524ecab820::t_196a0bd87f8d9f 1000,1002
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "241d242080d9552fe59b04532c1fd1a015cb3a7b",
+  "prompts": {},
+  "sessions": {
+    "s_a812524ecab820": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e26513aa-f481-4bcb-9395-c5efbe191400",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
