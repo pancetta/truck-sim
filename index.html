@@ -11,6 +11,7 @@
     <!-- The map's files (tables.osm), fetched while the JS still loads: main.js builds the map before anything else. -->
     <link rel="preload" href="/maps/monti.json" as="fetch" crossorigin />
     <link rel="preload" href="/maps/monti-furniture.json" as="fetch" crossorigin />
+    <link rel="preload" href="/maps/monti-terrain.json" as="fetch" crossorigin />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -57,10 +58,12 @@
         border-radius: inherit;
         background: #e8c547;
       }
-      /* The map data's licence (ODbL) asks for this credit wherever the map shows. */
+      /* The map data's licences (ODbL, and CC BY for the elevation) ask for these credits wherever the map shows. */
       #loading .credit {
         position: absolute;
         bottom: max(12px, env(safe-area-inset-bottom));
+        margin: 0 16px;
+        text-align: center;
         font-size: 13px;
         opacity: 0.7;
       }
@@ -77,7 +80,10 @@
       <h1>Truck Sim</h1>
       <p>Lädt…</p>
       <div class="bar" aria-hidden="true"></div>
-      <p class="credit">© OpenStreetMap contributors</p>
+      <p class="credit">
+        © OpenStreetMap contributors<br />
+        Elevation: TINITALY 1.1, Tarquini et al. (2023), INGV, doi:10.13127/tinitaly/1.1, CC BY 4.0. Resampled.
+      </p>
     </div>
     <canvas id="scene"></canvas>
     <div id="controls"></div>

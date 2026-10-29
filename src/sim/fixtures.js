@@ -46,9 +46,9 @@ export function lane(base = tables, docks = [], half = 28) {
   return { t, map: build([vicolo, box(-10, -wall - 10, 10, -wall), box(-10, wall, 10, wall + 10)], t), wall };
 }
 
-// The real Monti extract and its street furniture, built with `t`.
+// The real Monti extract with its street furniture and height grid, built with `t`.
 const read = (file) => JSON.parse(readFileSync(`public/${file}`, 'utf8'));
-export const monti = (t = tables) => buildOsmMap(read(t.osm.file), t, read(t.osm.furniture));
+export const monti = (t = tables) => buildOsmMap(read(t.osm.file), t, read(t.osm.furniture), read(t.osm.terrain));
 
 // Each Sim's map, so a test can find its lane paths (mapOf).
 const maps = new WeakMap();

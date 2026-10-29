@@ -35,17 +35,18 @@ describe('asset budget', () => {
     expect(made).toContain(`models/${streets.lantern.model}.glb`);
   });
 
-  // The map builder loads tables.osm.file; the other two are for the look (#65, #66).
-  it('serves the map files npm run maps made from the OSM extracts, credited, among them the one the map builder loads', () => {
+  // The map builder loads tables.osm.file and the height grid tables.osm.terrain; the other two are for the look (#65, #66).
+  it('serves the map files npm run maps made from the OSM extracts and the DEM, credited, among them the ones the map builder loads', () => {
     const made = maps.files.map((f) => f.out);
     expect(made.filter((f) => !existsSync(join('public', f)))).toEqual([]);
     expect(made).toContain(osm.file);
+    expect(made).toContain(osm.terrain);
     const credits = readFileSync('CREDITS.md', 'utf8');
     expect(made.filter((f) => !credits.includes(`public/${f}`))).toEqual([]);
   });
 
   // Catches a hand-edited map file, one left stale after the extracts or the trimming changed, or a broken script.
-  it('serves exactly what npm run maps makes from data/osm/, projected round the extract\'s origin', async () => {
+  it('serves exactly what npm run maps makes from data/osm/ and data/dem/, projected round the extract\'s origin', async () => {
     for (const { out, json } of await makeMaps()) expect(json === readFileSync(join('public', out), 'utf8'), out).toBe(true);
     expect(xz(...maps.origin).map(Math.abs)).toEqual([0, 0]);
     expect(xz(maps.origin[0] + 0.001, maps.origin[1])[1]).toBe(-110.6); // north is -z, 0.001° about 111 m

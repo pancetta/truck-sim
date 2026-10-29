@@ -44,6 +44,8 @@ export const encoding = {
 // is the box the extract was taken in, whose edge is the map's. ring.json is already in metres round the same origin
 // (made by prototype-monti-ring.py on that branch); of its buildings, those within `reach` m of the map's edge are kept
 // (the camera draws nothing further away, tables.camera.fog), and none that reaches into the map, which has its own.
+// The height grid (#104) is resampled from TINITALY 1.1 (INGV, CC BY 4.0; docs/research/terrain-dem.md), one WCS call on
+// its native UTM 32N 10 m grid for a box that covers the map and the camera's reach round it, cached in data/dem/.
 export const maps = {
   origin: [41.89525, 12.49225],
   bbox: [41.892, 12.487, 41.8985, 12.4975],
@@ -51,6 +53,11 @@ export const maps = {
     { source: 'data/osm/monti-osm.json', out: 'maps/monti.json', keep: { highway: ['highway', 'name', 'oneway', 'tunnel', 'area'], building: ['building', 'height', 'building:levels'] } },
     { source: 'data/osm/monti-furniture.json', out: 'maps/monti-furniture.json', keep: { natural: ['natural'], amenity: ['amenity'], barrier: ['barrier'] } },
     { source: 'data/osm/ring.json', out: 'maps/monti-ring.json', reach: camera.fog[1] },
+    {
+      source: 'data/dem/monti-tinitaly.asc',
+      out: 'maps/monti-terrain.json',
+      dem: 'https://tinitaly.pi.ingv.it/TINItaly_1_1/wcs?service=WCS&version=2.0.1&request=GetCoverage&coverageId=TINItaly_1_1__tinitaly_dem&format=text/plain&subset=E(788500,791000)&subset=N(4643000,4645200)',
+    },
   ],
 };
 

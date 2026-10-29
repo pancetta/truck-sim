@@ -730,13 +730,14 @@ export const city = {
 };
 
 // The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js. The files are under public/, made by
-// `npm run maps`: the roads and buildings, the street furniture (trees, bollards, fountains, waste baskets), and the
-// real buildings round the map for its skyline.
+// `npm run maps`: the roads and buildings, the street furniture (trees, bollards, fountains, waste baskets), the
+// real buildings round the map for its skyline, and the ground's height grid (#104).
 export const osm = {
   id: 'monti', // the map's id, which keys the profile's data of this map (Reputation)
   file: 'maps/monti.json',
   furniture: 'maps/monti-furniture.json',
   ring: 'maps/monti-ring.json',
+  terrain: 'maps/monti-terrain.json',
   // The drivable network, per OSM highway class: road width (m), lane offset (m) right of the centre line on a two-way
   // edge (a one-way's lane runs on it) and speed limit (km/h); each class's priority is traffic.priority.
   classes: {

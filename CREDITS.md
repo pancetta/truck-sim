@@ -43,6 +43,11 @@ trims and projects them into `public/maps/monti.json`, `public/maps/monti-furnit
 `public/maps/monti-ring.json`. That processed map data stays under the Open Database License (ODbL 1.0,
 https://opendatacommons.org/licenses/odbl/1-0/), like the extracts it comes from.
 
+The map's ground heights come from TINITALY 1.1: Elevation: TINITALY 1.1, Tarquini et al. (2023), INGV,
+doi:10.13127/tinitaly/1.1, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Resampled. The raw grid from INGV's
+WCS (https://tinitaly.pi.ingv.it/) is in `data/dem/`; `npm run maps` resamples it from UTM 32N into the game's frame,
+every 10 m and rounded to 0.1 m, in `public/maps/monti-terrain.json`.
+
 `public/basis/` is three.js's copy of the Basis Universal transcoder (Apache 2.0, https://github.com/BinomialLLC/basis_universal), served for its KTX2 loader.
 
 Everything else (code, the generated cars and their number plate, cab interior, dashboard, the truck's visual items,

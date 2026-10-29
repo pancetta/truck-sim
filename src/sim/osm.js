@@ -1,8 +1,8 @@
 // The OSM map builder (spec #59, "Map module"): turns OpenStreetMap-shaped data into the map the Sim and the renderer
 // use. `data` is public/maps/monti.json (from `npm run maps`) or a test's inline
 // fixture: { bounds: { minX, minZ, maxX, maxZ }, ways: [{ id, tags, nodes (highways only), points: [[x, z]] }] } in
-// metres, x east and z south. The city is flat. `furniture` is public/maps/monti-furniture.json or a fixture's:
-// { nodes: [{ x, z, tags }] }.
+// metres, x east and z south. `furniture` is public/maps/monti-furniture.json or a fixture's: { nodes: [{ x, z, tags }] }.
+// `terrain` is public/maps/monti-terrain.json, the map's height grid, or none (flat at 0).
 //   Drivable network: ways of a tables.osm.classes highway class, but no tunnels or areas, cut where they leave the
 //     bounds (an edge exit, closed by a gate, but not on a pedestrian way) and split at every node they share into edges.
 //     Pedestrian ways are pedestrian edges (#89): the graph keeps them off its junctions (graph.js), and each has a
@@ -27,6 +27,7 @@
 //     'restaurant'), and home (tables.osm.home) its `garage` pose there, on which the renderer draws its doors.
 //     `start` is the start spot's kerb lane pose, where a new game begins.
 //   Pavement lines (`pavements`): where pedestrians walk, along both sides of every edge (see pavementLines).
+//   Terrain (#104): `heightAt(x, z)`, the ground's height, and `slopeAt` (terrain.js). Nothing stands on it yet.
 
 import { createGraph } from './graph.js';
 import { createCells } from './cells.js';
@@ -34,11 +35,12 @@ import { poseAt } from './lanes.js';
 import { pavementLines } from './pavements.js';
 import { inside } from './sim.js';
 import { roadPieces, pavementPieces, pedestrianPieces, openEdges } from './paved.js';
+import { createTerrain } from './terrain.js';
 
 // The furniture's props by OSM tag: [tag, value, collider kind].
 const PROPS = [['natural', 'tree', 'tree'], ['barrier', 'bollard', 'bollard'], ['amenity', 'drinking_water', 'fountain'], ['amenity', 'waste_basket', 'bin']];
 
-export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
+export function buildOsmMap(data, tables, furniture = { nodes: [] }, terrain = null) {
   const o = tables.osm;
   const { bounds } = data;
   const { cell } = tables.city;
@@ -411,7 +413,7 @@ export function buildOsmMap(data, tables, furniture = { nodes: [] }) {
       zebras.push({ edge: e.id, s, x: mid.x, z: mid.z, dx, dz, half: e.width / 2, kerbs, strip });
     }
   });
-  return { id: o.id, bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras, exits };
+  return { id: o.id, bounds, spots, start, colliders, lights, signs, graph, buildings, pavements, pedestrian: pedestrianWays, zebras, exits, ...createTerrain(terrain) };
 }
 
 // The point `at` m along a polyline of [x, z] points, and the unit direction there: [x, z, u]; undefined past its end.

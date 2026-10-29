@@ -27,7 +27,7 @@ const crawl = 3;
 const legLimit = 600; // s
 
 const read = (file) => JSON.parse(readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'));
-export const montiMap = (t = realTables) => buildOsmMap(read(t.osm.file), t, read(t.osm.furniture));
+export const montiMap = (t = realTables) => buildOsmMap(read(t.osm.file), t, read(t.osm.furniture), read(t.osm.terrain));
 
 // Plays `hours` of driving time (profile.timePlayed) from `profile` with the Sim seeded with `seed`; returns the totals.
 export function runEconomy({ tables = realTables, map = montiMap(tables), seed = 1, hours = 1, profile = freshProfile(), refuel = 0.3 } = {}) {

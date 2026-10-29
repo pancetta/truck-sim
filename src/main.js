@@ -29,11 +29,11 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 document.addEventListener('touchstart', (e) => e.target.closest?.('button, .orders-panel, .werkstatt-panel ul') || e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
-// The Monti map (spec #59), built from its OpenStreetMap files; ?perf shows how long the build took.
+// The Monti map (spec #59), built from its OpenStreetMap files and height grid; ?perf shows how long the build took.
 const fetchJson = async (file) => (await fetch(`${import.meta.env.BASE_URL}${file}`)).json();
-const [osmData, furniture] = await Promise.all([fetchJson(tables.osm.file), fetchJson(tables.osm.furniture)]);
+const [osmData, furniture, terrain] = await Promise.all([tables.osm.file, tables.osm.furniture, tables.osm.terrain].map(fetchJson));
 const buildStart = performance.now();
-const map = buildOsmMap(osmData, tables, furniture);
+const map = buildOsmMap(osmData, tables, furniture, terrain);
 const mapBuild = performance.now() - buildStart;
 let storage = null;
 try {

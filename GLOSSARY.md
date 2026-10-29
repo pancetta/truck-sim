@@ -428,6 +428,11 @@ The hand-picked list of **Spots** on **Monti**, each with a made-up business nam
 **Start spot**:
 The **Spot** where a new game puts the truck, in its lane.
 
+**Terrain**:
+The ground's height across a map, in m above sea level, from the map's height grid of real elevation data; a map
+without one is flat at 0. On **Monti** it runs from about 21 m by the Fori to about 53 m on the Esquiline.
+_Avoid_: elevation model, DEM (the raw data it is resampled from), heightmap
+
 ## Relationships
 
 - An **Order** earns its **Stars** when it is delivered; a **Rule fine**, a **Contact** the truck made or a **Zebra
