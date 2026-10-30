@@ -1,0 +1,41 @@
+src/riders.js
+  s_d619e46a57b233::t_7d281ec7ebffe4 142,161-163
+src/sim/traffic.js
+  s_d619e46a57b233::t_e62f8b01959e92 43-45,47,1070-1072
+GLOSSARY.md
+  s_d619e46a57b233::t_c9ba79aaccb3ba 449-451
+src/tables.js
+  s_d619e46a57b233::t_adc73190e9e206 581-583
+  s_d619e46a57b233::t_a5389327b566f6 628-629,633
+src/sim/slopes.test.js
+  s_d619e46a57b233::t_77028860d4e3ae 5,204-230
+  s_d619e46a57b233::t_b6e7deb69613c8 231-232
+src/autopilot.test.js
+  s_d619e46a57b233::t_8f0efc67cb44cc 144-145,153,156,160
+  s_d619e46a57b233::t_97f7f36bcf9dee 128,130-131,133-134,137,139-140,142-143,147,150-151,161-163
+  s_d619e46a57b233::t_940d3531d78351 110,116-123
+  s_d619e46a57b233::t_c9ba79aaccb3ba 155
+  s_d619e46a57b233::t_d5e1479c68d7a3 4,132,136,138,141,146,148-149,152,154,157-159
+  s_d619e46a57b233::t_54d1290570a861 129,135
+src/sim/terrain.js
+  s_d619e46a57b233::t_09f0d0180c0143 10-13
+src/sim/soak.test.js
+  s_d619e46a57b233::t_6e5ab92bc5d15c 210-214,229,242-243,245
+  s_d619e46a57b233::t_41d449afff4af6 293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "583bf59590a96b0b2561b4564bd095c9243a1401",
+  "prompts": {},
+  "sessions": {
+    "s_d619e46a57b233": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c425a754-0b77-44ef-8966-3ab991d52926",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
