@@ -5,8 +5,23 @@ import { createAutopilot } from './autopilot.js';
 
 export { seeded } from './sim/sim.js';
 
-// `mapBuild`: ms main.js took to build the map.
-export function installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto, mapBuild) {
+// The startup steps main.js and renderer.js time with performance.measure (#114): each ends at ms since the page was
+// opened, and took the ms in brackets. Later loads and their warm-up draws come in after the first frame.
+const startup = () =>
+  performance.getEntriesByType('measure').map((m) => `${m.name.padEnd(24)}${(m.startTime + m.duration).toFixed(0).padStart(6)} (${m.duration.toFixed(0)})`);
+
+// On the loading screen until it goes.
+export function showStartup(loading) {
+  const box = document.createElement('pre');
+  box.style.cssText = 'margin:0;font:600 12px/1.3 ui-monospace,monospace;color:#0f0';
+  loading.append(box);
+  const timer = setInterval(() => {
+    if (!box.isConnected) clearInterval(timer);
+    box.textContent = ['startup ms, ends at (took)', ...startup()].join('\n');
+  }, 100);
+}
+
+export function installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto) {
   const { window: size, refresh } = tables.perf;
   const renderer = view.renderer;
   const parts = { sim: 0, render: 0, dom: 0, minimap: 0 }; // ms spent in the current frame
@@ -115,8 +130,9 @@ export function installPerf({ sim, map, view, controls, hud, orders, minimap, we
       // WebGPURenderer counts draw calls in drawCalls (its calls is a running total) and programs in memory.
       `calls ${r.drawCalls ?? r.calls}  tris ${(r.triangles / 1000).toFixed(0)}k  programs ${renderer.info.programs?.length ?? m.programs}  geometries ${m.geometries}  textures ${m.textures}`,
       `${backend}  dpr ${renderer.getPixelRatio()}  buffer ${renderer.domElement.width}×${renderer.domElement.height}  heap ${heap}  cars ${sim.state.traffic.length}  hour ${(sim.state.timeOfDay / 60).toFixed(1)}  ${sim.state.weather.kind} ${sim.state.weather.intensity.toFixed(2)}`,
-      `map build ${mapBuild.toFixed(0)} ms`,
       gpu,
+      'startup ms, ends at (took)',
+      ...startup(),
     ].join('\n');
   }, refresh * 1000);
 }

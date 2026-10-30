@@ -161,6 +161,7 @@ const SEGMENTS = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg', 5: '
 // Draws Sim state; never writes to it. `onProgress` gets the loaded share of the models and textures (0..1);
 // the returned `ready` resolves once all of them are in the scene.
 export function createRenderer(canvas, tables, map, onProgress) {
+  const sceneStart = performance.now();
   const { palette, camera: cam, city, lighting } = tables;
   const kitColours = Object.entries(tables.kitColours);
   // WebGPU where the browser has it, else its WebGL 2 backend; ?webgl forces the fallback for comparison.
@@ -182,7 +183,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // KTX2 textures transcode to what the GPU takes, which the renderer knows once it's initialised.
   const ktx2Loader = new KTX2Loader().setTranscoderPath(TRANSCODER);
   loader.setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder); // the pipeline's models (streets.js)
-  const gpu = renderer.init().then(() => ktx2Loader.detectSupport(renderer));
+  const gpu = renderer.init().then(() => {
+    performance.measure('renderer init', { start: sceneStart });
+    return ktx2Loader.detectSupport(renderer);
+  });
   const loadTexture = (file) => gpu.then(() => ktx2Loader.loadAsync(TEXTURES + file));
   loader.setKTX2Loader(ktx2Loader).setMeshoptDecoder(MeshoptDecoder); // for the pipeline's models
 
@@ -249,7 +253,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // A CC0 PBR material (tables.ground, tables.buildings): its colour, normal, and ambient occlusion / roughness map,
   // set once loaded. The colour map's sRGB comes with the file. The ground's load before the first frame draws; a
   // `later` one's once everything the first frame waits for is in, and until then it draws with one-texel stand-ins
-  // sampled alike, so swapping in the real maps builds no new shaders.
+  // sampled alike, so swapping in the real maps builds no new shaders. Each later load is [name for ?perf, load].
   const laterLoads = [];
   function groundMaterial({ texture: name }, options, later) {
     const material = new THREE.MeshStandardMaterial(options);
@@ -262,7 +266,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       const [map, normalMap, arm] = maps;
       Object.assign(material, { map, normalMap, aoMap: arm, roughnessMap: arm });
     });
-    if (later) laterLoads.push(load);
+    if (later) laterLoads.push([`textures ${name}`, load]);
     else loads.push(load());
     return material;
   }
@@ -321,15 +325,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Built once the model and texture requests are out, as building them takes a few hundred ms. What stands on them
   // (lanterns, pots and flower boxes; streets.js) is placed then too.
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
+    const start = performance.now();
     const plan = planBuildings(map, tables);
     Object.assign(buildingParts, buildingMeshes(plan, tables, cells, buildingMaterials));
     scene.add(...buildingParts.meshes);
     streets.dress(plan);
+    performance.measure('buildings', { start });
   }));
   // The skyline ring outside the map (skyline.js): the real buildings round it less the exit roads, two meshes, its
   // roofs in the buildings' roof material. Far off in the haze, so the first frame doesn't wait for it.
   const skylineMaterials = { walls: new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 }), roof: buildingMaterials.roof };
-  laterLoads.push(() => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials, map))));
+  laterLoads.push(['skyline', () => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials, map)))]);
   // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
   // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
   const { pavement } = tables.streets;
@@ -337,11 +343,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const pavers = groundMaterial(pavement, { polygonOffset: true, polygonOffsetUnits: 4 }, true);
   const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
+    const start = performance.now();
     const { top, stones } = pavementGeometry(osmPavements(map, [...pieces, ...exitPieces], tables), pavement, roadHeight / 2);
     for (const mesh of [new THREE.Mesh(drape(top, map, fit.paving), pavers), new THREE.Mesh(drape(stones, map, fit.paving), kerbs)]) {
       mesh.receiveShadow = true;
       scene.add(mesh);
     }
+    performance.measure('pavements', { start });
   }));
   // The edge walls along the paved area's open edges, plain boxes on their colliders (each a box turned any way, its
   // local x along a→b). Where the ground bends along one, it is cut in halves, quarters and so on, down to 5 m at most,
@@ -597,7 +605,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // Lanterns and plants on the walls, and OSM's street furniture (streets.js).
   const streets = createStreets(scene, map, tables, { loadTexture, loader, models: MODELS });
-  laterLoads.push(streets.load);
+  laterLoads.push(['street lamps', streets.load]);
   const people = createPeople(scene, tables, roadHeight / 2, map);
   const riders = createRiders(scene, tables, map);
   const streetEvents = createStreetEvents(scene, map, tables);
@@ -1034,6 +1042,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // while driving, 'orbit' for the Werkstatt's circling camera, or 'cab' to show the gimmick from the seat.
   function render(state, input, look, showroom) {
     const now = performance.now();
+    const warming = !warmUp && (warmRear || warmCars); // a later load's warm-up draw, timed for ?perf
     // Resized right before this frame draws into it, so no frame shows a cleared or stretched buffer.
     const ratio = resolution.frame(now - lastFrame);
     if (ratio) renderer.setPixelRatio(ratio);
@@ -1223,6 +1232,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       }
     }
     warmRear = false;
+    if (warming) performance.measure('warm-up draw', { start: now });
   }
 
   // Whether (x, z) is in front of some facade within `box`, all facing DIRS[dir]: past the box's back that way.
@@ -1316,15 +1326,21 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const models = Promise.all(loads.map((load) => load.catch(console.error).then(() => onProgress(++loaded / loads.length))));
   const ready = Promise.all([renderer.init(), models]);
   models.then(() => {
+    performance.measure('models and textures', { start: sceneStart });
     // Each later load's objects are drawn by the reversing camera once too (see warmRear).
-    for (const load of laterLoads) load().then(() => (warmRear = true), console.error);
-    return showFullSky && loadSky(lighting.sky).then(showFullSky).then(() => (warmRear = true));
+    for (const [name, load] of [...laterLoads, ['full sky', async () => showFullSky && showFullSky(await loadSky(lighting.sky))]]) {
+      const start = performance.now();
+      load().then(() => {
+        performance.measure(name, { start });
+        warmRear = true;
+      }, console.error);
+    }
   }).catch(console.error);
-  laterLoads.push(() => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
+  laterLoads.push(['covered car', () => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
     coveredCar.near = coverMeshes(near, true);
     coveredCar.far = coverMeshes(far, false);
     warmCars = true;
-  }));
+  })]);
 
   // The covered car's meshes (cover and wheels, all one material) merged into one car mesh, scaled into the car
   // footprint and set on the ground (it is modelled lengthwise along z).
@@ -1352,6 +1368,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return [carMesh(mergeGeometries(parts), material, shadow)];
   }
 
+  performance.measure('scene build', { start: sceneStart });
   return {
     render,
     toggleCamera,

@@ -15,10 +15,13 @@ import { createStart, creditsFrom } from './start.js';
 import { createTutorial } from './tutorial.js';
 import creditsMarkdown from '../CREDITS.md?raw';
 
+// The startup steps are timed with performance.measure, in ms since the page was opened; ?perf shows them (#114).
+performance.measure('download and parse', { start: 0 });
 const { step, maxFrame, maxSteps } = tables.loop;
 // ?perf loads the dev-only perf harness; ?perf&auto also lets the autopilot drive, unsaved (see perf.js).
 const params = new URLSearchParams(location.search);
 const perf = params.has('perf') ? await import('./perf.js') : null;
+perf?.showStartup(document.getElementById('loading'));
 const auto = perf && params.has('auto');
 // ?neu: the page reloaded for a Neues Spiel over a Save, so play starts at once; dropped so a reload shows the start screen.
 const query = () => (params.toString() ? `?${params}` : '');
@@ -39,12 +42,14 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
 document.addEventListener('touchstart', (e) => e.target.closest?.('button, .orders-panel, .werkstatt-panel ul, .start-page') || e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
-// The Monti map (spec #59), built from its OpenStreetMap files and height grid; ?perf shows how long the build took.
+// The Monti map (spec #59), built from its OpenStreetMap files and height grid.
 const fetchJson = async (file) => (await fetch(`${import.meta.env.BASE_URL}${file}`)).json();
+const fetchStart = performance.now();
 const [osmData, furniture, terrain] = await Promise.all([tables.osm.file, tables.osm.furniture, tables.osm.terrain].map(fetchJson));
+performance.measure('map download', { start: fetchStart });
 const buildStart = performance.now();
 const map = buildOsmMap(osmData, tables, furniture, terrain);
-const mapBuild = performance.now() - buildStart;
+performance.measure('map build', { start: buildStart });
 let storage = null;
 try {
   storage = window.localStorage;
@@ -164,10 +169,15 @@ function frame(now) {
 // The loading screen covers the controls until the city is in; only then does the Sim start.
 view.ready.then(() => {
   // A first frame behind the loading screen, so compiling the shaders (up to 1 s on the WebGL 2 backend) doesn't stall play.
+  const warmStart = performance.now();
   view.render(sim.state, { steer: 0 }, werkstatt.look, werkstatt.showroom);
-  perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto, mapBuild);
+  performance.measure('warm-up frame', { start: warmStart });
+  perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto);
   loading.remove();
   if (!auto && !newGame) start.show(sim.state, save.found, save.map());
   last = performance.now();
-  requestAnimationFrame(frame);
+  requestAnimationFrame((now) => {
+    frame(now);
+    performance.measure('first frame', { start: 0 });
+  });
 });
