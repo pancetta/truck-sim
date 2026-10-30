@@ -5,9 +5,10 @@ import * as THREE from 'three/webgpu';
 const STEP = 2.5; // m between the heights an edge is checked at: a quarter of the height grid's 10 m cell
 
 // `geometry` (world coordinates, y over the ground) on `ground` ({ heightAt, slopeAt }, a map), `offset` m higher:
-// a non-indexed copy whose triangles are halved along their longest edge until no edge nor middle is more than
-// `tolerance` m off the ground. Neighbours split a shared edge alike, as that only depends on its two ends. Every
-// attribute is carried along; normals facing up turn to the ground's, upright ones stay.
+// a non-indexed copy whose triangles are halved along their longest edge that is more than `tolerance` m off the
+// ground, and split at their middle where only their inside is, until none is. Neighbours split a shared edge alike, as
+// that only depends on its two ends. Every attribute is carried along; normals facing up turn to the ground's, upright
+// ones stay.
 export function drape(geometry, ground, tolerance, offset = 0) {
   const g = geometry.index ? geometry.toNonIndexed() : geometry;
   const names = Object.keys(g.attributes);
@@ -23,8 +24,8 @@ export function drape(geometry, ground, tolerance, offset = 0) {
     v.push(at(v[P], v[P + 2]));
     return v;
   };
-  const middle = (a, b) => {
-    const m = a.map((v, k) => (v + b[k]) / 2);
+  const middle = (...corners) => {
+    const m = corners[0].map((_, k) => corners.reduce((sum, c) => sum + c[k], 0) / corners.length);
     m[H] = at(m[P], m[P + 2]);
     return m;
   };
@@ -38,19 +39,36 @@ export function drape(geometry, ground, tolerance, offset = 0) {
     }
     return false;
   };
+  // Whether the ground inside a, b, c is more than `tolerance` off their plane, checked on a lattice that runs `STEP` m
+  // along the longest of their edges, `longest` m, and takes in their middle.
+  const bulges = (a, b, c, longest) => {
+    const n = Math.max(3, Math.ceil(longest / STEP));
+    for (let i = 1; i < n; i++) {
+      for (let j = 1; i + j < n; j++) {
+        const [u, v, w] = [i / n, j / n, 1 - (i + j) / n];
+        const h = at(a[P] * u + b[P] * v + c[P] * w, a[P + 2] * u + b[P + 2] * v + c[P + 2] * w);
+        if (Math.abs(h - (a[H] * u + b[H] * v + c[H] * w)) > tolerance) return true;
+      }
+    }
+    return false;
+  };
   const out = [];
   const split = (a, b, c, depth) => {
     const edges = [[a, b, c], [b, c, a], [c, a, b]].map(([p, q, r]) => ({ p, q, r, l: across(p, q), bends: bends(p, q) }));
     const bent = edges.filter((e) => e.bends);
-    const cx = (a[P] + b[P] + c[P]) / 3;
-    const cz = (a[P + 2] + b[P + 2] + c[P + 2]) / 3;
-    const inside = !bent.length && Math.abs(at(cx, cz) - (a[H] + b[H] + c[H]) / 3) > tolerance;
-    if (depth > 16 || (!bent.length && !inside)) return out.push(a, b, c);
-    // The longest edge that bends, or if only the middle is off, the longest.
-    const { p, q, r } = (bent.length ? bent : edges).reduce((x, y) => (y.l > x.l ? y : x));
-    const m = middle(p, q);
-    split(p, m, r, depth + 1);
-    split(m, q, r, depth + 1);
+    if (depth > 40) return out.push(a, b, c); // a guard only: 2000 m halves to 5 m in about 20
+    if (bent.length) {
+      const { p, q, r } = bent.reduce((x, y) => (y.l > x.l ? y : x));
+      const m = middle(p, q);
+      split(p, m, r, depth + 1);
+      split(m, q, r, depth + 1);
+    } else if (bulges(a, b, c, Math.max(...edges.map((e) => e.l)))) {
+      // At the middle, which leaves every edge as it was, so no neighbour has to follow.
+      const m = middle(a, b, c);
+      split(a, b, m, depth + 1);
+      split(b, c, m, depth + 1);
+      split(c, a, m, depth + 1);
+    } else out.push(a, b, c);
   };
   const count = g.getAttribute('position').count;
   for (let i = 0; i < count; i += 3) split(read(i), read(i + 1), read(i + 2), 0);

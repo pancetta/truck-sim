@@ -151,7 +151,7 @@ export function buildingMeshes(buildings, tables, cells, materials, ground) {
     const [u0, u1, v0, v1] = [(x + 1) / ATLAS, (x + w - 1) / ATLAS, 1 - (y + h - 1) / ATLAS, 1 - (y + 1) / ATLAS];
     return [name, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]];
   }));
-  const under = tables.ground.drape.open + tables.ground.drape.sink; // the open ground's lowest, under the terrain
+  const under = tables.drape.open + tables.drape.sink; // the open ground's lowest, under the terrain
   const plainUV = [(uvOf.plain[0][0] + uvOf.plain[1][0]) / 2, (uvOf.plain[0][1] + uvOf.plain[2][1]) / 2];
   const colour = new THREE.Color();
   const grimy = new THREE.Color();

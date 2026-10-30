@@ -256,7 +256,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
 
   // Centred on the map, so it reaches under the skyline ring on every side; on the terrain (drape.js), a little under it.
   const { bounds } = map;
-  const fit = tables.ground.drape;
+  const fit = tables.drape;
   const flatGround = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
   const groundPlane = drape(flatGround, map, fit.open, -fit.sink);
   const ground = new THREE.Mesh(worldUVs(groundPlane, tables.ground.open.repeat), groundMaterial(tables.ground.open));
@@ -319,7 +319,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
   // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
   const { pavement } = tables.streets;
-  const pavers = groundMaterial(pavement, {}, true);
+  const pavers = groundMaterial(pavement, { polygonOffset: true, polygonOffsetUnits: 4 }, true); // under the kerb tops, as the asphalt is
   const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
     const { top, stones } = pavementGeometry(osmPavements(map, [...pieces, ...exitPieces], tables), pavement, roadHeight / 2);
@@ -329,10 +329,15 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
   }));
   // The edge walls along the paved area's open edges, plain boxes on their colliders (each a box turned any way, its
-  // local x along a→b).
-  const edgeWalls = map.colliders.filter((c) => c.kind === 'wall').map(({ points: [a, b, c] }) => {
-    const [x, z, length, width] = [(a.x + c.x) / 2, (a.z + c.z) / 2, Math.hypot(b.x - a.x, b.z - a.z), Math.hypot(c.x - b.x, c.z - b.z)];
-    return { minX: x - length / 2, maxX: x + length / 2, minZ: z - width / 2, maxZ: z + width / 2, angle: Math.atan2(-(b.z - a.z), b.x - a.x) };
+  // local x along a→b), in pieces of 5 m at most, so each follows the ground under it.
+  const edgeWalls = map.colliders.filter((c) => c.kind === 'wall').flatMap(({ points: [a, b, c] }) => {
+    const [length, width] = [Math.hypot(b.x - a.x, b.z - a.z), Math.hypot(c.x - b.x, c.z - b.z)];
+    const n = Math.ceil(length / 5);
+    return Array.from({ length: n }, (_, k) => {
+      const t = (k + 0.5) / n; // the piece's middle, from a's end to b's
+      const [x, z] = [(a.x + c.x) / 2 + (b.x - a.x) * (t - 0.5), (a.z + c.z) / 2 + (b.z - a.z) * (t - 0.5)];
+      return { minX: x - length / n / 2, maxX: x + length / n / 2, minZ: z - width / 2, maxZ: z + width / 2, angle: Math.atan2(-(b.z - a.z), b.x - a.x) };
+    });
   });
   const walls = addBoxes(tables.streets.pavement.kerbColour, edgeWalls, city.wallHeight);
   if (walls) walls.castShadow = true;

@@ -1111,11 +1111,13 @@ export const streets = {
 export const ground = {
   road: { texture: 'asphalt_02', repeat: 4 }, // the roads
   open: { texture: 'cobblestone_square', repeat: 1.4 }, // everything else at ground level, and round the city
-  // On the terrain (drape.js), at most so many m off the ground: the `road` (the markings stand 1.5 cm over it), the
-  // `paving` and kerbs, and the `open` ground, which lies `sink` m lower so it never shows through. Draped, the road,
-  // paving and kerbs have at most `budget` times their flat triangles (the prototype's even split had 5 times).
-  drape: { road: 0.01, paving: 0.02, open: 0.05, sink: 0.05, budget: 1.75 },
 };
+
+// On the terrain (drape.js), so many m off the ground where it is checked (every 2.5 m; between, up to about twice
+// that): the `road` (the markings stand 1.5 cm over it), the `paving` and kerbs, and the `open` ground, which lies `sink`
+// m lower so it never shows through the road. Draped, the road, paving and kerbs have at most `budget` times their flat
+// triangles (the prototype's even split had 5 times).
+export const drape = { road: 0.01, paving: 0.02, open: 0.05, sink: 0.1, budget: 1.75 };
 
 // Generated cars (src/vehicles.js) for the AI cars and the parked cars, all at city.obstacles.car's footprint. Per
 // body type: the side profile [x, y] in m from the rear (x = 0) to the front, the side window outline, the axles,
