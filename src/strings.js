@@ -287,25 +287,25 @@ export const strings = {
     creditsIntro: 'Truck Sim ist ein eigenständiges Spiel. Es nutzt diese freien Daten und Werke:',
     creditsOwn: 'Alles andere, vom Programm über Fahrzeuge und Gebäude bis zu den Bildern, ist eigene Arbeit von Truck Sim.',
   },
-  // The guided first delivery (#113): its card's label, buttons and each step's text (tables.tutorial.steps); a step with
-  // `next` waits for that button, the others for what they ask.
+  // The guided first delivery (#113): its card's label, buttons and each step's text (tables.tutorial.steps), with its
+  // button's label (`next`) on the steps that wait for one (tables.tutorial.waits).
   tutorial: {
     label: 'Tutorial',
     skip: 'Überspringen',
     steps: {
-      drive: { text: 'Willkommen! Lenk links mit dem Lenkrad und drück rechts auf Gas. Fahr ein Stück die Straße entlang. Keine Sorge: Im Tutorial gibt es keine Bußgelder.' },
+      drive: { text: 'Willkommen! Lenk links mit dem Lenkrad und gib rechts Gas. Fahr ein Stück die Straße entlang. Im Tutorial gibt es keine Bußgelder.' },
       brake: { text: 'Super! Jetzt drück die Bremse, bis der Lkw ganz steht.' },
       signs: {
-        text: 'Oben siehst du deinen Rang, deine Sterne und deine Energie. Unten rechts zeigen Schilder das Tempolimit und wer an der nächsten Kreuzung Vorfahrt hat.',
+        text: 'Oben siehst du Rang, Sterne und Energie. Unten rechts zeigen Schilder das Tempolimit und wer an der nächsten Kreuzung Vorfahrt hat.',
         next: 'Weiter',
       },
       offers: { text: 'Zeit für deinen ersten Auftrag! Tipp auf „Aufträge“ und nimm einen an.' },
-      pickup: { text: 'Folge dem Pfeil oben zur Beladestelle. Dort ist eine Zone auf der Straße markiert.' },
-      load: { text: 'Du bist in der Zone! Bleib stehen, bis alles eingeladen ist.' },
+      pickup: { text: 'Folge dem Pfeil oben zur Beladestelle und halte dort in der Zone, die auf der Straße markiert ist.' },
+      load: { text: 'Richtig! Bleib stehen, bis alles eingeladen ist.' },
       dropoff: { text: 'Geladen! Folge jetzt dem Pfeil zur Entladestelle und halte dort in der Zone, bis alles ausgeladen ist.' },
       reverse: { text: 'Geschafft, deine ersten Sterne! Noch ein Trick: Steht der Lkw, halt die Bremse gedrückt. Dann fährt er rückwärts.' },
       home: {
-        text: 'Zuhause, wo du losgefahren bist, ist die Werkstatt. Dort kaufst du mit deinem Geld Technik und neue Fahrzeuge, und dort schläfst du. Mehr steht in der Anleitung im Menü. Gute Fahrt!',
+        text: 'Zuhause, wo du losgefahren bist, ist die Werkstatt: Dort kaufst du Technik und neue Fahrzeuge. Mehr steht in der Anleitung im Menü. Gute Fahrt!',
         next: 'Los geht’s',
       },
     },

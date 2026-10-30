@@ -31,8 +31,9 @@ _Avoid_: title screen, main menu, pause menu
 **Tutorial**:
 The guided first delivery a new game starts with: a card of friendly steps (driving, braking, the HUD, accepting an
 **Offer**, the **Pickup**'s **Zone**, the **Drop-off**, reversing, the **Werkstatt** at **Home**), each passed once the
-player has done what it asks, with a pulsing ring round what it is about. No **Fines** while it runs, and nothing costs
-the clean **Star**. It can be skipped at any step and replayed from Einstellungen.
+player has done what it asks, with a pulsing ring round what it is about. No **Fines** until that delivery is done, and
+no rule break or **Contact** costs its clean **Star** (only **Damage** can). It can be skipped at any step and replayed
+from Einstellungen.
 _Avoid_: onboarding, intro, guide
 
 **Night** ("Nacht"):

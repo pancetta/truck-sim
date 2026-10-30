@@ -12,6 +12,15 @@ const laneSim = (profile) => {
   return createSim(t, map, seeded(1), profile);
 };
 const at = (sim) => sim.state.profile.tutorial;
+// A car standing in the truck's lane, 8 m ahead of its front.
+function carAhead(sim) {
+  const run = mapOf(sim).graph.paths.find((p) => p.kind === 'run' && p.startDir.z > 0);
+  const ahead = sim.state.truck.z + tables.fleet.truck.length / 2 + 8 + tables.city.obstacles.car.length / 2;
+  const pose = { x: 0, z: 0, heading: 0 };
+  let s = 0;
+  while (s < run.length && (poseAt(run, s, pose), pose.z < ahead)) s += 0.1;
+  sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s, police: false, halt: 1e9 });
+}
 
 describe('Sim: the tutorial', () => {
   test('a new Profile has none; startTutorial() starts it at its first step', () => {
@@ -46,8 +55,9 @@ describe('Sim: the tutorial', () => {
     acceptFrom(sim, 'A');
     sim.step(DT, IDLE);
     expect(at(sim)).toBe('pickup');
-    parkAt(sim, 'A'); // reverses into A's zone at the north end
+    parkAt(sim, 'A'); // reverses into A's zone at the north end, and stops there
     expect(at(sim)).toBe('load');
+    expect(sim.state.progress).toBeGreaterThan(0);
     expect(sim.state.order.phase).toBe('pickup');
     drive(sim, tables.orders.loadTime + 0.1, IDLE);
     expect(at(sim)).toBe('dropoff');
@@ -72,11 +82,12 @@ describe('Sim: the tutorial', () => {
     acceptFrom(sim, 'A');
     parkAt(sim, 'A');
     drive(sim, tables.orders.loadTime + 0.1, IDLE); // loaded, on the way to B
-    expect(at(sim)).toBe('signs'); // reversed 20 m into A, then stood on the brake
+    expect(at(sim)).toBe('dropoff'); // reversed 20 m into A, stood on the brake there; signs pass with an order on
+  });
 
-    sim.nextTutorial();
-    sim.step(DT, IDLE);
-    expect(at(sim)).toBe('dropoff');
+  test('loaded with a step on the way through an order, which is not saved, it goes back to accepting one', () => {
+    for (const step of ['pickup', 'load', 'dropoff']) expect(at(laneSim({ ...freshProfile(), tutorial: step })), step).toBe('offers');
+    for (const step of ['signs', 'offers', 'reverse', 'home']) expect(at(laneSim({ ...freshProfile(), tutorial: step })), step).toBe(step);
   });
 
   test('it can be skipped at any step, and replayed', () => {
@@ -91,18 +102,20 @@ describe('Sim: the tutorial', () => {
     expect(at(sim)).toBe('drive');
   });
 
-  test('no fines while it runs, and none of its faults cost the clean Star; skipped, the fines are back', () => {
+  test('after the delivery, at the steps left, the fines are back', () => {
+    const sim = laneSim({ ...freshProfile(), money: 1000, tutorial: 'reverse' });
+    carAhead(sim);
+    timeUntil(sim, GAS, () => sim.state.lastFine, 10);
+    expect(sim.state.lastFine).toEqual({ reason: 'collision', amount: tables.fines.collision });
+    expect(at(sim)).toBe('reverse');
+  });
+
+  test('no fines while it guides the delivery, and none of its faults cost the clean Star; skipped, the fines are back', () => {
     const sim = laneSim({ ...freshProfile(), money: 1000 });
     sim.startTutorial();
     const order = acceptFrom(sim, 'B');
     expect(order).toBeTruthy();
-    // A car standing in the truck's lane, 8 m ahead of its front.
-    const run = mapOf(sim).graph.paths.find((p) => p.kind === 'run' && p.startDir.z > 0);
-    const ahead = sim.state.truck.z + tables.fleet.truck.length / 2 + 8 + tables.city.obstacles.car.length / 2;
-    const pose = { x: 0, z: 0, heading: 0 };
-    let s = 0;
-    while (s < run.length && (poseAt(run, s, pose), pose.z < ahead)) s += 0.1;
-    sim.state.traffic.push({ id: 99, x: 0, z: 0, heading: 0, speed: 0, lane: run, route: [run], s, police: false, halt: 1e9 });
+    carAhead(sim);
 
     drive(sim, 2, GAS); // into it, and pushing on
     expect(sim.state.lastFine).toBe(null);

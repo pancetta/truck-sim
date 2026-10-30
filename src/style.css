@@ -1146,7 +1146,7 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
   top: calc(max(24px, env(safe-area-inset-top)) + 180px);
   left: max(24px, env(safe-area-inset-left));
   box-sizing: border-box;
-  width: 300px;
+  width: 340px;
   padding: 10px 14px 12px;
   border: 2px solid #e8c547;
   border-radius: 14px;
@@ -1165,7 +1165,7 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
 }
 
 .tutorial p {
-  margin: 4px 0 10px;
+  margin: 2px 0 10px;
   line-height: 1.35;
 }
 
@@ -1183,6 +1183,7 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
   color: inherit;
   font: inherit;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1204,7 +1205,7 @@ body[data-tutorial='pickup'] :is(.goal, #minimap),
 body[data-tutorial='load'] .progress,
 body[data-tutorial='dropoff'] :is(.goal, #minimap),
 body[data-tutorial='reverse'] .brake,
-body[data-tutorial='home'] :is(.money, #minimap) {
+body[data-tutorial='home'] :is(#minimap, .werkstatt-toggle) {
   outline: 4px solid #e8c547;
   outline-offset: 4px;
   animation: pointer 0.8s ease-in-out infinite alternate;
@@ -1216,30 +1217,27 @@ body[data-tutorial='home'] :is(.money, #minimap) {
   }
 }
 
-/* Phones: the wheel takes the left, so top centre under the goal banner, between the wheel and the reset button, over
-   the service buttons; it gives way to the payment, fine and other notices and the load bar while they show. */
+/* Phones: the wheel takes the left and the goal banner, orders panel and notices the middle above, so the card takes
+   the dashboard's place between the wheel and the pedals, over the speed while the tutorial runs. */
 @media (max-height: 480px) {
   .tutorial {
-    top: calc(max(24px, env(safe-area-inset-top)) + 76px);
-    left: 50%;
+    top: auto;
+    bottom: max(24px, env(safe-area-inset-bottom));
+    left: calc(50% - 13px);
     transform: translateX(-50%);
-    z-index: 3;
-    width: calc(100% - 2 * 210px);
-    min-width: 240px;
-    padding: 8px 12px 10px;
-    font-size: 14px;
-  }
-
-  body:has(.paid:not([hidden]), .progress:not([hidden])) .tutorial {
-    visibility: hidden;
+    width: min(300px, calc(100% - 446px));
+    padding: 8px 10px;
+    font-size: 13px;
   }
 
   .tutorial p {
-    margin-bottom: 8px;
+    margin: 2px 0 6px;
+    line-height: 1.3;
   }
 
   .tutorial button {
-    padding: 6px 12px;
+    padding: 5px 10px;
+    font-size: 13px;
   }
 }
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import { HOW_TO_ART, creditsFrom } from './start.js';
+import { creditsFrom, howToArt } from './start.js';
 import { strings } from './strings.js';
 import * as tables from './tables.js';
 
@@ -34,7 +34,8 @@ test('every map card has its name and line', () => {
 });
 
 test('every how-to page has its title, text and drawing; every tutorial step its text', () => {
-  expect(Object.keys(HOW_TO_ART)).toEqual(Object.keys(strings.start.howToPages));
+  expect(Object.keys(howToArt(strings))).toEqual(Object.keys(strings.start.howToPages));
   for (const page of Object.values(strings.start.howToPages)) expect(page).toMatchObject({ title: expect.any(String), text: expect.arrayContaining([expect.any(String)]) });
   expect(Object.keys(strings.tutorial.steps)).toEqual(tables.tutorial.steps);
+  expect(tables.tutorial.steps.filter((id) => strings.tutorial.steps[id].next)).toEqual(tables.tutorial.waits); // their buttons' labels
 });

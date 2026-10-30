@@ -10,7 +10,8 @@ export function createTutorial(root, sim, tables, strings) {
       <div><button type="button" class="tutorial-next"></button><button type="button" class="tutorial-skip">${t.skip}</button></div>
     </div>`;
   const card = root.querySelector('.tutorial');
-  const [count, text] = card.children;
+  const text = card.querySelector('p');
+  const count = card.querySelector('small');
   const next = root.querySelector('.tutorial-next');
   next.addEventListener('click', () => sim.nextTutorial());
   root.querySelector('.tutorial-skip').addEventListener('click', () => sim.skipTutorial());
@@ -28,7 +29,7 @@ export function createTutorial(root, sim, tables, strings) {
     const { steps } = tables.tutorial;
     count.textContent = `${t.label} · ${steps.indexOf(step) + 1}/${steps.length}`;
     text.textContent = t.steps[step].text;
-    next.hidden = !t.steps[step].next;
+    next.hidden = !tables.tutorial.waits.includes(step);
     next.textContent = t.steps[step].next ?? '';
   }
 

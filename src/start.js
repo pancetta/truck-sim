@@ -4,15 +4,16 @@
 // our own drawing), Einstellungen and Credits pages. Acts only through the handlers main.js passes.
 import { RULE_ICONS, ZEBRA_ICON, playedText, starsText } from './hud.js';
 
-// The how-to-play pages' drawings, our own, by the page's key (strings.start.howToPages), on a 240 × 80 grid.
+// The how-to-play pages' drawings, our own, by the page's key (strings.start.howToPages), on a 240 × 80 grid; the pedals
+// are drawn as the game's, with their labels.
 const TRUCK = '<rect x="1" y="3" width="9" height="8" rx="1" fill="#e8c547"/><path d="M10 5.5h2.6l2.4 3V11h-5z" fill="#d1495b"/><circle cx="4" cy="12" r="1.8" fill="#fff"/><circle cx="12" cy="12" r="1.8" fill="#fff"/>';
 const icon = (x, svg) => `<g transform="translate(${x} 22) scale(1.6)">${svg}</g>`;
-export const HOW_TO_ART = {
+export const howToArt = (strings) => ({
   controls:
     '<circle cx="44" cy="40" r="30" fill="none" stroke="#8a8e98" stroke-width="8"/><rect x="41" y="6" width="6" height="10" rx="1" fill="#e8c547"/>' +
     '<path d="M16 40h18M54 40h18M44 50v20" stroke="#8a8e98" stroke-width="6"/><circle cx="44" cy="40" r="10" fill="#8a8e98"/>' +
-    '<rect x="140" y="26" width="44" height="44" rx="7" fill="#d1495b"/><rect x="194" y="14" width="34" height="56" rx="7" fill="#6cc551"/>' +
-    '<text x="162" y="62" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">Bremse</text><text x="211" y="62" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">Gas</text>',
+    '<rect x="140" y="26" width="44" height="44" rx="7" fill="#33353c" stroke="#8a8e98" stroke-width="3"/><rect x="194" y="14" width="34" height="56" rx="7" fill="#33353c" stroke="#8a8e98" stroke-width="3"/>' +
+    `<text x="162" y="62" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">${strings.brake}</text><text x="211" y="62" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">${strings.gas}</text>`,
   orders:
     `<g transform="translate(6 18) scale(3)">${TRUCK}</g><path d="M62 54h68" stroke="#e8c547" stroke-width="3" stroke-dasharray="7 5"/><path d="M130 47l10 7-10 7z" fill="#e8c547"/>` +
     '<rect x="148" y="38" width="40" height="32" rx="3" fill="#6cc551" fill-opacity="0.25" stroke="#6cc551" stroke-width="2" stroke-dasharray="5 3"/>' +
@@ -32,7 +33,7 @@ export const HOW_TO_ART = {
     '<rect x="16" y="32" width="56" height="38" fill="#f2e6d0"/><path d="M10 32h68l-6-12H16z" fill="#d1495b"/><rect x="24" y="44" width="16" height="26" fill="#2b2d33"/><rect x="46" y="44" width="18" height="14" fill="#6fa8dc"/>' +
     '<text x="132" y="50" font-size="22" text-anchor="middle" fill="#d1495b">♥♥♥♡</text>' +
     '<path d="M186 28q12-6 22 0v38q-10-6-22 0zM230 28q-12-6-22 0v38q10-6 22 0z" fill="#fff"/><path d="M192 38h10M192 46h10M214 38h10M214 46h10" stroke="#8a8e98" stroke-width="2"/>',
-};
+});
 
 // Every row of CREDITS.md's tables (Asset | Files | Source | Licence) but their headers (the line over a |---| rule),
 // without the files: the credits page's one source.
@@ -47,12 +48,13 @@ export function createStart(root, tables, strings, credits, { onNewGame, onReset
   const s = strings.start;
   const back = `<button type="button" class="start-back" data-to="main">${s.back}</button>`;
   const topics = Object.keys(s.howToPages);
+  const art = howToArt(strings);
   // Each topic's page: back to the list, its drawing and text, and on to the next topic (the last one back to the list).
   const topicPage = (key, i) => `
         <section class="start-page" data-page="${key}" hidden>
           <button type="button" class="start-back" data-to="howTo">${s.back}</button>
           <h2>${s.howToPages[key].title}</h2>
-          <svg class="start-art" viewBox="0 0 240 80" aria-hidden="true">${HOW_TO_ART[key]}</svg>
+          <svg class="start-art" viewBox="0 0 240 80" aria-hidden="true">${art[key]}</svg>
           ${s.howToPages[key].text.map((p) => `<p>${p}</p>`).join('')}
           <button type="button" data-to="${topics[i + 1] ?? 'howTo'}">${topics[i + 1] ? `${s.next}: ${s.howToPages[topics[i + 1]].title}` : s.back}</button>
         </section>`;

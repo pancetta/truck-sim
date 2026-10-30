@@ -787,9 +787,14 @@ export const maps = { monti: { open: true } };
 
 // The guided first delivery (#113), which a new game starts with: its steps in order (texts in strings.tutorial). The Sim
 // passes a step once the player has done what it asks (sim.js tutorialChecks): driving `drive` m, braking to a stop,
-// accepting an order, entering the Pickup's Zone, loading, delivering, reversing `reverse` m; a step that only shows
-// something waits for its Weiter button. No fines while it runs.
-export const tutorial = { steps: ['drive', 'brake', 'signs', 'offers', 'pickup', 'load', 'dropoff', 'reverse', 'home'], drive: 20, reverse: 3 };
+// accepting an order, starting to load in the Pickup's Zone, loading, delivering, reversing `reverse` m; the steps in
+// `waits` show something and wait for their button (signs also passes on an accepted order). No fines until the delivery.
+export const tutorial = {
+  steps: ['drive', 'brake', 'signs', 'offers', 'pickup', 'load', 'dropoff', 'reverse', 'home'],
+  waits: ['signs', 'home'],
+  drive: 20,
+  reverse: 3,
+};
 
 // The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js. The files are under public/, made by
 // `npm run maps`: the roads and buildings, the street furniture (trees, bollards, fountains, waste baskets), the

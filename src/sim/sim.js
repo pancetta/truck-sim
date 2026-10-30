@@ -171,6 +171,10 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let v = upgradedVehicle();
   truck.mass = v.emptyMass;
   if (profile.trailer.hitched) state.trailer = trailerBehind(truck, truck.heading);
+  // An order isn't saved, so a tutorial loaded on its way through one goes back to accepting one.
+  const { steps } = tables.tutorial;
+  const stepAt = (id) => steps.indexOf(id);
+  if (stepAt(profile.tutorial) > stepAt('offers') && stepAt(profile.tutorial) <= stepAt('dropoff')) state.profile.tutorial = 'offers';
   updateRank();
   let clock = 0; // s of Sim time, drives the light cycles
   let nextOfferId = 1;
@@ -401,32 +405,33 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateTutorial(controls);
   }
 
-  // The tutorial's steps (tables.tutorial) that the player passes by doing what they ask; the others wait for
-  // nextTutorial(). Checked every step, so a step already done (an order accepted early, say) passes at once.
+  // The tutorial's steps (tables.tutorial) that the player passes by doing what they ask; the ones in `waits` also pass
+  // by nextTutorial(). Checked every step, so a step already done (an order accepted early, say) passes at once.
   const delivered = () => state.lastPayment !== tutorialFrom && state.lastPayment.stars.length > 0;
   const tutorialChecks = {
     drive: () => state.profile.distance - stepFrom >= tables.tutorial.drive,
     brake: (controls) => Math.abs(truck.speed) < v.stopSpeed && controls.brake > 0,
+    signs: () => state.order !== null || delivered(),
     offers: () => state.order !== null || delivered(),
-    pickup: () => delivered() || (state.order && (state.order.phase !== 'pickup' || inZone(targetOf(state.order).zone))),
+    pickup: () => delivered() || state.order?.phase === 'dropoff' || state.progress > 0,
     load: () => delivered() || state.order?.phase === 'dropoff',
     dropoff: delivered,
     reverse: () => backed >= tables.tutorial.reverse,
   };
+
+  const sparing = () => state.profile.tutorial !== null && stepAt(state.profile.tutorial) <= stepAt('dropoff');
 
   function updateTutorial(controls) {
     while (tutorialChecks[state.profile.tutorial]?.(controls)) nextStep();
   }
 
   function nextStep() {
-    const { steps } = tables.tutorial;
     state.profile.tutorial = steps[steps.indexOf(state.profile.tutorial) + 1] ?? null;
     stepFrom = state.profile.distance;
     backed = 0;
   }
 
-  // The tutorial's commands: start it (again) at its first step; pass a step that only shows something (its Weiter
-  // button); skip it.
+  // The tutorial's commands: start it (again) at its first step; pass a step in `waits` (its button); skip it.
   function startTutorial() {
     state.profile.tutorial = null;
     tutorialFrom = state.lastPayment;
@@ -434,7 +439,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   function nextTutorial() {
-    if (state.profile.tutorial && !tutorialChecks[state.profile.tutorial]) nextStep();
+    if (tables.tutorial.waits.includes(state.profile.tutorial)) nextStep();
   }
 
   function skipTutorial() {
@@ -882,18 +887,19 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
-  // the amount actually taken. None while the tutorial runs.
+  // the amount actually taken. None while the tutorial guides the first delivery.
   function fine(reason) {
-    if (state.profile.tutorial) return;
+    if (sparing()) return;
     const amount = Math.min(state.profile.money, tables.fines[reason]);
     state.profile.money -= amount;
     state.lastFine = { reason, amount };
     fault(reason);
   }
 
-  // Notes what costs the active order its clean Star (order.faults), once each; nothing while the tutorial runs.
+  // Notes what costs the active order its clean Star (order.faults), once each; nothing while the tutorial guides the
+  // first delivery. shortcut: a player who never accepts an order stays unfined; fine while that means not playing.
   function fault(reason) {
-    if (state.profile.tutorial) return;
+    if (sparing()) return;
     if (state.order && !state.order.faults.includes(reason)) state.order.faults.push(reason);
   }
 
