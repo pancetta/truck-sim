@@ -253,7 +253,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // A CC0 PBR material (tables.ground, tables.buildings): its colour, normal, and ambient occlusion / roughness map,
   // set once loaded. The colour map's sRGB comes with the file. The ground's load before the first frame draws; a
   // `later` one's once everything the first frame waits for is in, and until then it draws with one-texel stand-ins
-  // sampled alike, so swapping in the real maps builds no new shaders. Each later load is [name for ?perf, load].
+  // sampled alike, so swapping in the real maps builds no new shaders. Each later load is [name for ?perf, load], its
+  // load adding its objects to the group it is given (see `ready`).
   const laterLoads = [];
   function groundMaterial({ texture: name }, options, later) {
     const material = new THREE.MeshStandardMaterial(options);
@@ -335,7 +336,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // The skyline ring outside the map (skyline.js): the real buildings round it less the exit roads, two meshes, its
   // roofs in the buildings' roof material. Far off in the haze, so the first frame doesn't wait for it.
   const skylineMaterials = { walls: new THREE.MeshStandardMaterial({ map: paintSkylineWindows(), vertexColors: true, flatShading: true, roughness: 0.9 }), roof: buildingMaterials.roof };
-  laterLoads.push(['skyline', () => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => scene.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials, map)))]);
+  laterLoads.push(['skyline', (into) => fetch(`${import.meta.env.BASE_URL}${tables.osm.ring}`).then((r) => r.json()).then((items) => into.add(...ringMeshes(cutRing(items, exitPieces.map((p) => p.ring)), tables, skylineMaterials, map)))]);
   // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
   // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
   const { pavement } = tables.streets;
@@ -527,11 +528,11 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let warmCars = true;
   // Only the near meshes cast shadows: on the iPad simulator with 100 cars, the far ones' shadows took the frame
   // from 16.7 to 20–23 ms.
-  const carMesh = (geometry, material, castShadow) => {
+  const carMesh = (geometry, material, castShadow, into = scene) => {
     const mesh = new THREE.InstancedMesh(geometry, material, carRoom);
     mesh.frustumCulled = false; // the renderer can't cull them: drawCars puts the cars in view into them each frame
     Object.assign(mesh, { castShadow, receiveShadow: true });
-    scene.add(mesh);
+    into.add(mesh);
     carMeshes.push(mesh);
     return mesh;
   };
@@ -964,12 +965,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const dry = { fog: cam.fog, haze: lighting.haze, sun: 1, sky: 1, grey: 0, wet: 0 }; // the clear weather's look
 
   // The night lights, rain and reversing camera drawn in the first frame (behind the loading screen) too, so their
-  // shaders are ready: the reversing camera's first draw otherwise stalled play by ~3 s in Chrome.
+  // shaders are ready: the reversing camera's first draw otherwise stalled play by ~3 s in Chrome. The reversing
+  // camera's view only has its shaders built, a few per frame after the loading screen (#114; see render()).
   let warmUp = true;
-  // The objects of a later load (skyline, street lamps, covered car, sky) get their shaders for the main view when they
-  // first show; set when one lands, the reversing camera then draws them once into its target, unshown, so the first
-  // reverse after it doesn't stall (it took seconds on WebGL 2).
-  let warmRear = false;
+  // A later load's objects joining the scene, one step per frame: each joins unshadowed, and casts its shadow the frame
+  // after, so each frame builds at most one of its shaders (a tree's take ~70 ms each in Chrome). Their draw goes
+  // through `pipeline`, whose set-up compileAsync can't build for.
+  const joining = [];
   let drawingRear = false; // whether this frame draws the reversing camera's view (inView counts its frustum then)
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
@@ -1042,7 +1044,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // while driving, 'orbit' for the Werkstatt's circling camera, or 'cab' to show the gimmick from the seat.
   function render(state, input, look, showroom) {
     const now = performance.now();
-    const warming = !warmUp && (warmRear || warmCars); // a later load's warm-up draw, timed for ?perf
+    if (joining.length) {
+      joining.shift()();
+      warmCars = true; // the covered car's meshes are empty when they join
+    }
     // Resized right before this frame draws into it, so no frame shows a cleared or stretched buffer.
     const ratio = resolution.frame(now - lastFrame);
     if (ratio) renderer.setPixelRatio(ratio);
@@ -1153,7 +1158,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       camera.position.set(x + dx * chaseArm, chaseY(map.heightAt, x, z, dx, dz, chaseArm, height, lookY, chaseGround), z + dz * chaseArm);
       camera.lookAt(x, lookY, z);
     }
-    drawingRear = rear || warmRear;
+    drawingRear = rear;
     if (drawingRear) {
       // On the trailer's roof while it is hitched.
       const at = hitched ? tables.trailer.rearEye : vehicle.rearEye;
@@ -1219,7 +1224,10 @@ export function createRenderer(canvas, tables, map, onProgress) {
       // The truck from outside (SHADOW_ONLY in the cab), so its back edge shows at the bottom as a guide.
       body.cab.interior.visible = false;
       renderer.setRenderTarget(rearTarget);
-      renderer.render(scene, rearCamera);
+      // Unshown, as a warm-up, only its shaders are built: three's compileAsync builds one object's at a time, between
+      // frames, where drawing built them all in one frame (seconds on the WebGL 2 backend behind a 6× slower CPU).
+      if (rearTime > 0) renderer.render(scene, rearCamera);
+      else renderer.compileAsync(scene, rearCamera).catch(console.error);
       renderer.setRenderTarget(null);
       body.cab.interior.visible = inCab;
       if (rear) {
@@ -1231,8 +1239,6 @@ export function createRenderer(canvas, tables, map, onProgress) {
         renderer.autoClear = autoClear;
       }
     }
-    warmRear = false;
-    if (warming) performance.measure('warm-up draw', { start: now });
   }
 
   // Whether (x, z) is in front of some facade within `box`, all facing DIRS[dir]: past the box's back that way.
@@ -1327,24 +1333,34 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const ready = Promise.all([renderer.init(), models]);
   models.then(() => {
     performance.measure('models and textures', { start: sceneStart });
-    // Each later load's objects are drawn by the reversing camera once too (see warmRear).
+    // A later load's objects have their shaders for the reversing camera built, a few per frame, and then join the
+    // scene one per frame (see joining); drawn at once, they stalled play for that frame (by up to 0.7 s in Chrome,
+    // seconds on WebGL 2).
     for (const [name, load] of [...laterLoads, ['full sky', async () => showFullSky && showFullSky(await loadSky(lighting.sky))]]) {
       const start = performance.now();
-      load().then(() => {
+      const staged = new THREE.Group();
+      load(staged).then(async () => {
+        renderer.setRenderTarget(rearTarget);
+        const rear = renderer.compileAsync(staged, rearCamera, scene);
+        renderer.setRenderTarget(null);
+        await rear;
+        for (const o of [...staged.children]) {
+          const casts = o.castShadow;
+          joining.push(() => scene.add(Object.assign(o, { castShadow: false })));
+          if (casts) joining.push(() => (o.castShadow = true));
+        }
         performance.measure(name, { start });
-        warmRear = true;
-      }, console.error);
+      }).catch(console.error);
     }
   }).catch(console.error);
-  laterLoads.push(['covered car', () => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
-    coveredCar.near = coverMeshes(near, true);
-    coveredCar.far = coverMeshes(far, false);
-    warmCars = true;
+  laterLoads.push(['covered car', (into) => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
+    coveredCar.near = coverMeshes(near, true, into);
+    coveredCar.far = coverMeshes(far, false, into);
   })]);
 
   // The covered car's meshes (cover and wheels, all one material) merged into one car mesh, scaled into the car
   // footprint and set on the ground (it is modelled lengthwise along z).
-  function coverMeshes(gltf, shadow) {
+  function coverMeshes(gltf, shadow, into) {
     gltf.scene.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(gltf.scene);
     const size = bounds.getSize(new THREE.Vector3());
@@ -1365,7 +1381,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
       }
       parts.push(geometry.applyMatrix4(fit.clone().multiply(o.matrixWorld)));
     });
-    return [carMesh(mergeGeometries(parts), material, shadow)];
+    return [carMesh(mergeGeometries(parts), material, shadow, into)];
   }
 
   performance.measure('scene build', { start: sceneStart });

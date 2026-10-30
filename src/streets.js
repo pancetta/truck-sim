@@ -73,8 +73,8 @@ export function facadeProps(map, plan, tables) {
 
 // The meshes. `loadTexture` and `loader` are the renderer's KTX2 texture loader and its GLTFLoader (set up for the
 // pipeline's KTX2 textures and meshopt geometry). The props on the ground go up at once; `dress(plan)` adds what
-// stands on the planned buildings, and `load()` fetches the lantern models and tree pictures, which nothing on the
-// first frame waits for. `update()` picks what to draw each frame.
+// stands on the planned buildings, and `load(into)` fetches the lantern models and tree pictures, which nothing on the
+// first frame waits for, and adds them to `into`. `update()` picks what to draw each frame.
 export function createStreets(scene, map, tables, { loadTexture, loader, models }) {
   const { lantern, propCull } = tables.streets;
 
@@ -87,7 +87,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
   const cellKey = (c, r) => c * 4096 + r; // a number, not a string, so update() allocates nothing per cell
   const sets = [];
   const propMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4 });
-  function addSet(places, levels, height, atNight = false) {
+  function addSet(places, levels, height, atNight = false, into = scene) {
     const cells = new Map(); // cell -> place indices
     places.forEach(({ x, z }, i) => {
       const key = cellKey(Math.floor(x / CELL), Math.floor(z / CELL));
@@ -100,7 +100,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
         const base = mesh.userData.base ?? new THREE.Matrix4();
         // Each place's matrix for this mesh, as update() copies it into the instance buffer.
         mesh.userData.matrices = places.map(({ x, y = 0, z, angle = 0 }) => new THREE.Matrix4().makeRotationY(angle).setPosition(x, y, z).multiply(base).elements);
-        scene.add(mesh);
+        into.add(mesh);
       }
     }
     sets.push({ places, cells, levels, height, atNight });
@@ -158,7 +158,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     ], h + 0.2);
   }
 
-  function load() {
+  function load(into) {
     const lamps = Promise.all([lantern.model, `${lantern.model}_far`].map((file) => loader.loadAsync(`${models}${file}.glb`))).then(([near, far]) => {
       const parts = [near, far].map((gltf) => {
         gltf.scene.updateMatrixWorld(true);
@@ -188,15 +188,15 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
           levels[k].meshes.push(mesh);
         });
       });
-      addSet(mounts.map((m) => ({ ...m, y: m.y + lantern.height })), levels, 1.7);
+      addSet(mounts.map((m) => ({ ...m, y: m.y + lantern.height })), levels, 1.7, false, into);
     });
-    const trees = Promise.all(tables.streets.trees.map(({ picture }) => loadTexture(`${picture}.ktx2`))).then((pictures) => addTrees(pictures));
+    const trees = Promise.all(tables.streets.trees.map(({ picture }) => loadTexture(`${picture}.ktx2`))).then((pictures) => addTrees(pictures, into));
     return Promise.all([lamps, trees]);
   }
 
   // Trees on three crossed quads per species, each face both ways round, lit from above like one canopy; not shadowed,
   // as the quads shadowed each other black. A tree's species, size, turn and mirroring come from where it stands.
-  function addTrees(pictures) {
+  function addTrees(pictures, into) {
     const species = tables.streets.trees;
     const lists = species.map(() => []);
     for (const { x, y, z } of at('tree')) lists[Math.floor(hash(x, z) * 9973) % species.length].push([x, y, z]);
@@ -224,7 +224,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
       });
       mesh.computeBoundingSphere();
       mesh.castShadow = true;
-      scene.add(mesh);
+      into.add(mesh);
     });
   }
 
