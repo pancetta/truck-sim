@@ -1092,6 +1092,27 @@ Each building side is cut into runs of window bays whose pavement lies within `t
 
 Unchanged within the runs' spread: frames held 16.7 ms, and the ready times swap order between the two views, so their difference is load noise.
 
+## Startup (#114)
+
+`?perf` now shows the startup steps on the loading screen and at the bottom of the overlay ("startup ms, ends at (took)"), each a `performance.measure` in ms since the page was opened: download and parse, map download, map build, scene build, renderer init, buildings, pavements, models and textures, the warm-up frame, the first frame, then the later loads and the reversing camera's warm-up as they finish.
+
+**Where the time went** (Chrome, 6× CPU throttling, WebGL 2, before this change): the warm-up frame behind the loading screen took half of the time to the first frame (8.2–8.9 s of 16.2–17.2 s). Most of it was three's node builder generating shaders in JS (about 80% in a CPU profile), not the GPU's program links. About half of the build time, 75 of the 162 builds besides the shadow's, was for the reversing camera's view, which the warm-up drew into its target. Every `InstancedMesh` gets its own build in three r186 (its uuid is in the cache key), per view: 239 builds in all, 166 of them instanced. The CPU steps before it (map build, scene build with draping, buildings, pavements) took about 1.6–1.9 s each, with no single hot spot.
+
+**What changed:** the warm-up frame draws only the main view. The reversing camera's view only has its shaders built, with `renderer.compileAsync`, which builds one object's at a time between frames after the loading screen goes. Later loads (skyline, lamps and trees, covered car) build their objects off the scene, have their reversing-camera shaders built the same way, and then join the scene one step per frame: each unshadowed, then casting its shadow the frame after. Each frame then links at most one new program for the main view or the shadow. The main view can't be precompiled with `compileAsync`, because it draws through `DirectRenderPipeline`, whose renderer set-up the async build doesn't see. The old per-load redraw of the reversing camera built the same objects again for every load still in flight.
+
+**How measured:** production builds of `8d4536a` (main plus the measures) and this change, Chrome headless on the M2, 1180×820 at dpr 2, `?perf&webgl`, cold cache, two rounds of two runs each, alternating, load average 2.4–4.5. "Longest later frame" is the longest frame interval from 50 ms after the first frame to 32 s (6×) or 14 s (1×), from `perfTrace()`. Relative numbers; the iPad's are the owner's `?perf` run.
+
+| | first frame | warm-up frame | longest later frame | later frames over 100 ms |
+|---|---|---|---|---|
+| main, 6× (4 runs) | 16.2–17.2 s | 8.2–8.9 s | 1.07–1.45 s | 4 |
+| #114, 6× (4 runs) | 12.4–12.5 s | 4.4–4.5 s | 0.38–0.42 s | 32–34 |
+| main, 1× (4 runs) | 3.44–3.54 s | 1.92–1.99 s | 0.32–1.07 s | 1 |
+| #114, 1× (4 runs) | 2.61–3.02 s | 1.09–1.29 s | 0.10–0.17 s | 0–1 |
+
+At 6× each object's shader build is itself over 100 ms, so the reversing camera's warm-up shows as about 30 frames of 120–150 ms instead of one long one; at 1× they stay under 100 ms. The remaining 0.15–0.17 s frames at 1× are the trees joining: each tree species' program takes about 70 ms to link in Chrome. On the WebGPU backend (1×, one run) the first frame came at 2.3 s with a 0.7 s warm-up frame.
+
+**Stalls:** with a hook counting three's shader builds, the first reverse, nightfall (21:00) and reversing at night built nothing new and no frame took over 16.8 ms, on WebGL 2 and WebGPU. Chrome has `scheduler.yield`; Safari doesn't, and there three's `compileAsync` yields a frame per object, so the reversing camera's warm-up (about 75 objects) takes at least that many frames. `?perf` shows when it is done ("reversing camera warm-up"). The start screen normally covers it; a Neues Spiel over a Save skips the start screen, so reversing in its first second or two could still stall on the iPad.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

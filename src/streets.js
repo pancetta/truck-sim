@@ -158,7 +158,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
     ], h + 0.2);
   }
 
-  function load(into) {
+  function load(into = scene) {
     const lamps = Promise.all([lantern.model, `${lantern.model}_far`].map((file) => loader.loadAsync(`${models}${file}.glb`))).then(([near, far]) => {
       const parts = [near, far].map((gltf) => {
         gltf.scene.updateMatrixWorld(true);
@@ -191,7 +191,7 @@ export function createStreets(scene, map, tables, { loadTexture, loader, models 
       addSet(mounts.map((m) => ({ ...m, y: m.y + lantern.height })), levels, 1.7, false, into);
     });
     const trees = Promise.all(tables.streets.trees.map(({ picture }) => loadTexture(`${picture}.ktx2`))).then((pictures) => addTrees(pictures, into));
-    return Promise.all([lamps, trees]);
+    return Promise.all([lamps, trees].map((half) => half.catch(console.error))); // one failing still waits for the other
   }
 
   // Trees on three crossed quads per species, each face both ways round, lit from above like one canopy; not shadowed,

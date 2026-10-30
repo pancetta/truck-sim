@@ -6,7 +6,7 @@ import { createAutopilot } from './autopilot.js';
 export { seeded } from './sim/sim.js';
 
 // The startup steps main.js and renderer.js time with performance.measure (#114): each ends at ms since the page was
-// opened, and took the ms in brackets. Later loads and their warm-up draws come in after the first frame.
+// opened, and took the ms in brackets. Later loads and the reversing camera's warm-up come in after the first frame.
 const startup = () =>
   performance.getEntriesByType('measure').map((m) => `${m.name.padEnd(24)}${(m.startTime + m.duration).toFixed(0).padStart(6)} (${m.duration.toFixed(0)})`);
 

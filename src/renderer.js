@@ -1046,7 +1046,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     const now = performance.now();
     if (joining.length) {
       joining.shift()();
-      warmCars = true; // the covered car's meshes are empty when they join
+      warmCars = true; // a joining car mesh may have no car in view: shown anyway, so its shaders are built now
     }
     // Resized right before this frame draws into it, so no frame shows a cleared or stretched buffer.
     const ratio = resolution.frame(now - lastFrame);
@@ -1226,8 +1226,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
       renderer.setRenderTarget(rearTarget);
       // Unshown, as a warm-up, only its shaders are built: three's compileAsync builds one object's at a time, between
       // frames, where drawing built them all in one frame (seconds on the WebGL 2 backend behind a 6× slower CPU).
+      // Without scheduler.yield (Safari) it builds one per frame, so ?perf shows when it is done.
       if (rearTime > 0) renderer.render(scene, rearCamera);
-      else renderer.compileAsync(scene, rearCamera).catch(console.error);
+      else renderer.compileAsync(scene, rearCamera).then(() => performance.measure('reversing camera warm-up', { start: now }), console.error);
       renderer.setRenderTarget(null);
       body.cab.interior.visible = inCab;
       if (rear) {
@@ -1339,18 +1340,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
     for (const [name, load] of [...laterLoads, ['full sky', async () => showFullSky && showFullSky(await loadSky(lighting.sky))]]) {
       const start = performance.now();
       const staged = new THREE.Group();
-      load(staged).then(async () => {
+      // A load or build that fails is logged, and whatever it staged still joins.
+      load(staged).catch(console.error).then(async () => {
         renderer.setRenderTarget(rearTarget);
         const rear = renderer.compileAsync(staged, rearCamera, scene);
         renderer.setRenderTarget(null);
-        await rear;
+        await rear.catch(console.error);
         for (const o of [...staged.children]) {
           const casts = o.castShadow;
           joining.push(() => scene.add(Object.assign(o, { castShadow: false })));
           if (casts) joining.push(() => (o.castShadow = true));
         }
         performance.measure(name, { start });
-      }).catch(console.error);
+      });
     }
   }).catch(console.error);
   laterLoads.push(['covered car', (into) => Promise.all(COVERED.map((file) => loader.loadAsync(MODELS + file))).then(([near, far]) => {
