@@ -53,19 +53,25 @@ describe('Buildings stepped to the street on slopes (#107)', () => {
   const openings = (b, side) => facadeParts(b, side, tables).filter((p) => ['door', 'shop', 'roller'].includes(p.cell));
   // The pavement's height 0.5 m out in front of an opening, and how far the opening's foot is off it.
   const off = (map, side, p) => p.y - p.size[1] / 2 - groundAt(map, tables, p.x - side.uz * 0.42, p.z + side.ux * 0.42);
+  // The worst of each, over every run and opening, asserted once: an expect per sample took seconds on Monti.
   const check = (map, buildings) => {
+    let [spread, short, gap, door] = [0, -Infinity, -Infinity, 0];
     for (const b of buildings) {
       for (const side of b.sides) {
         for (const run of side.runs) {
           const grounds = side.grounds.slice(run.from, run.to);
-          expect(Math.max(...grounds) - Math.min(...grounds)).toBeLessThanOrEqual(t.step + 1e-9);
-          expect(run.level + b.height).toBeLessThanOrEqual(b.roof + 1e-9); // its walls reach the roof
+          spread = Math.max(spread, Math.max(...grounds) - Math.min(...grounds));
+          short = Math.max(short, run.level + b.height - b.roof); // its walls reach the roof
           // No gap under the wall: its foot is under the open ground all along it.
-          for (let a = run.a0; a <= run.a1; a += 0.5) expect(run.foot).toBeLessThanOrEqual(map.heightAt(side.x + side.ux * a, side.z + side.uz * a) - under + 1e-9);
+          for (let a = run.a0; a <= run.a1; a += 0.5) gap = Math.max(gap, run.foot - (map.heightAt(side.x + side.ux * a, side.z + side.uz * a) - under));
         }
-        if (side.street) for (const p of openings(b, side)) expect(Math.abs(off(map, side, p)), `${p.cell} at ${p.x}, ${p.z}`).toBeLessThanOrEqual(t.door);
+        if (side.street) for (const p of openings(b, side)) door = Math.max(door, Math.abs(off(map, side, p)));
       }
     }
+    expect(spread).toBeLessThanOrEqual(t.step + 1e-9);
+    expect(short).toBeLessThanOrEqual(1e-9);
+    expect(gap).toBeLessThanOrEqual(1e-9);
+    expect(door).toBeLessThanOrEqual(t.door);
   };
 
   it('on a street climbing 12 %, steps a long front in runs, its doors on the pavement and its walls reaching the ground', () => {
