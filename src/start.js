@@ -4,11 +4,12 @@
 // Acts only through the handlers main.js passes.
 import { playedText, starsText } from './hud.js';
 
-// Every row of CREDITS.md's tables (Asset | Files | Source | Licence), without the files: the credits page's one source.
+// Every row of CREDITS.md's tables (Asset | Files | Source | Licence) but their headers (the line over a |---| rule),
+// without the files: the credits page's one source.
 export const creditsFrom = (markdown) =>
   markdown
     .split('\n')
-    .filter((line) => line.startsWith('| ') && !line.startsWith('| Asset |'))
+    .filter((line, i, lines) => line.startsWith('| ') && !lines[i + 1]?.startsWith('|-'))
     .map((line) => line.split('|').map((cell) => cell.trim()))
     .map(([, asset, , source, licence]) => ({ asset, source, licence }));
 
@@ -58,8 +59,9 @@ export function createStart(root, tables, strings, credits, { onNewGame, onReset
           ${back}
           <h2>${s.credits}</h2>
           <p>${s.creditsIntro}</p>
-          <ul>${credits.map((c) => `<li>${c.asset} · <a href="${c.source}" target="_blank" rel="noopener">${c.licence}</a></li>`).join('')}</ul>
+          <ul>${credits.map((c) => `<li><a href="${c.source}" target="_blank" rel="noopener">${c.asset}</a> · ${c.licence}</li>`).join('')}</ul>
           <p>${s.creditsOwn}</p>
+          ${back}
         </section>
       </div>
     </div>`;

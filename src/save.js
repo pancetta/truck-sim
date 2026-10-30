@@ -91,6 +91,7 @@ export function createSave(storage, tables) {
   }
 
   let written = null; // the last written profile, with the values that change every step rounded (see save())
+  let cleared = false; // reset() ran: the page reloads, and the frames before it must not write the old profile back
 
   // Call it as often as you like: it writes only when the profile changed, but counts the distance in
   // whole 100 m, fuel in whole litres, energy in whole percent, the time of day in 15 game minutes and the time
@@ -105,7 +106,7 @@ export function createSave(storage, tables) {
       timeOfDay: Math.floor(profile.timeOfDay / 15),
       timePlayed: Math.floor(profile.timePlayed / 60),
     });
-    if (newer || key === written) return;
+    if (newer || cleared || key === written) return;
     written = key;
     try {
       storage.setItem(KEY, JSON.stringify(profile));
@@ -114,9 +115,9 @@ export function createSave(storage, tables) {
     }
   }
 
+  // Every caller reloads the page after it, which starts a fresh Profile with a new save module.
   function reset() {
-    written = null;
-    newer = false; // the player chose to start over
+    cleared = true;
     try {
       storage.removeItem(KEY);
     } catch {

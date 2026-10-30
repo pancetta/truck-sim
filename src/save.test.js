@@ -165,8 +165,9 @@ describe('save module', () => {
     save.save({ ...profile, money: 10 });
     expect(storage.items[KEY]).toBe(newer);
 
-    save.reset(); // Spielstand zurücksetzen: the player starts over on purpose
-    save.save(profile);
+    save.reset(); // Spielstand zurücksetzen: the player starts over on purpose, and the page reloads
+    const next = createSave(storage, tables);
+    next.save(next.load());
     expect(JSON.parse(storage.items[KEY])).toEqual(fresh);
   });
 
@@ -226,8 +227,8 @@ describe('save module', () => {
     expect(writes).toHaveLength(7);
 
     save.reset();
-    save.save(profile); // after a reset the same profile is written again
-    expect(writes).toHaveLength(8);
+    save.save({ ...profile, money: 1 }); // the frames before the reload write nothing back
+    expect(writes).toHaveLength(7);
   });
 
   test("the game's own visual items, bought through the Sim, survive a save", () => {
@@ -293,6 +294,7 @@ describe('save module', () => {
     const save = createSave(storage, tables);
     save.save(valid);
     save.reset();
+    save.save(valid); // a frame before the reload
     expect(storage.items).toEqual({});
     expect(save.load()).toEqual(fresh);
   });

@@ -51,7 +51,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 .wheel,
 .pedal,
 .camera-toggle,
-.reset {
+.reset,
+.menu-toggle {
   pointer-events: auto;
   touch-action: none;
   /* A light halo keeps the dark controls readable over the dark cab interior. */
@@ -144,7 +145,8 @@ body:has(.rear-inset:not([hidden])) .goal {
 }
 
 .camera-toggle,
-.reset {
+.reset,
+.menu-toggle {
   position: absolute;
   top: max(24px, env(safe-area-inset-top));
   right: max(24px, env(safe-area-inset-right));
@@ -949,21 +951,10 @@ body:has(.rear-inset:not([hidden])) .goal {
   display: none;
 }
 
-/* Menü button (#112): beside the camera button, which is about 110 px wide. */
+/* Menü button (#112): beside the camera button, which is about 110 px wide. shortcut: the offsets assume the
+   neighbours' label widths; a longer label overlaps, then lay the top buttons out in a flex row. */
 .menu-toggle {
-  position: absolute;
-  top: max(24px, env(safe-area-inset-top));
   right: calc(max(24px, env(safe-area-inset-right)) + 122px);
-  padding: 12px 20px;
-  border: 0;
-  border-radius: 14px;
-  background: rgb(40 40 48 / 0.85);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  pointer-events: auto;
-  filter: drop-shadow(0 0 2px rgb(255 255 255 / 0.8));
 }
 
 /* Start screen (#112): the title over the orbiting view on the left (tables.showroom.shift), the panel on the right, the
@@ -1120,11 +1111,14 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
 }
 
 @media (max-height: 480px) {
-  /* The status strip takes the top row's middle, so it goes beside the Werkstatt button (about 115 px wide). */
+  /* The status strip, goal banner, reversing camera and orders panel take the top rows' middle, so it goes small on the
+     left, under the orders button and clear of the round wheel. */
   .menu-toggle {
-    top: calc(max(24px, env(safe-area-inset-top)) + 60px);
+    top: calc(max(24px, env(safe-area-inset-top)) + 107px);
     right: auto;
-    left: calc(max(24px, env(safe-area-inset-left)) + 256px);
+    left: max(24px, env(safe-area-inset-left));
+    padding: 8px 14px;
+    font-size: 14px;
   }
 
   .start-title {

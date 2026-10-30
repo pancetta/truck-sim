@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { creditsFrom } from './start.js';
+import { strings } from './strings.js';
+import * as tables from './tables.js';
 
 test('the credits are every row of the markdown tables, without the header, the rule or the files', () => {
   const md = [
@@ -10,7 +12,7 @@ test('the credits are every row of the markdown tables, without the header, the 
     '|---|---|---|---|',
     '| Sky by A. Painter | `public/sky.ktx2` | https://example.org/sky | CC0 1.0 |',
     '<!-- a comment -->',
-    '| Asset | Files | Source | Licence |',
+    '| Name | Files | Source | Licence |',
     '|---|---|---|---|',
     '| Map data © Someone | `public/maps/x.json` | https://example.org/map | ODbL 1.0 |',
   ].join('\n');
@@ -25,4 +27,8 @@ test("CREDITS.md's credits include the map data and the elevation, whose licence
   expect(credits).toContainEqual({ asset: 'Map data © OpenStreetMap contributors', source: 'https://www.openstreetmap.org/copyright', licence: 'ODbL 1.0' });
   expect(credits.find((c) => c.asset.startsWith('Elevation: TINITALY 1.1'))?.licence).toBe('CC BY 4.0');
   expect(credits.find((c) => c.asset.startsWith('Car Kit 3.1'))?.licence).toBe('CC0 1.0');
+});
+
+test('every map card has its name and line', () => {
+  for (const id of Object.keys(tables.maps)) expect(strings.maps[id], id).toMatchObject({ name: expect.any(String), line: expect.any(String) });
 });

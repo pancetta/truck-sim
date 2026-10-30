@@ -23,7 +23,7 @@ const RULE_ICONS = {
 export const kmText = (m, strings) => `${Math.floor(m / 1000).toLocaleString('de-DE')} ${strings.km}`;
 const twoDigits = (n) => String(n).padStart(2, '0');
 export const clockText = (minutes) => `${twoDigits(Math.floor(minutes / 60))}:${twoDigits(Math.floor(minutes % 60))}`;
-export const playedText = (s, strings) => `${strings.timePlayed} ${Math.floor(s / 3600)}:${twoDigits(Math.floor((s % 3600) / 60))} h`;
+export const playedText = (s, strings) => `${strings.timePlayed} ${Math.floor(s / 3600)}:${twoDigits(Math.floor((s % 3600) / 60))}\u00a0h`; // no break before the h
 // The Stars (state.rank) and the next tier's, if any.
 export const starsText = ({ stars, next }) => `★ ${stars}${next === null ? '' : `/${next}`}`;
 
