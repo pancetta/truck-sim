@@ -207,10 +207,11 @@ describe('Sim: traffic gridlock soak', () => {
   const limit = 40;
   const { stopSpeed } = tables.fleet.truck;
 
-  // shortcut: "queued" is the first vehicle centre within 1.5 m of the car's route, sampled every 0.5 m up to 12 m
-  // ahead (#77: a scooter stopped at the end of a turn, still facing round it, missed the car ahead along its heading),
-  // and a light is "ahead" within 40 m of route; good enough for queues in lanes, which is all the Sim has. Upgrade if
-  // longer vehicles start to fool it.
+  // shortcut: "queued" is the first vehicle centre within 1.5 m of the car's route, sampled every 0.5 m up to 25 m
+  // ahead (#77: a scooter stopped at the end of a turn, still facing round it, missed the car ahead along its heading;
+  // #109: a car waiting before a crossing for its exit, which a garbage truck at work blocked 21 m on), and a light is
+  // "ahead" within 40 m of route; good enough for queues in lanes, which is all the Sim has. Upgrade if longer vehicles
+  // start to fool it.
   function waiting(car, sim, excused) {
     if (excused.has(car)) return excused.get(car);
     excused.set(car, false); // a cycle of cars each queued behind the next is stuck
@@ -225,7 +226,7 @@ describe('Sim: traffic gridlock soak', () => {
     if (!ok) {
       let ahead = null;
       const pose = { x: 0, z: 0, heading: 0 };
-      for (let i = 0, s = car.s + 0.5, d = 0.5; d <= 12 && !ahead; s += 0.5, d += 0.5) {
+      for (let i = 0, s = car.s + 0.5, d = 0.5; d <= 25 && !ahead; s += 0.5, d += 0.5) {
         while (i < car.route.length && s > car.route[i].length) s -= car.route[i++].length;
         if (i === car.route.length) break;
         poseAt(car.route[i], s, pose);
@@ -238,10 +239,10 @@ describe('Sim: traffic gridlock soak', () => {
   }
 
   // The longest any car was stuck, in s, with the truck driven by the autopilot, or else parked off the road near
-  // `near` ({ x, z }); starting with `profile` (the trailer hitched or not), on Monti's terrain unless `flat`.
-  function longestStuck(cars, seed, near, profile = freshProfile(), flat = false) {
+  // `near` ({ x, z }); starting with `profile` (the trailer hitched or not), on Monti's terrain.
+  function longestStuck(cars, seed, near, profile = freshProfile()) {
     const counted = { ...undrained(), rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: cars })) } };
-    const map = flat ? { ...monti(counted), heightAt: () => 0, slopeAt: () => 0 } : monti(counted);
+    const map = monti(counted);
     const sim = createSim(counted, map, seeded(seed), profile);
     // Parked, a tap of the brake every other step renews the hill hold (#105); held, it would engage reverse.
     let tap = false;
@@ -289,10 +290,7 @@ describe('Sim: traffic gridlock soak', () => {
   }, 120_000);
   test(`${top} cars, the truck with its trailer (#96) on the autopilot loop: no car stuck for over ${limit} s`, () => {
     const hitched = { ...freshProfile(), trailer: { level: 1, hitched: true } };
-    // shortcut: on the terrain (#105) seed 1 holds a car 41 s at the unlit four-way junction near (109, -186), two cars
-    // and it giving way to each other until traffic.patience lets one go, the truck 100 m off; on the flat until #109
-    // brings the soaks onto the terrain.
-    const longest = [1, 2, 3].map((seed) => Math.round(longestStuck(top, seed, null, hitched, true)));
+    const longest = [1, 2, 3].map((seed) => Math.round(longestStuck(top, seed, null, hitched)));
     expect(longest.filter((s) => s > limit)).toEqual([]);
   }, 120_000);
 });

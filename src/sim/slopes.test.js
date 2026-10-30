@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import * as tables from '../tables.js';
 import { freshProfile } from './sim.js';
 import { createTerrain } from './terrain.js';
-import { BRAKE, DT, GAS, IDLE, acceptFrom, createSim, drive, lane, parkAt, seeded, timeUntil } from './fixtures.js';
+import { BRAKE, DT, GAS, IDLE, acceptFrom, addCar, build, createSim, drive, lane, parkAt, seeded, timeUntil, way } from './fixtures.js';
 
 // Vehicles on slopes (#105): gravity along the heading, a hill start for the heaviest loads, a hill hold after the
 // brake, more fuel uphill, and the body pitched and rolled by the ground under it.
@@ -199,5 +199,34 @@ describe('Sim: Vehicles on slopes', () => {
     expect(perMetre(-0.05)).toBeCloseTo(perMetre(0), 6);
     // Coasting up a slope on its momentum costs no more than coasting on the flat.
     expect(perMetre(STEEP, IDLE)).toBeCloseTo(perMetre(0, IDLE), 6);
+  });
+});
+
+// AI traffic on slopes (#109): a ring road round a 180 × 80 m block on a plane rising `grade` per m towards +x, so the
+// eastbound lane on its north side climbs and the westbound one on its south side runs down; no traffic of its own.
+describe('Sim: AI traffic on slopes', () => {
+  const quiet = { ...tables, police: { ...tables.police, count: 0 }, pedestrians: { ...tables.pedestrians, count: 0 }, zebras: { ...tables.zebras, use: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) } };
+  const { lane: offset } = tables.osm.classes.residential;
+  // The speed (m/s) a `kind` reaches driving from x = -60 to x = 20 along the north (`up`) or south side.
+  function speed(grade, kind, up = true) {
+    const map = build([way('residential', [[-90, -40], [90, -40], [90, 40], [-90, 40], [-90, -40]])], quiet, undefined, { minX: -150, minZ: -150, maxX: 150, maxZ: 150 });
+    const h = (x) => grade * x;
+    const grid = { minX: -1000, minZ: -1000, cell: 2000, nx: 2, nz: 2, h: [h(-1000), h(1000), h(-1000), h(1000)] };
+    const sim = createSim(quiet, { ...map, ...createTerrain(grid) }, seeded(1), freshProfile());
+    Object.assign(sim.state.truck, { x: 0, z: 0, heading: 0, speed: 0 }); // in the block, out of the way
+    const car = up ? addCar(sim, 1, [[-60, -40 + offset], [90, -40]], false, kind) : addCar(sim, 1, [[60, 40 - offset], [-90, 40]], false, kind);
+    timeUntil(sim, IDLE, () => (up ? car.x > 20 : car.x < -20), 60);
+    return car.speed;
+  }
+
+  test('AI cars drive slower up a climb, two-wheelers slower still; downhill as on the flat', () => {
+    for (const kind of ['car', 'scooter', 'bicycle']) {
+      const flat = speed(0, kind);
+      expect(speed(0.1, kind, false), kind).toBeCloseTo(flat, 5);
+      const share = speed(0.1, kind) / flat;
+      expect(share, kind).toBeLessThan(0.9);
+      expect(share, kind).toBeGreaterThan(0.4);
+      if (kind === 'bicycle') expect(share).toBeLessThan(speed(0.1, 'car') / speed(0, 'car') - 0.15);
+    }
   });
 });

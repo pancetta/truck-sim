@@ -139,7 +139,7 @@ export function createRiders(scene, tables, ground) {
   const matrix = new THREE.Matrix4();
   const position = new THREE.Vector3();
   const turn = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
+  const euler = new THREE.Euler();
   const one = new THREE.Vector3(1, 1, 1);
   const bounds = new THREE.Sphere(new THREE.Vector3(), 1.2); // its radius set per kind
 
@@ -158,7 +158,9 @@ export function createRiders(scene, tables, ground) {
       const mesh = pair[level];
       if (mesh.count === room) continue; // cars leaving through a gate don't count against the tier
       const list = colours[car.kind];
-      matrix.compose(position.set(car.x, y, car.z), turn.setFromAxisAngle(up, car.heading), one);
+      // Pitched with the ground over its length (#109), as renderer.js's drawCar pitches the cars.
+      const pitch = Math.atan(ground.slopeAt(car.x, car.z, Math.sin(car.heading), Math.cos(car.heading), car.size.length / 2));
+      matrix.compose(position.set(car.x, y, car.z), turn.setFromEuler(euler.set(-pitch, car.heading, 0, 'YXZ')), one);
       mesh.setMatrixAt(mesh.count, matrix);
       mesh.setColorAt(mesh.count, list[(car.id * 7) % list.length]);
       mesh.count++;

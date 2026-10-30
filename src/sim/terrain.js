@@ -7,8 +7,10 @@ export function createTerrain(grid) {
   const heightAt = (x, z) => {
     const i = Math.min(nx - 1.0001, Math.max(0, (x - minX) / cell));
     const j = Math.min(nz - 1.0001, Math.max(0, (z - minZ) / cell));
-    const [i0, j0] = [Math.floor(i), Math.floor(j)];
-    const [u, v] = [i - i0, j - j0];
+    const i0 = Math.floor(i); // scalars, not destructured pairs: AI cars sample it every step (#109)
+    const j0 = Math.floor(j);
+    const u = i - i0;
+    const v = j - j0;
     const k = j0 * nx + i0;
     return (h[k] * (1 - u) + h[k + 1] * u) * (1 - v) + (h[k + nx] * (1 - u) + h[k + nx + 1] * u) * v;
   };

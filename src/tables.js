@@ -578,6 +578,9 @@ export const traffic = {
   laneOffset: 2.2, // m; cars cruise at the limit of the edge they are on and slow down before a slower one
   turnAccel: 4.5, // m/s² sideways round corners: a turn of radius r is taken at up to sqrt(turnAccel · r)
   accel: 2, // m/s²
+  // On a climb (terrain, #109) a car drives at 1 / (1 + climb × the rise per m) of its speed: 10 % up at 83 %, 25 km/h
+  // in a 30 zone; downhill as on the flat. Two-wheelers may have their own.
+  climb: 2,
   brake: 4, // m/s², planned braking for stop lines, corners and the car or truck ahead
   maxBrake: 8, // m/s²; a light that would need harder braking (it turned amber too late) is driven through
   followGap: 2.5, // m between bumpers when stopped behind a car
@@ -622,11 +625,12 @@ export const traffic = {
   // Priority at junctions without lights by road class, higher first; right before left between equal ones
   priority: { secondary: 3, tertiary: 2, residential: 1, unclassified: 1, service: 0 },
   // Two-wheelers (#77): AI cars of these kinds (never police cars), each a `share` of the new ones, with their own
-  // footprint (`length`, `width` in m) and `accel` (m/s²); one slower than the roads' limits rides at most `top` km/h.
+  // footprint (`length`, `width` in m) and `accel` (m/s²); one slower than the roads' limits rides at most `top` km/h;
+  // `climb` in place of the cars' (a bicycle's: 10 % up at 62 % of its speed, 11 km/h).
   // Cars behind follow them (no AI car overtakes), so the slow kinds stay few. Their look: riders.js.
   twoWheelers: {
     scooter: { share: 0.15, length: 1.9, width: 0.75, accel: 2.5 },
-    bicycle: { share: 0.05, length: 1.8, width: 0.6, accel: 1, top: 18 },
+    bicycle: { share: 0.05, length: 1.8, width: 0.6, accel: 1, top: 18, climb: 6 },
   },
   // The riders' helmets (#102), bright so they show near and far; a rider's id picks one
   helmets: [0xffc61a, 0xff6a13, 0xe8202a, 0xf4f4f0, 0x7ed321, 0x22a6e8],

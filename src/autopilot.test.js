@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as tables from './tables.js';
 import { createSim } from './sim/sim.js';
-import { monti, undrained } from './sim/fixtures.js';
+import { BRAKE, IDLE, monti, undrained } from './sim/fixtures.js';
 import { createAutopilot } from './autopilot.js';
 import { freshProfile, seeded } from './sim/sim.js';
 
@@ -107,13 +107,57 @@ test('the autopilot drives the loop (tables.perf.spots) among its traffic, hardl
   const zones = tables.perf.spots.map((id) => map.spots.find((s) => s.id === id).zone);
   const passed = new Set();
   let crashes = 0;
+  let [px, pz] = [sim.state.truck.x, sim.state.truck.z];
   for (let i = 0; i < 520 / step; i++) {
     const fine = sim.state.lastFine;
     sim.step(step, autopilot.update(step));
     if (sim.state.lastFine !== fine && sim.state.lastFine.reason === 'collision') crashes++;
     const { x, z } = sim.state.truck;
-    zones.forEach((zone, k) => x > zone.minX && x < zone.maxX && z > zone.minZ && z < zone.maxZ && passed.add(k));
+    // Every 1 m from where it was: a jump on past the cars it waited behind (#109: a scooter behind a garbage truck at
+    // work) passes zones by too.
+    const n = Math.ceil(Math.hypot(x - px, z - pz));
+    for (let k = 1; k <= n; k++) {
+      const [qx, qz] = [px + ((x - px) * k) / n, pz + ((z - pz) * k) / n];
+      zones.forEach((zone, j) => qx > zone.minX && qx < zone.maxX && qz > zone.minZ && qz < zone.maxZ && passed.add(j));
+    }
+    [px, pz] = [x, z];
   }
   expect([...passed].sort()).toEqual(tables.perf.spots.map((_, k) => k)); // a lap takes about 470 s
   expect(crashes).toBeLessThanOrEqual(3); // shortcut: it ignores right of way and only waits for cars ahead
 });
+
+test('the autopilot pulls away after a stop on the loop\'s steepest climb, full and with the trailer hitched (#109)', () => {
+  // No AI cars, police, street events or pedestrians: only the climb is under test.
+  const empty = { ...undrained(), police: { ...tables.police, count: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) }, events: { ...tables.events, count: 0 }, pedestrians: { ...tables.pedestrians, count: 0 } };
+  const sim = createSim(empty, map, seeded(1), { ...freshProfile(), trailer: { level: 1, hitched: true } });
+  const autopilot = createAutopilot(sim, map, tables);
+  const t = sim.state.truck;
+  t.mass += tables.fleet.truck.maxCargo * 1000; // full: empty, it would start uphill without the hill start (#105)
+  const grade = () => map.slopeAt(t.x, t.z, Math.sin(t.heading), Math.cos(t.heading), 5);
+  // shortcut: 1000 points walk round the loop more than once (place wraps), so its length needn't be known.
+  let steepest = { grade: 0, i: 0, x: 0, z: 0 };
+  for (let i = 0; i < 1000; i++) {
+    autopilot.place(i);
+    if (grade() > steepest.grade) steepest = { grade: grade(), i, x: t.x, z: t.z };
+  }
+  expect(steepest.grade).toBeGreaterThan(0.08);
+  // On from 40 points before it until there, then stopped (still steering) and held for 5 s, tapping the brake as a
+  // driver waiting does (holding it would engage reverse).
+  autopilot.place(steepest.i - 40);
+  let [px, pz, jumps] = [t.x, t.z, 0];
+  const go = (input) => {
+    sim.step(step, input);
+    if (Math.hypot(t.x - px, t.z - pz) > 1) jumps++; // the autopilot put it on along the loop: it was stuck
+    [px, pz] = [t.x, t.z];
+  };
+  for (let i = 0; i < 60 / step && Math.hypot(t.x - steepest.x, t.z - steepest.z) > 3; i++) go(autopilot.update(step));
+  expect(Math.hypot(t.x - steepest.x, t.z - steepest.z)).toBeLessThan(3);
+  for (let i = 0; i < 10 / step && Math.abs(t.speed) > 0.1; i++) go({ ...autopilot.update(step), gas: 0, brake: 1 });
+  for (let i = 0; i < 5 / step; i++) go(i % 2 ? BRAKE : IDLE); // standing, the autopilot not asked: it would jump on
+  expect(t.speed).toBeCloseTo(0, 1);
+  expect(grade()).toBeGreaterThan(0.08);
+  const [x0, z0] = [t.x, t.z];
+  for (let i = 0; i < 20 / step; i++) go(autopilot.update(step));
+  expect(jumps).toBe(0);
+  expect(Math.hypot(t.x - x0, t.z - z0)).toBeGreaterThan(40);
+}, 60_000);

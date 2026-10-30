@@ -40,11 +40,11 @@ export function createTraffic(tables, map, random) {
   const t = tables.traffic;
   const { nodes, paths } = map.graph;
   const size = tables.city.obstacles.car; // AI cars are the size of the parked ones
-  // Per kind: footprint (m), top speed (m/s) and acceleration (m/s²); a car keeps to the road's limit.
-  const kinds = { car: { length: size.length, width: size.width, top: Infinity, accel: t.accel } };
-  for (const [kind, k] of Object.entries(t.twoWheelers)) kinds[kind] = { length: k.length, width: k.width, top: (k.top ?? Infinity) / 3.6, accel: k.accel };
+  // Per kind: footprint (m), top speed (m/s), acceleration (m/s²) and climb (see curves); a car keeps to the road's limit.
+  const kinds = { car: { length: size.length, width: size.width, top: Infinity, accel: t.accel, climb: t.climb } };
+  for (const [kind, k] of Object.entries(t.twoWheelers)) kinds[kind] = { length: k.length, width: k.width, top: (k.top ?? Infinity) / 3.6, accel: k.accel, climb: k.climb ?? t.climb };
   const garbage = tables.events.garbage;
-  kinds.garbage = { length: size.length, width: size.width, top: garbage.top / 3.6, accel: garbage.accel };
+  kinds.garbage = { length: size.length, width: size.width, top: garbage.top / 3.6, accel: garbage.accel, climb: t.climb };
   // A new car's kind, from its id rather than a draw so the seeds keep their runs: the id times the golden ratio
   // spreads evenly over [0, 1), and each two-wheeler kind takes its share of it.
   function kindOf(id) {
@@ -1067,7 +1067,9 @@ export function createTraffic(tables, map, random) {
   const curveReach = top ** 2 / (2 * t.brake); // m from which a curve or limit can't slow a car below cruise
   function curves(ci) {
     const car = cars[ci];
-    let speed = Math.min(pace * Math.min(cruise[car.lane.id], car.size.top), car.prim.r ? turnSpeed(car.prim.r) : top);
+    // Up a climb (#109) at 1 / (1 + its kind's climb × the ground's rise per m under it along its heading).
+    const climb = 1 + car.size.climb * Math.max(0, map.slopeAt(car.x, car.z, Math.sin(car.heading), Math.cos(car.heading), car.size.length / 2));
+    let speed = Math.min((pace * Math.min(cruise[car.lane.id], car.size.top)) / climb, car.prim.r ? turnSpeed(car.prim.r) : top);
     let dist = -car.s; // centre to the start of the path
     for (let i = 0; i < car.route.length && dist < curveReach; i++) {
       const p = car.route[i];
