@@ -106,7 +106,17 @@ describe('Renderer: chase camera on slopes (#108)', () => {
     const ground = (s) => 30 + Math.max(0, 4 - Math.abs(s - 7)); // a 4 m crest halfway back
     const y = chaseY(at(ground), 0, 0, 0, -1, arm, above, 32, opts);
     expect(y).toBeGreaterThan(36);
-    expect(clearance(ground, y, 32)).toBeGreaterThan(camera.chaseClear - 0.5); // sampled every 2.5 m, not everywhere
+    expect(clearance(ground, y, 32)).toBeGreaterThan(0); // sampled every 2.5 m, so less than chaseClear on a peak this sharp
+  });
+
+  it('changes smoothly as the arm eases in, over a crest too', () => {
+    const ground = (s) => 30 + Math.max(0, 4 - Math.abs(s - 7));
+    let last = chaseY(at(ground), 0, 0, 0, -1, 14, above, 32, opts);
+    for (let a = 13.99; a > 4; a -= 0.01) {
+      const y = chaseY(at(ground), 0, 0, 0, -1, a, above, 32, opts);
+      expect(Math.abs(y - last)).toBeLessThan(0.05);
+      last = y;
+    }
   });
 
   it('copes with an arm pulled all the way in', () => {

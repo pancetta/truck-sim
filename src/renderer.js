@@ -95,14 +95,13 @@ export function parkedHeading([a, b, c]) {
 
 // The chase camera's world y at `arm` m from (x, z) along (dx, dz) (#108): `above` m over the ground at (x, z), or
 // higher where needed for its line of sight down to the look point (world y `lookY` over (x, z)) to keep `clear` m
-// over the ground under it, sampled at most `step` m apart. So it never dips into a slope rising behind the truck
-// or looks through a crest.
+// over the ground under it, sampled every `step` m and under the camera. So it never dips into a slope rising behind
+// the truck or looks through a crest. Fixed sample points, so the height changes smoothly as the arm eases in or out.
 export function chaseY(heightAt, x, z, dx, dz, arm, above, lookY, { clear, step }) {
   let y = heightAt(x, z) + above;
-  const n = Math.ceil(arm / step);
-  for (let i = 1; i <= n; i++) {
-    const t = i / n;
-    y = Math.max(y, lookY + (heightAt(x + dx * arm * t, z + dz * arm * t) + clear - lookY) / t);
+  for (let s = step; s < arm + step; s += step) {
+    const d = Math.min(s, arm);
+    y = Math.max(y, lookY + ((heightAt(x + dx * d, z + dz * d) + clear - lookY) * arm) / d);
   }
   return y;
 }
