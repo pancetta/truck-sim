@@ -1139,16 +1139,14 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
   }
 }
 
-/* The tutorial's card (#113): bottom centre, over the dashboard and between the wheel and the pedals; the notices,
-   progress bar and orders panel (#orders, later in the page) cover it while they show. */
+/* The tutorial's card (#113): on the left, under the money, orders and Werkstatt buttons and over the wheel, clear of
+   the road ahead and the cab's instruments. */
 .tutorial {
   position: fixed;
-  left: calc(50% - 13px);
-  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 150px);
-  transform: translateX(-50%);
+  top: calc(max(24px, env(safe-area-inset-top)) + 180px);
+  left: max(24px, env(safe-area-inset-left));
   box-sizing: border-box;
-  width: min(380px, calc(100% - 446px));
-  min-width: 240px;
+  width: 300px;
   padding: 10px 14px 12px;
   border: 2px solid #e8c547;
   border-radius: 14px;
@@ -1218,11 +1216,22 @@ body[data-tutorial='home'] :is(.money, #minimap) {
   }
 }
 
+/* Phones: the wheel takes the left, so top centre under the goal banner, between the wheel and the reset button, over
+   the service buttons; it gives way to the payment, fine and other notices and the load bar while they show. */
 @media (max-height: 480px) {
   .tutorial {
-    bottom: calc(max(24px, env(safe-area-inset-bottom)) + 130px);
+    top: calc(max(24px, env(safe-area-inset-top)) + 76px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    width: calc(100% - 2 * 210px);
+    min-width: 240px;
     padding: 8px 12px 10px;
     font-size: 14px;
+  }
+
+  body:has(.paid:not([hidden]), .progress:not([hidden])) .tutorial {
+    visibility: hidden;
   }
 
   .tutorial p {
