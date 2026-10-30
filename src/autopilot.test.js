@@ -19,9 +19,10 @@ test('the autopilot drives the same way every run', () => {
   expect(drive()).toEqual(drive());
 });
 
+// No AI cars, police, street events or pedestrians (solid to the truck since #100), so nothing but the streets is under test.
+const empty = { ...tables, police: { ...tables.police, count: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) }, events: { ...tables.events, count: 0 }, pedestrians: { ...tables.pedestrians, count: 0 } };
+
 describe('the autopilot into the docks', () => {
-  // No AI cars, police, street events or pedestrians (solid to the truck since #100), so nothing but the streets is under test.
-  const empty = { ...tables, police: { ...tables.police, count: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) }, events: { ...tables.events, count: 0 }, pedestrians: { ...tables.pedestrians, count: 0 } };
   const spot = (id) => map.spots.find((s) => s.id === id);
   const inZone = ({ x, z }, { zone }) => x > zone.minX && x < zone.maxX && z > zone.minZ && z < zone.maxZ;
 
@@ -106,7 +107,7 @@ test('the autopilot drives the loop (tables.perf.spots) among its traffic, hardl
   autopilot.place();
   const zones = tables.perf.spots.map((id) => map.spots.find((s) => s.id === id).zone);
   const passed = new Set();
-  let crashes = 0;
+  let [crashes, jumps] = [0, 0];
   let [px, pz] = [sim.state.truck.x, sim.state.truck.z];
   for (let i = 0; i < 520 / step; i++) {
     const fine = sim.state.lastFine;
@@ -116,6 +117,7 @@ test('the autopilot drives the loop (tables.perf.spots) among its traffic, hardl
     // Every 1 m from where it was: a jump on past the cars it waited behind (#109: a scooter behind a garbage truck at
     // work) passes zones by too.
     const n = Math.ceil(Math.hypot(x - px, z - pz));
+    if (n > 1) jumps++; // the autopilot put it on: it was stuck
     for (let k = 1; k <= n; k++) {
       const [qx, qz] = [px + ((x - px) * k) / n, pz + ((z - pz) * k) / n];
       zones.forEach((zone, j) => qx > zone.minX && qx < zone.maxX && qz > zone.minZ && qz < zone.maxZ && passed.add(j));
@@ -124,12 +126,13 @@ test('the autopilot drives the loop (tables.perf.spots) among its traffic, hardl
   }
   expect([...passed].sort()).toEqual(tables.perf.spots.map((_, k) => k)); // a lap takes about 470 s
   expect(crashes).toBeLessThanOrEqual(3); // shortcut: it ignores right of way and only waits for cars ahead
+  // shortcut: 5 jumps in this run: on from behind standing cars it waits for (4, flat or downhill), and clipping a wall at
+  // the corner into Piazza di San Martino ai Monti (412, 27; it does on the flat too); none stuck on a climb (#109).
+  expect(jumps).toBeLessThanOrEqual(6);
 });
 
 test('the autopilot pulls away after a stop on the loop\'s steepest climb, full and with the trailer hitched (#109)', () => {
-  // No AI cars, police, street events or pedestrians: only the climb is under test.
-  const empty = { ...undrained(), police: { ...tables.police, count: 0 }, rank: { ...tables.rank, tiers: tables.rank.tiers.map((t) => ({ ...t, traffic: 0 })) }, events: { ...tables.events, count: 0 }, pedestrians: { ...tables.pedestrians, count: 0 } };
-  const sim = createSim(empty, map, seeded(1), { ...freshProfile(), trailer: { level: 1, hitched: true } });
+  const sim = createSim(undrained(empty), map, seeded(1), { ...freshProfile(), trailer: { level: 1, hitched: true } });
   const autopilot = createAutopilot(sim, map, tables);
   const t = sim.state.truck;
   t.mass += tables.fleet.truck.maxCargo * 1000; // full: empty, it would start uphill without the hill start (#105)
@@ -156,8 +159,8 @@ test('the autopilot pulls away after a stop on the loop\'s steepest climb, full 
   for (let i = 0; i < 5 / step; i++) go(i % 2 ? BRAKE : IDLE); // standing, the autopilot not asked: it would jump on
   expect(t.speed).toBeCloseTo(0, 1);
   expect(grade()).toBeGreaterThan(0.08);
-  const [x0, z0] = [t.x, t.z];
+  const [x0, z0, h0] = [t.x, t.z, t.heading];
   for (let i = 0; i < 20 / step; i++) go(autopilot.update(step));
   expect(jumps).toBe(0);
-  expect(Math.hypot(t.x - x0, t.z - z0)).toBeGreaterThan(40);
+  expect((t.x - x0) * Math.sin(h0) + (t.z - z0) * Math.cos(h0)).toBeGreaterThan(40); // on up, not rolled back down
 }, 60_000);

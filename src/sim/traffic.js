@@ -11,7 +11,7 @@
 // and the step it became that (`first`: the step it first did, at that crossing; see rightOfWay); `passed` the nodes of its last PASSED turns, `turns` how many it took;
 // `stopped` the turn off a stop approach it last came to a full stop before (see targetSpeed). `kind` is 'car' or a
 // two-wheeler's (#77, tables.traffic.twoWheelers) or 'garbage' (a street event's garbage truck, #80: car-sized, it
-// stands `halt` s where it appears, then drives on), and `size` that kind's footprint, top speed and acceleration
+// stands `halt` s where it appears, then drives on), and `size` that kind's footprint, top speed, acceleration and climb
 // (`kinds`): contacts, following and stopping go by each car's own; the lanes, boxes and gates a car may use are
 // worked out for a car, the largest kind. Street events close edges (see close): cars no longer turn into them nor
 // appear on them, and the ones on one drive on out of it.
