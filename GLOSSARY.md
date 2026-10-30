@@ -12,7 +12,8 @@ _Avoid_: engine, game loop, world
 
 **Profile**:
 The player's lasting progress: money, **Stars**, distance driven, the owned **Vehicles** with their **Upgrades**,
-visuals, and each map's **Reputations** and **Story chain** progress, by the map's id. It is what the **Save** stores.
+visuals, each map's **Reputations** and **Story chain** progress, by the map's id, and where the **Tutorial** stands. It
+is what the **Save** stores.
 _Avoid_: account, player data
 
 **Save** ("Spielstand"):
@@ -22,9 +23,17 @@ _Avoid_: savegame, slot, autosave (as a noun)
 **Start screen** ("Startbildschirm"):
 What every launch shows after loading, over the paused game, and what the in-game **Menü** button opens: Weiterspielen
 (only with a **Save**), Neues Spiel (a fresh **Profile**, confirmed when it replaces one that was played), the map cards
-(one per map, open or locked; the chosen one is remembered apart from the **Save**), and the Anleitung, Einstellungen
-and Credits pages. The Credits list every row of `CREDITS.md`'s tables.
+(one per map, open or locked; the chosen one is remembered apart from the **Save**), and the Anleitung (a page with our
+own drawing per topic), Einstellungen (replay the **Tutorial**, reset the **Save**) and Credits pages. The Credits list
+every row of `CREDITS.md`'s tables.
 _Avoid_: title screen, main menu, pause menu
+
+**Tutorial**:
+The guided first delivery a new game starts with: a card of friendly steps (driving, braking, the HUD, accepting an
+**Offer**, the **Pickup**'s **Zone**, the **Drop-off**, reversing, the **Werkstatt** at **Home**), each passed once the
+player has done what it asks, with a pulsing ring round what it is about. No **Fines** while it runs, and nothing costs
+the clean **Star**. It can be skipped at any step and replayed from Einstellungen.
+_Avoid_: onboarding, intro, guide
 
 **Night** ("Nacht"):
 The part of the game clock's day from 20:00 to 06:00, when sleeping at home ends: the headlights and street lights are on, there are fewer **AI cars**, and deliveries earn the night bonus.

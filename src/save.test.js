@@ -24,7 +24,7 @@ function fakeStorage(items = {}) {
 
 const stored = (data) => createSave(fakeStorage({ [KEY]: JSON.stringify(data) }), tables).load();
 const valid = {
-  version: 9,
+  version: 10,
   money: 1234,
   stars: 4,
   distance: 5678.9,
@@ -40,19 +40,22 @@ const valid = {
   // Mid-chain on this map, and a chain this build doesn't know on a map that comes later.
   stories: { monti: { geburtstag: { client: 'B', step: 2 } }, laterMap: { laterChain: { client: 'A', step: 0 } } },
   trailer: { level: 2, hitched: true },
+  tutorial: 'offers', // mid-tutorial
 };
-// The same progress as saved by the earlier versions: 8, before the trailer (#96), 7, before Story chains (#87), 6, before Reputation (#86), 5, with
+// The same progress as saved by the earlier versions: 9, before the tutorial (#113), 8, before the trailer (#96), 7, before Story chains (#87), 6, before Reputation (#86), 5, with
 // the truck's upgrades before Vehicles (#88), 4, with rank points before Stars (#81), 3, before fuel, energy and the
-// clock (#48), and the grid city's 1, before the distance counter, and 2 (#67: no migration). Migrated, they come with no
-// trailer, before v8 with no Story progress, and before v7 with no Reputation.
-const { trailer, ...v9Fields } = valid;
+// clock (#48), and the grid city's 1, before the distance counter, and 2 (#67: no migration). Migrated, they come with the
+// tutorial done (they were played) and before v9 with no trailer, before v8 with no Story progress, and before v7 with no Reputation.
+const { tutorial, ...v10Fields } = valid;
+const v9 = { ...v10Fields, version: 9 };
+const { trailer, ...v9Fields } = v9;
 const v8 = { ...v9Fields, version: 8 };
 const noTrailer = { level: 0, hitched: false };
 const { stories, ...v8Fields } = v8;
 const v7 = { ...v8Fields, version: 7 };
 const { reputation, ...v7Fields } = v7;
 const v6 = { ...v7Fields, version: 6 };
-const migrated = { ...valid, reputation: {}, stories: {}, trailer: noTrailer };
+const migrated = { ...valid, reputation: {}, stories: {}, trailer: noTrailer, tutorial: null };
 const { vehicle, vehicles, ...v6Fields } = v6;
 const v5 = { ...v6Fields, upgrades: { motor: 2 }, version: 5 };
 const { stars, ...v5Fields } = v5;
@@ -93,6 +96,7 @@ describe('save module', () => {
       { ...valid, vehicles: { truck: {}, van: null } }, { ...valid, reputation: null }, { ...valid, reputation: { monti: [] } },
       { ...valid, reputation: { monti: { B: -1 } } }, { ...valid, reputation: { monti: { B: 2.5 } } }, { ...valid, reputation: { monti: { B: '3' } } },
       { ...v7Fields, version: 7 }, { ...v8Fields, version: 8 }, { ...v9Fields, version: 9 }, { ...valid, trailer: null },
+      { ...v10Fields, version: 10 }, { ...valid, tutorial: 3 }, { ...valid, tutorial: true },
       { ...valid, trailer: { level: 4, hitched: false } }, { ...valid, trailer: { level: -1, hitched: false } },
       { ...valid, trailer: { level: 1.5, hitched: false } }, { ...valid, trailer: { level: 1, hitched: 'yes' } }, { ...valid, stories: null }, { ...valid, stories: { monti: [] } },
       { ...valid, stories: { monti: { geburtstag: 2 } } }, { ...valid, stories: { monti: { geburtstag: { client: 'B', step: -1 } } } },
@@ -111,13 +115,22 @@ describe('save module', () => {
     expect(createSave(storage, tables).load()).toEqual(fresh);
   });
 
-  test('a version 8 save loads as version 9, with all progress kept and no trailer', () => {
-    expect(fresh.version).toBe(9);
-    expect(stored(v8)).toEqual({ ...valid, trailer: noTrailer });
+  test('a version 9 save loads as version 10, with all progress kept and the tutorial done', () => {
+    expect(fresh.version).toBe(10);
+    expect(stored(v9)).toEqual({ ...valid, tutorial: null });
   });
 
-  test('a version 7 save goes through both steps, with no Story progress and no trailer', () => {
-    expect(stored(v7)).toEqual({ ...valid, stories: {}, trailer: noTrailer });
+  test('a tutorial step this build does not know counts as done; a known one is kept, and so is done', () => {
+    expect(stored({ ...valid, tutorial: 'laterStep' }).tutorial).toBe(null);
+    for (const step of [...baseTables.tutorial.steps, null]) expect(stored({ ...valid, tutorial: step }).tutorial).toBe(step);
+  });
+
+  test('a version 8 save goes through both steps, with no trailer and the tutorial done', () => {
+    expect(stored(v8)).toEqual({ ...valid, trailer: noTrailer, tutorial: null });
+  });
+
+  test('a version 7 save goes through every step, with no Story progress, no trailer and the tutorial done', () => {
+    expect(stored(v7)).toEqual({ ...valid, stories: {}, trailer: noTrailer, tutorial: null });
   });
 
   test('a trailer hitched to another Vehicle than the truck, or not bought, is unhitched', () => {
@@ -157,7 +170,7 @@ describe('save module', () => {
   });
 
   test("a newer version's save loads a fresh profile and is never overwritten (an old cached build after a new one)", () => {
-    const newer = JSON.stringify({ ...valid, version: 10 });
+    const newer = JSON.stringify({ ...valid, version: 11 });
     const storage = fakeStorage({ [KEY]: newer });
     const save = createSave(storage, tables);
     const profile = save.load();
@@ -172,7 +185,7 @@ describe('save module', () => {
   });
 
   test('an unknown version loads a fresh profile', () => {
-    for (const version of [0, 10, '9', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
+    for (const version of [0, 11, '10', undefined]) expect(stored({ ...valid, version }), String(version)).toEqual(fresh);
     expect(stored({ money: 1234 })).toEqual(fresh);
   });
 
@@ -257,7 +270,7 @@ describe('save module', () => {
     expect(found(fakeStorage())).toBe(false);
     expect(found(fakeStorage({ [KEY]: '{not json' }))).toBe(false);
     expect(found(fakeStorage({ [KEY]: JSON.stringify({ ...valid, money: -5 }) }))).toBe(false);
-    expect(found(fakeStorage({ [KEY]: JSON.stringify({ ...valid, version: 10 }) }))).toBe(false); // a newer build's: played fresh
+    expect(found(fakeStorage({ [KEY]: JSON.stringify({ ...valid, version: 11 }) }))).toBe(false); // a newer build's: played fresh
     expect(found(fakeStorage({ [KEY]: JSON.stringify(valid) }))).toBe(true);
     expect(found(fakeStorage({ [KEY]: JSON.stringify(v8) }))).toBe(true); // migrated
   });

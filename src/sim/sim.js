@@ -13,18 +13,20 @@ const G = 9.81; // m/s²
 
 // The persistent part of the game (spec #12, "Profile"). Bump `version` when the shape changes and teach save.js to
 // migrate the old one; v3 came with the Monti map (#67), v5 with Stars (#81), v6 with Vehicles (#88), v7 with
-// Reputation (#86), v8 with Story chains (#87), v9 with the trailer (#96), and the grid city's v1 and v2 start fresh.
+// Reputation (#86), v8 with Story chains (#87), v9 with the trailer (#96), v10 with the tutorial (#113), and the grid
+// city's v1 and v2 start fresh.
 // stars: the Stars earned in total, which make the Rank; distance: m driven in total; vehicle: the current Vehicle's id
 // (tables.fleet); vehicles: each owned Vehicle's id → its upgrades (id → level), the truck always among them;
 // equipped: slot → visual id; fuel: litres in the current Vehicle's tank; energy: the driver's, 0..1; timeOfDay: game
 // minutes since midnight; timePlayed: s of play in total; reputation: map id → spot id → the Stars earned on that
 // Client's orders (see tables.reputation); stories: map id → Story chain id (tables.stories) → { client (its spot id),
 // step (the steps delivered) }; trailer: the truck's trailer (tables.trailer), its `level` (0 while not bought) and
-// whether it is `hitched` (only ever to the truck).
+// whether it is `hitched` (only ever to the truck); tutorial: the step of the guided first delivery it waits at
+// (tables.tutorial.steps), or null once done or skipped, as here: a new game starts it (startTutorial()).
 // The tank and start time come from the game's own tables: a test's tables don't change a fresh profile.
 export function freshProfile() {
   return {
-    version: 9,
+    version: 10,
     money: 0,
     stars: 0,
     distance: 0,
@@ -39,6 +41,7 @@ export function freshProfile() {
     reputation: {},
     stories: {},
     trailer: { level: 0, hitched: false },
+    tutorial: null,
   };
 }
 
@@ -176,6 +179,9 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   let held = Infinity; // s the hill hold still keeps the truck from rolling (see step()); placed, until it first moves
   let boxedIn = 0; // s the AI cars have kept the truck from moving (see untrap)
   const felt = { gas: 0, steer: 0, brake: 0 }; // the input as the driver applies it (see feel())
+  let stepFrom = profile.distance; // the distance driven when the tutorial's step began (see updateTutorial())
+  let backed = 0; // m reversed since then
+  let tutorialFrom = null; // state.lastPayment when the tutorial started
   let redLine = null; // the light whose stop line the front last crossed forwards, if it was red then (see checkRedLight)
   const lineBack = lt.stopLine - tables.city.obstacles.signal.inset; // m from a stop line on to its junction (see osm.js)
   let routeKey = ''; // edge segment, on or off the road, and target the current route was found for
@@ -353,6 +359,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     damageCargo(dt, shed, Math.abs(yawRate * truck.speed), hit);
     const moved = Math.hypot(truck.x - x, truck.z - z);
     p.distance += moved;
+    if (truck.speed < 0) backed += moved;
     burn(moved, pedal, pedal > 0 ? ground.heightAt(truck.x, truck.z) - ground.heightAt(x, z) : 0); // coasting up costs none
     if (traffic) untrap(dt, drive !== 0);
     updateTraffic(dt, 1 - wet * (1 - w.rain.traffic));
@@ -391,6 +398,47 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     if (map && p.fuel <= 0 && Math.abs(truck.speed) < v.stopSpeed && !canFill && state.progress === 0) tow();
 
     updateRoute(here);
+    updateTutorial(controls);
+  }
+
+  // The tutorial's steps (tables.tutorial) that the player passes by doing what they ask; the others wait for
+  // nextTutorial(). Checked every step, so a step already done (an order accepted early, say) passes at once.
+  const delivered = () => state.lastPayment !== tutorialFrom && state.lastPayment.stars.length > 0;
+  const tutorialChecks = {
+    drive: () => state.profile.distance - stepFrom >= tables.tutorial.drive,
+    brake: (controls) => Math.abs(truck.speed) < v.stopSpeed && controls.brake > 0,
+    offers: () => state.order !== null || delivered(),
+    pickup: () => delivered() || (state.order && (state.order.phase !== 'pickup' || inZone(targetOf(state.order).zone))),
+    load: () => delivered() || state.order?.phase === 'dropoff',
+    dropoff: delivered,
+    reverse: () => backed >= tables.tutorial.reverse,
+  };
+
+  function updateTutorial(controls) {
+    while (tutorialChecks[state.profile.tutorial]?.(controls)) nextStep();
+  }
+
+  function nextStep() {
+    const { steps } = tables.tutorial;
+    state.profile.tutorial = steps[steps.indexOf(state.profile.tutorial) + 1] ?? null;
+    stepFrom = state.profile.distance;
+    backed = 0;
+  }
+
+  // The tutorial's commands: start it (again) at its first step; pass a step that only shows something (its Weiter
+  // button); skip it.
+  function startTutorial() {
+    state.profile.tutorial = null;
+    tutorialFrom = state.lastPayment;
+    nextStep();
+  }
+
+  function nextTutorial() {
+    if (state.profile.tutorial && !tutorialChecks[state.profile.tutorial]) nextStep();
+  }
+
+  function skipTutorial() {
+    state.profile.tutorial = null;
   }
 
   // The weather follows the spell profile.timePlayed is in: its intensity ramps up over tables.weather.ramp s, and down
@@ -834,16 +882,18 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   // Takes a fine (tables.fines) from the money, never below 0; the unpaid rest is dropped, so `lastFine` holds
-  // the amount actually taken.
+  // the amount actually taken. None while the tutorial runs.
   function fine(reason) {
+    if (state.profile.tutorial) return;
     const amount = Math.min(state.profile.money, tables.fines[reason]);
     state.profile.money -= amount;
     state.lastFine = { reason, amount };
     fault(reason);
   }
 
-  // Notes what costs the active order its clean Star (order.faults), once each.
+  // Notes what costs the active order its clean Star (order.faults), once each; nothing while the tutorial runs.
   function fault(reason) {
+    if (state.profile.tutorial) return;
     if (state.order && !state.order.faults.includes(reason)) state.order.faults.push(reason);
   }
 
@@ -1584,7 +1634,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
     updateLimit(map.graph.nearest(truck.x, truck.z));
   }
 
-  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVehicle, chooseVehicle, buyTrailer, hitchTrailer, buyVisual, equipVisual, owns, buyService, sleep };
+  return { state, step, resetToRoad, requestOffers, acceptOrder, buyUpgrade, buyVehicle, chooseVehicle, buyTrailer, hitchTrailer, buyVisual, equipVisual, owns, buyService, sleep, startTutorial, nextTutorial, skipTutorial };
 }
 
 // A seeded random (mulberry32): for the Sim under ?auto, so every run meets the same traffic and offers, and for the

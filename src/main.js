@@ -12,6 +12,7 @@ import { createMinimap } from './minimap.js';
 import { createWerkstatt } from './werkstatt.js';
 import { createBlend } from './blend.js';
 import { createStart, creditsFrom } from './start.js';
+import { createTutorial } from './tutorial.js';
 import creditsMarkdown from '../CREDITS.md?raw';
 
 const { step, maxFrame, maxSteps } = tables.loop;
@@ -57,6 +58,7 @@ let simTables = auto ? { ...tables, fuel: { ...tables.fuel, perKm: 0, perClimb: 
 const only = perf && params.get('weather');
 if (only === 'rain' || only === 'fog') simTables = { ...simTables, weather: { ...tables.weather, clear: [0, 0], fog: only === 'fog' ? 1 : 0 } };
 const sim = createSim(simTables, map, auto ? perf.seeded(tables.perf.seed) : Math.random, save.load());
+if (!auto && !save.found) sim.startTutorial(); // a new game starts with the guided first delivery (#113)
 const blend = createBlend();
 if (import.meta.env.DEV) window.sim = sim; // dev builds only: lets manual QA inspect state and place the truck
 const controls = createControls(document.getElementById('controls'), tables, strings);
@@ -107,7 +109,12 @@ const start = createStart(document.getElementById('start'), tables, strings, cre
     reload();
   },
   onChooseMap: save.chooseMap,
+  onReplay() {
+    sim.startTutorial();
+    start.hide();
+  },
 });
+const tutorial = createTutorial(document.getElementById('tutorial'), sim, tables, strings);
 const menuButton = document.createElement('button');
 menuButton.type = 'button';
 menuButton.className = 'menu-toggle';
@@ -147,6 +154,7 @@ function frame(now) {
   orders.update(sim.state);
   minimap.update(sim.state);
   werkstatt.update(sim.state);
+  tutorial.update(sim.state, werkstatt.open);
   // Writes only when the profile changed (see save.js); never under the start screen, so one only looked at stays no
   // Save, and a reset from it isn't written back before the reload.
   if (!start.open) save.save(sim.state.profile);

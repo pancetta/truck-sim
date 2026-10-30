@@ -6,11 +6,11 @@
 // energy and the time played. Reads Sim state; never writes to it.
 // The rules' icons, our own drawings: a traffic light, the right before left warning sign, the priority road's diamond,
 // the give-way triangle and the stop octagon; and the zebra crossing's, a pedestrian on stripes in a blue square.
-const ZEBRA_ICON =
+export const ZEBRA_ICON =
   '<rect x="1" y="1" width="22" height="22" rx="2" fill="#1d63c4" stroke="#fff" stroke-width="1"/><path d="M12 3.5 21 19H3z" fill="#fff"/>' +
   '<path d="M6 17.5h2.4M10.8 17.5h2.4M15.6 17.5h2.4" stroke="#2b2d33" stroke-width="1.2"/><circle cx="12.6" cy="9" r="1.1" fill="#2b2d33"/>' +
   '<path d="M12.4 10.5 11.6 13.4 10 15.6M11.6 13.4 13.4 15.6M10.6 11.8 13.8 12.2" stroke="#2b2d33" stroke-width="1" fill="none" stroke-linecap="round"/>';
-const RULE_ICONS = {
+export const RULE_ICONS = {
   priority: '<path d="M12 1 23 12 12 23 1 12z" fill="#fff" stroke="#2b2d33" stroke-width="1"/><path d="M12 5.5 18.5 12 12 18.5 5.5 12z" fill="#e8c547"/>',
   giveWay: '<path d="M1.5 3h21L12 22z" fill="#fff" stroke="#d1495b" stroke-width="2.5" stroke-linejoin="round"/>',
   stop: '<path d="M7.4 1h9.2L23 7.4v9.2L16.6 23H7.4L1 16.6V7.4z" fill="#d1495b" stroke="#fff" stroke-width="1.2"/><text x="12" y="14.6" font-size="7" font-weight="700" font-family="sans-serif" text-anchor="middle" fill="#fff">STOP</text>',

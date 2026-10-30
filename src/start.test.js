@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import { creditsFrom } from './start.js';
+import { HOW_TO_ART, creditsFrom } from './start.js';
 import { strings } from './strings.js';
 import * as tables from './tables.js';
 
@@ -31,4 +31,10 @@ test("CREDITS.md's credits include the map data and the elevation, whose licence
 
 test('every map card has its name and line', () => {
   for (const id of Object.keys(tables.maps)) expect(strings.maps[id], id).toMatchObject({ name: expect.any(String), line: expect.any(String) });
+});
+
+test('every how-to page has its title, text and drawing; every tutorial step its text', () => {
+  expect(Object.keys(HOW_TO_ART)).toEqual(Object.keys(strings.start.howToPages));
+  for (const page of Object.values(strings.start.howToPages)) expect(page).toMatchObject({ title: expect.any(String), text: expect.arrayContaining([expect.any(String)]) });
+  expect(Object.keys(strings.tutorial.steps)).toEqual(tables.tutorial.steps);
 });

@@ -227,16 +227,88 @@ export const strings = {
     credits: 'Credits',
     back: 'Zurück',
     replayTutorial: 'Tutorial erneut spielen',
-    // shortcut: a short placeholder until the how-to-play pages (#113).
-    howToText: [
-      'Lenkrad links, Gas und Bremse rechts. Steht der Lkw, fährt er rückwärts, solange du die Bremse hältst.',
-      'Unter „Aufträge“ nimmst du einen Auftrag an. Folge dem Pfeil zur Beladestelle und halte in der markierten Zone. Dann geht es zur Entladestelle: Pünktlich und vorsichtig gibt es Sterne.',
-      'Achte auf Ampeln, Vorfahrt, Stoppschilder, Zebrastreifen und Tempolimits, sonst verteilt die Polizei Bußgelder.',
-      'Behalte Tank und Energie im Blick: Tanken an der Tankstelle, ausruhen zu Hause. In der Werkstatt zu Hause gibt es Fahrzeuge, Upgrades und einen Anhänger.',
-      'Eine ausführliche Anleitung folgt bald.',
-    ],
+    // The how-to-play pages (#113), in order, each with its drawing (start.js HOW_TO_ART, by the same key).
+    howToPages: {
+      controls: {
+        title: 'Steuerung',
+        text: [
+          'Links lenkst du: Leg den Finger auf das Lenkrad und dreh es. Rechts sind Gas und Bremse.',
+          'Steht der Lkw und du hältst die Bremse gedrückt, fährt er rückwärts. Lässt du los, bremst er.',
+          'Am Berg hält der Lkw kurz von selbst, wenn du von der Bremse gehst. Voll beladen fährt er bergauf langsam an.',
+          '„Kamera“ wechselt zwischen der Sicht von hinten und dem Platz im Führerhaus. Steckst du fest, hilft „Zurück auf die Straße“. „Menü“ hält das Spiel an.',
+        ],
+      },
+      orders: {
+        title: 'Aufträge und Sterne',
+        text: [
+          'Unter „Aufträge“ suchst du dir einen Auftrag aus: mit Ladung, Weg, Bezahlung und Soll-Zeit.',
+          'Folge dem Pfeil zur Beladestelle und halte in der markierten Zone, bis alles geladen ist. Dann bringst du die Ladung zur Entladestelle.',
+          'Jede Lieferung bringt Sterne: einen fürs Liefern, einen für pünktlich und einen für sauber, ohne Bußgeld, Unfall oder kaputte Ladung. Rückwärts an die Rampe gibt es noch einen.',
+          'Mit Sternen steigst du im Rang auf. Dann kommen neue Aufträge: schwere, zerbrechliche, eilige, Touren mit mehreren Stopps und mehr.',
+        ],
+      },
+      traffic: {
+        title: 'Verkehrsregeln und Polizei',
+        text: [
+          'Unten rechts zeigen Schilder das Tempolimit und die Regel der nächsten Kreuzung.',
+          'Bei Rot hältst du an der Haltlinie. Bei „Vorfahrt achten“ fahren die anderen zuerst, am Stoppschild hältst du vorher ganz an. Ohne Schild gilt rechts vor links.',
+          'Ist jemand auf dem Zebrastreifen, lass ihn hinüber. Fahr nicht auf den Gehweg, wo Leute gehen.',
+          'Sieht dich die Polizei (das Auge), kostet ein Verstoß Bußgeld. Fährst du ein Auto an, kostet das immer etwas. Die anderen Autos halten Abstand und machen dir Platz.',
+        ],
+      },
+      fuel: {
+        title: 'Tank, Energie und Zuhause',
+        text: [
+          'Fahren braucht Diesel, bergauf mehr. An der Tankstelle hältst du in der Zone und tankst. Ist der Tank leer, wirst du abgeschleppt, und das kostet.',
+          'Fahren macht müde: Die Energie oben sinkt. Ein Snack an der Tankstelle hilft ein wenig, ein Essen im Restaurant ganz.',
+          'Zuhause schläfst du bis zum Morgen. Nachts ist weniger Verkehr, und Lieferungen bringen einen Zuschlag. Bei Regen auch, aber dann rutscht der Lkw leichter.',
+        ],
+      },
+      werkstatt: {
+        title: 'Werkstatt, Fahrzeuge und Anhänger',
+        text: [
+          'Die Werkstatt ist Zuhause. Sie öffnet, wenn du dort ohne Auftrag in der Zone stehst.',
+          'Technik macht dein Fahrzeug besser: Motor, Bremsen, Reifen, Fahrwerk, Ladefläche und Tank. Für den Lkw gibt es auch Aussehen, vom Lack bis zum Glücksbringer.',
+          'Mit höherem Rang kaufst du neue Fahrzeuge: den flinken Transporter, das kleine Dreirad für die Fußgängerzonen und den großen Schwerlaster. Gewechselt wird Zuhause.',
+          'Der Lkw kann einen Anhänger ziehen: für größere, besser bezahlte Ladungen. Knickt er beim Rückwärtsfahren ein, fahr vorwärts, bis er wieder gerade ist.',
+        ],
+      },
+      clients: {
+        title: 'Kunden und Geschichten',
+        text: [
+          'Jeder Auftrag kommt von einem Kunden. Mit jedem Stern, den du bei ihm verdienst, wächst dein Ruf: Das zeigen die Herzen.',
+          'Kunden, die dich kennen, zahlen mehr und haben öfter Aufträge für dich.',
+          'Bist du für einen Kunden unverzichtbar, erzählt er dir seine Geschichte: mehrere Aufträge nacheinander, mit einer Belohnung am Ende.',
+          'Unterwegs kann sich etwas ändern: Eine Straße wird gesperrt, oder der Kunde will die Ladung woanders hin. Der Pfeil zeigt dir dann den neuen Weg.',
+        ],
+      },
+    },
+    next: 'Weiter',
     creditsIntro: 'Truck Sim ist ein eigenständiges Spiel. Es nutzt diese freien Daten und Werke:',
     creditsOwn: 'Alles andere, vom Programm über Fahrzeuge und Gebäude bis zu den Bildern, ist eigene Arbeit von Truck Sim.',
+  },
+  // The guided first delivery (#113): its card's label, buttons and each step's text (tables.tutorial.steps); a step with
+  // `next` waits for that button, the others for what they ask.
+  tutorial: {
+    label: 'Tutorial',
+    skip: 'Überspringen',
+    steps: {
+      drive: { text: 'Willkommen! Lenk links mit dem Lenkrad und drück rechts auf Gas. Fahr ein Stück die Straße entlang. Keine Sorge: Im Tutorial gibt es keine Bußgelder.' },
+      brake: { text: 'Super! Jetzt drück die Bremse, bis der Lkw ganz steht.' },
+      signs: {
+        text: 'Oben siehst du deinen Rang, deine Sterne und deine Energie. Unten rechts zeigen Schilder das Tempolimit und wer an der nächsten Kreuzung Vorfahrt hat.',
+        next: 'Weiter',
+      },
+      offers: { text: 'Zeit für deinen ersten Auftrag! Tipp auf „Aufträge“ und nimm einen an.' },
+      pickup: { text: 'Folge dem Pfeil oben zur Beladestelle. Dort ist eine Zone auf der Straße markiert.' },
+      load: { text: 'Du bist in der Zone! Bleib stehen, bis alles eingeladen ist.' },
+      dropoff: { text: 'Geladen! Folge jetzt dem Pfeil zur Entladestelle und halte dort in der Zone, bis alles ausgeladen ist.' },
+      reverse: { text: 'Geschafft, deine ersten Sterne! Noch ein Trick: Steht der Lkw, halt die Bremse gedrückt. Dann fährt er rückwärts.' },
+      home: {
+        text: 'Zuhause, wo du losgefahren bist, ist die Werkstatt. Dort kaufst du mit deinem Geld Technik und neue Fahrzeuge, und dort schläfst du. Mehr steht in der Anleitung im Menü. Gute Fahrt!',
+        next: 'Los geht’s',
+      },
+    },
   },
   maps: { monti: { name: 'Rione Monti', line: 'Enge Gassen und steile Hügel mitten in Rom' } }, // the map cards (tables.maps)
   resetSave: 'Spielstand zurücksetzen',

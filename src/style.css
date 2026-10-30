@@ -1138,3 +1138,104 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
     gap: 8px;
   }
 }
+
+/* The tutorial's card (#113): bottom centre, over the dashboard and between the wheel and the pedals; the notices,
+   progress bar and orders panel (#orders, later in the page) cover it while they show. */
+.tutorial {
+  position: fixed;
+  left: calc(50% - 13px);
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 150px);
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: min(380px, calc(100% - 446px));
+  min-width: 240px;
+  padding: 10px 14px 12px;
+  border: 2px solid #e8c547;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.92);
+  color: #fff;
+}
+
+.tutorial[hidden] {
+  display: none;
+}
+
+.tutorial small {
+  color: #e8c547;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tutorial p {
+  margin: 4px 0 10px;
+  line-height: 1.35;
+}
+
+.tutorial div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tutorial button {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.15);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tutorial .tutorial-next {
+  background: #e8c547;
+  color: #1f232b;
+}
+
+.tutorial-next[hidden] {
+  display: none;
+}
+
+/* The pointers: what the tutorial's step is about pulses with a yellow ring. */
+body[data-tutorial='drive'] :is(.wheel, .gas),
+body[data-tutorial='brake'] .brake,
+body[data-tutorial='signs'] :is(.status, .dash-signs),
+body[data-tutorial='offers'] :is(.orders-toggle, .orders-panel button),
+body[data-tutorial='pickup'] :is(.goal, #minimap),
+body[data-tutorial='load'] .progress,
+body[data-tutorial='dropoff'] :is(.goal, #minimap),
+body[data-tutorial='reverse'] .brake,
+body[data-tutorial='home'] :is(.money, #minimap) {
+  outline: 4px solid #e8c547;
+  outline-offset: 4px;
+  animation: pointer 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes pointer {
+  to {
+    outline-color: rgb(232 197 71 / 0.15);
+  }
+}
+
+@media (max-height: 480px) {
+  .tutorial {
+    bottom: calc(max(24px, env(safe-area-inset-bottom)) + 130px);
+    padding: 8px 12px 10px;
+    font-size: 14px;
+  }
+
+  .tutorial p {
+    margin-bottom: 8px;
+  }
+
+  .tutorial button {
+    padding: 6px 12px;
+  }
+}
+
+/* The how-to-play pages' drawings (#113). */
+.start-art {
+  flex-shrink: 0;
+  height: 80px;
+}
