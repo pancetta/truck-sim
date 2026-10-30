@@ -408,11 +408,12 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   // The tutorial's steps (tables.tutorial) that the player passes by doing what they ask; the ones in `waits` also pass
   // by nextTutorial(). Checked every step, so a step already done (an order accepted early, say) passes at once.
   const delivered = () => state.lastPayment !== tutorialFrom && state.lastPayment.stars.length > 0;
+  const accepted = () => state.order !== null || delivered();
   const tutorialChecks = {
     drive: () => state.profile.distance - stepFrom >= tables.tutorial.drive,
     brake: (controls) => Math.abs(truck.speed) < v.stopSpeed && controls.brake > 0,
-    signs: () => state.order !== null || delivered(),
-    offers: () => state.order !== null || delivered(),
+    signs: accepted,
+    offers: accepted,
     pickup: () => delivered() || state.order?.phase === 'dropoff' || state.progress > 0,
     load: () => delivered() || state.order?.phase === 'dropoff',
     dropoff: delivered,
@@ -426,7 +427,7 @@ export function createSim(tables, map, random = Math.random, profile = freshProf
   }
 
   function nextStep() {
-    state.profile.tutorial = steps[steps.indexOf(state.profile.tutorial) + 1] ?? null;
+    state.profile.tutorial = steps[stepAt(state.profile.tutorial) + 1] ?? null;
     stepFrom = state.profile.distance;
     backed = 0;
   }
