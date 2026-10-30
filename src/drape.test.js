@@ -53,7 +53,9 @@ describe('drape (#106)', () => {
     const p = out.getAttribute('position');
     const near = Array.from({ length: p.count }, (_, i) => Math.hypot(p.getX(i) - 30, p.getZ(i) + 10));
     expect(p.getY(near.indexOf(Math.min(...near)))).toBeGreaterThan(0.49);
-    // No corner lies inside another triangle's edge (a T-junction would crack the surface).
+    // No corner lies inside another triangle's edge (a T-junction would crack the surface). Counted and asserted once:
+    // an expect per pair timed out on CI.
+    let junctions = 0;
     for (let i = 0; i < p.count; i += 3) {
       const [a, b, c] = [0, 1, 2].map((k) => [p.getX(i + k), p.getZ(i + k)]);
       for (let j = 0; j < p.count; j++) {
@@ -61,10 +63,11 @@ describe('drape (#106)', () => {
         for (const [u, v] of [[a, b], [b, c], [c, a]]) {
           const t = ((q[0] - u[0]) * (v[0] - u[0]) + (q[1] - u[1]) * (v[1] - u[1])) / ((v[0] - u[0]) ** 2 + (v[1] - u[1]) ** 2);
           const off = Math.abs((q[0] - u[0]) * (v[1] - u[1]) - (q[1] - u[1]) * (v[0] - u[0]));
-          expect(t > 1e-6 && t < 1 - 1e-6 && off < 1e-6).toBe(false);
+          if (t > 1e-6 && t < 1 - 1e-6 && off < 1e-6) junctions++;
         }
       }
     }
+    expect(junctions).toBe(0);
   });
 
   test("onGround lays a point onto the ground's plane, upright lines staying upright", () => {
