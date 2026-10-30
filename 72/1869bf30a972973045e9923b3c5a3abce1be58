@@ -1,0 +1,55 @@
+src/sim/tutorial.test.js
+  s_b3db8d2c837f94::t_4a53b09d32dff7 1-4,6-99,101-106,108-119
+  s_b3db8d2c837f94::t_e68dd4e5ce266f 5,100,107
+src/tables.js
+  s_b3db8d2c837f94::t_9aec01b7e0dcbd 788-793
+src/save.js
+  s_b3db8d2c837f94::t_442683584b49d4 27-36
+  s_b3db8d2c837f94::t_7ab8f30cc89de7 53,55,65,94
+src/sim/sim.test.js
+  s_b3db8d2c837f94::t_442683584b49d4 302
+src/strings.js
+  s_b3db8d2c837f94::t_12173214b1fbd8 230-286,290-311
+  s_b3db8d2c837f94::t_2dc53bba2fdd0e 312
+src/hud.js
+  s_b3db8d2c837f94::t_280b68c72bf1d4 9,13
+src/start.test.js
+  s_b3db8d2c837f94::t_27a3c87b11c999 3,35-39
+  s_b3db8d2c837f94::t_636b445d75b668 40
+src/sim/sim.js
+  s_b3db8d2c837f94::t_3367c1587fc66a 885,894
+  s_b3db8d2c837f94::t_9aec01b7e0dcbd 16-17,24-25,29,44,182-184,362,401-441,887,896,1637
+index.html
+  s_b3db8d2c837f94::t_27a31cf570a15a 91
+src/start.js
+  s_b3db8d2c837f94::t_a3f9bb05ec7695 3-9,11-35,46,49-58,90,92,96,133
+  s_b3db8d2c837f94::t_27a3c87b11c999 10
+src/tutorial.js
+  s_b3db8d2c837f94::t_27a3c87b11c999 1-36
+GLOSSARY.md
+  s_b3db8d2c837f94::t_9b0859f6d626b3 15-16,26-28,31-36
+  s_b3db8d2c837f94::t_324e628fece3af 37
+src/main.js
+  s_b3db8d2c837f94::t_27a31cf570a15a 15,61,112-115,117,157
+src/save.test.js
+  s_b3db8d2c837f94::t_9c25013c1e1e40 173,188,273
+  s_b3db8d2c837f94::t_c02e3446687bd3 27,43,45,47-51,58,99,118-120,123-133
+src/style.css
+  s_b3db8d2c837f94::t_c8322372dc9ffe 1141-1241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "721869bf30a972973045e9923b3c5a3abce1be58",
+  "prompts": {},
+  "sessions": {
+    "s_b3db8d2c837f94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a63f37a5-cbc5-42f2-a996-854f1753f130",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
