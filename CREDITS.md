@@ -37,6 +37,14 @@ ambient occlusion / roughness / metalness (`_arm`) maps.
 
 ## Map data
 
+| Asset | Files | Source | Licence |
+|---|---|---|---|
+| Map data © OpenStreetMap contributors | `public/maps/monti.json`, `public/maps/monti-furniture.json`, `public/maps/monti-ring.json` | https://www.openstreetmap.org/copyright | ODbL 1.0 |
+| Elevation: TINITALY 1.1, Tarquini et al. (2023), INGV, doi:10.13127/tinitaly/1.1. Resampled. | `public/maps/monti-terrain.json` | https://tinitaly.pi.ingv.it/ | CC BY 4.0 |
+| Basis Universal transcoder by Binomial | `public/basis/` | https://github.com/BinomialLLC/basis_universal | Apache 2.0 |
+
+The game's credits page (`src/start.js`) lists every row of this file's tables, so a credit added here shows there.
+
 The Monti map's streets, buildings, street furniture and skyline come from OpenStreetMap: © OpenStreetMap contributors,
 https://www.openstreetmap.org/copyright. The raw Overpass extracts are in `data/osm/`; `npm run maps` (`scripts/maps.js`)
 trims and projects them into `public/maps/monti.json`, `public/maps/monti-furniture.json` and

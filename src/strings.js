@@ -214,6 +214,31 @@ export const strings = {
     chromeBumpers: 'Chromstoßstangen',
     chromeBullBar: 'Frontbügel',
   },
+  // The start screen (#112) and its pages; the in-game Menü button opens it.
+  start: {
+    menu: 'Menü',
+    continue: 'Weiterspielen',
+    newGame: 'Neues Spiel',
+    newGameConfirm: 'Neues Spiel beginnen? Der Spielstand mit Geld, Rang und Fahrzeugen wird ersetzt.',
+    map: 'Karte',
+    mapLocked: 'Bald verfügbar',
+    howTo: 'Anleitung',
+    settings: 'Einstellungen',
+    credits: 'Credits',
+    back: 'Zurück',
+    replayTutorial: 'Tutorial erneut spielen',
+    // shortcut: a short placeholder until the how-to-play pages (#113).
+    howToText: [
+      'Lenkrad links, Gas und Bremse rechts. Steht der Lkw, fährt er rückwärts, solange du die Bremse hältst.',
+      'Unter „Aufträge“ nimmst du einen Auftrag an. Folge dem Pfeil zur Beladestelle und halte in der markierten Zone. Dann geht es zur Entladestelle: Pünktlich und vorsichtig gibt es Sterne.',
+      'Achte auf Ampeln, Vorfahrt, Stoppschilder, Zebrastreifen und Tempolimits, sonst verteilt die Polizei Bußgelder.',
+      'Behalte Tank und Energie im Blick: Tanken an der Tankstelle, ausruhen zu Hause. In der Werkstatt zu Hause gibt es Fahrzeuge, Upgrades und einen Anhänger.',
+      'Eine ausführliche Anleitung folgt bald.',
+    ],
+    creditsIntro: 'Truck Sim ist ein eigenständiges Spiel. Es nutzt diese freien Daten und Werke:',
+    creditsOwn: 'Alles andere, vom Programm über Fahrzeuge und Gebäude bis zu den Bildern, ist eigene Arbeit von Truck Sim.',
+  },
+  maps: { monti: { name: 'Rione Monti', line: 'Enge Gassen und steile Hügel mitten in Rom' } }, // the map cards (tables.maps)
   resetSave: 'Spielstand zurücksetzen',
   resetConfirm: 'Spielstand wirklich zurücksetzen? Geld, Rang und Upgrades gehen verloren.',
   fine: 'Bußgeld',

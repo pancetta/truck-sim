@@ -247,6 +247,47 @@ describe('save module', () => {
     expect(() => createSave(storage, tables).save(valid)).not.toThrow();
   });
 
+  test('load says whether it found a Save, so the start screen offers Weiterspielen only then', () => {
+    const found = (storage) => {
+      const save = createSave(storage, tables);
+      save.load();
+      return save.found;
+    };
+    expect(found(fakeStorage())).toBe(false);
+    expect(found(fakeStorage({ [KEY]: '{not json' }))).toBe(false);
+    expect(found(fakeStorage({ [KEY]: JSON.stringify({ ...valid, money: -5 }) }))).toBe(false);
+    expect(found(fakeStorage({ [KEY]: JSON.stringify({ ...valid, version: 10 }) }))).toBe(false); // a newer build's: played fresh
+    expect(found(fakeStorage({ [KEY]: JSON.stringify(valid) }))).toBe(true);
+    expect(found(fakeStorage({ [KEY]: JSON.stringify(v8) }))).toBe(true); // migrated
+  });
+
+  test('after a reset (Neues Spiel) the next launch finds no Save, loads a fresh Profile and keeps the chosen map', () => {
+    const storage = fakeStorage({ [KEY]: JSON.stringify(valid) });
+    const save = createSave(storage, tables);
+    save.load();
+    save.chooseMap('monti');
+    save.reset();
+    const next = createSave(storage, tables);
+    expect(next.load()).toEqual(fresh);
+    expect(next.found).toBe(false);
+    expect(next.map()).toBe('monti');
+  });
+
+  test('the chosen map is remembered; one the tables lock or lack gives the first open map', () => {
+    const maps = { soon: { open: false }, monti: { open: true }, later: { open: true } };
+    const storage = fakeStorage();
+    expect(createSave(storage, { ...tables, maps }).map()).toBe('monti');
+    createSave(storage, { ...tables, maps }).chooseMap('later');
+    expect(createSave(storage, { ...tables, maps }).map()).toBe('later');
+    for (const id of ['soon', 'gone']) {
+      createSave(storage, { ...tables, maps }).chooseMap(id);
+      expect(createSave(storage, { ...tables, maps }).map(), id).toBe('monti');
+    }
+    const throwing = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+    createSave(throwing, { ...tables, maps }).chooseMap('later'); // never throws
+    expect(createSave(throwing, { ...tables, maps }).map()).toBe('monti');
+  });
+
   test('reset clears the save', () => {
     const storage = fakeStorage();
     const save = createSave(storage, tables);

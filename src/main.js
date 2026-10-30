@@ -11,12 +11,21 @@ import { createOrders } from './orders.js';
 import { createMinimap } from './minimap.js';
 import { createWerkstatt } from './werkstatt.js';
 import { createBlend } from './blend.js';
+import { createStart, creditsFrom } from './start.js';
+import creditsMarkdown from '../CREDITS.md?raw';
 
 const { step, maxFrame, maxSteps } = tables.loop;
 // ?perf loads the dev-only perf harness; ?perf&auto also lets the autopilot drive, unsaved (see perf.js).
 const params = new URLSearchParams(location.search);
 const perf = params.has('perf') ? await import('./perf.js') : null;
 const auto = perf && params.has('auto');
+// ?neu: the page reloaded for a Neues Spiel over a Save, so play starts at once; dropped so a reload shows the start screen.
+const query = () => (params.toString() ? `?${params}` : '');
+const newGame = params.has('neu');
+if (newGame) {
+  params.delete('neu');
+  history.replaceState(null, '', `${location.pathname}${query()}`);
+}
 
 // iPad Safari ignores user-scalable=no and doesn't fully honour touch-action: none, so a
 // pinch or a quick double tap on a pedal zooms the page. Cancel those gestures in script.
@@ -26,7 +35,7 @@ const auto = perf && params.has('auto');
 for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
   document.addEventListener(type, (e) => e.preventDefault());
 }
-document.addEventListener('touchstart', (e) => e.target.closest?.('button, .orders-panel, .werkstatt-panel ul') || e.preventDefault(), { passive: false });
+document.addEventListener('touchstart', (e) => e.target.closest?.('button, .orders-panel, .werkstatt-panel ul, .start-page') || e.preventDefault(), { passive: false });
 document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 
 // The Monti map (spec #59), built from its OpenStreetMap files and height grid; ?perf shows how long the build took.
@@ -81,6 +90,31 @@ resetButton.addEventListener('click', () => {
 });
 document.getElementById('controls').append(resetButton);
 
+// The start screen (#112): after loading, and from the Menü button, pausing play as the Werkstatt does. Neues Spiel over a
+// Profile that was played clears the Save and reloads with ?neu, which starts a fresh Sim; with none, play just starts.
+let played = save.found;
+const reload = () => location.replace(`${location.pathname}${query()}`);
+const start = createStart(document.getElementById('start'), tables, strings, creditsFrom(creditsMarkdown), {
+  onNewGame() {
+    if (!played) return start.hide();
+    if (!confirm(strings.start.newGameConfirm)) return;
+    save.reset();
+    params.set('neu', '');
+    reload();
+  },
+  onReset() {
+    save.reset();
+    reload();
+  },
+  onChooseMap: save.chooseMap,
+});
+const menuButton = document.createElement('button');
+menuButton.type = 'button';
+menuButton.className = 'menu-toggle';
+menuButton.textContent = strings.start.menu;
+menuButton.addEventListener('click', () => start.show(sim.state, true, save.map()));
+document.getElementById('controls').append(menuButton);
+
 let last = performance.now();
 let pending = 0;
 
@@ -94,10 +128,12 @@ function frame(now) {
   const dt = Math.min((now - last) / 1000, maxFrame);
   last = now;
   const input = controls.update(dt);
-  // The open Werkstatt pauses the world; drawing and autosave (after a purchase) go on.
+  // The open Werkstatt or start screen pauses the world; drawing and, in the Werkstatt, autosave (after a purchase) go on.
   // After a stall the Sim catches up at most maxSteps steps; the rest of the time is dropped.
-  pending = werkstatt.open ? 0 : Math.min(pending + dt, maxSteps * step);
-  if (werkstatt.open) orders.dismissNotices();
+  const paused = werkstatt.open || start.open;
+  if (!start.open) played = true;
+  pending = paused ? 0 : Math.min(pending + dt, maxSteps * step);
+  if (paused) orders.dismissNotices();
   while (pending >= step) {
     blend.remember(sim.state);
     const tow = sim.state.lastTow;
@@ -106,12 +142,14 @@ function frame(now) {
     pending -= step;
   }
   // Drawn between the last two steps, by the time left over, so the motion is even whatever steps this frame had.
-  view.render(blend.at(sim.state, pending / step), input, werkstatt.look, werkstatt.showroom);
+  view.render(blend.at(sim.state, pending / step), input, werkstatt.look, start.open ? 'orbit' : werkstatt.showroom);
   hud.update(sim.state, view.inCab);
   orders.update(sim.state);
   minimap.update(sim.state);
   werkstatt.update(sim.state);
-  save.save(sim.state.profile); // writes only when the profile changed (see save.js)
+  // Writes only when the profile changed (see save.js); never under the start screen, so one only looked at stays no
+  // Save, and a reset from it isn't written back before the reload.
+  if (!start.open) save.save(sim.state.profile);
   requestAnimationFrame(frame);
 }
 
@@ -121,6 +159,7 @@ view.ready.then(() => {
   view.render(sim.state, { steer: 0 }, werkstatt.look, werkstatt.showroom);
   perf?.installPerf({ sim, map, view, controls, hud, orders, minimap, werkstatt }, tables, auto, mapBuild);
   loading.remove();
+  if (!auto && !newGame) start.show(sim.state, save.found, save.map());
   last = performance.now();
   requestAnimationFrame(frame);
 });

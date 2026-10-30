@@ -3,17 +3,21 @@
 import { freshProfile, tankOf } from './sim/sim.js';
 
 const KEY = 'truck-sim.save';
+const MAP_KEY = 'truck-sim.map'; // the start screen's map choice, apart from the Profile, so a reset keeps it
 
 export function createSave(storage, tables) {
   // Always a valid profile: anything missing, corrupt, wrong-typed, out of range or from another version
   // gives a fresh one; ids the tables don't know are dropped.
   let newer = false; // whether the stored save is from a newer build; save() leaves it alone
+  let found = false; // whether load() found a Save this build loads (the start screen's Weiterspielen)
   function load() {
     try {
       const data = JSON.parse(storage.getItem(KEY));
       // A newer build's save (this build running from a cache after it): play fresh, but never write over it.
       newer = data?.version > freshProfile().version;
-      return validate(data) ?? freshProfile();
+      const profile = validate(data);
+      found = profile !== null;
+      return profile ?? freshProfile();
     } catch {
       return freshProfile();
     }
@@ -120,7 +124,36 @@ export function createSave(storage, tables) {
     }
   }
 
-  return { load, save, reset };
+  // The chosen map's id (tables.maps): the remembered one while the tables have it open, else the first open one.
+  function map() {
+    const open = Object.keys(tables.maps).filter((id) => tables.maps[id].open);
+    try {
+      const chosen = storage.getItem(MAP_KEY);
+      if (open.includes(chosen)) return chosen;
+    } catch {
+      // unreadable storage: the first open map
+    }
+    return open[0];
+  }
+
+  function chooseMap(id) {
+    try {
+      storage.setItem(MAP_KEY, id);
+    } catch {
+      // as save(): the choice just isn't remembered
+    }
+  }
+
+  return {
+    load,
+    save,
+    reset,
+    map,
+    chooseMap,
+    get found() {
+      return found;
+    },
+  };
 }
 
 const isObject = (x) => typeof x === 'object' && x !== null && !Array.isArray(x);

@@ -19,6 +19,13 @@ _Avoid_: account, player data
 The one stored copy of the **Profile** per browser; an unreadable or outdated one starts a fresh **Profile**.
 _Avoid_: savegame, slot, autosave (as a noun)
 
+**Start screen** ("Startbildschirm"):
+What every launch shows after loading, over the paused game, and what the in-game **Menü** button opens: Weiterspielen
+(only with a **Save**), Neues Spiel (a fresh **Profile**, confirmed when it replaces one that was played), the map cards
+(one per map, open or locked; the chosen one is remembered apart from the **Save**), and the Anleitung, Einstellungen
+and Credits pages. The Credits list every row of `CREDITS.md`'s tables.
+_Avoid_: title screen, main menu, pause menu
+
 **Night** ("Nacht"):
 The part of the game clock's day from 20:00 to 06:00, when sleeping at home ends: the headlights and street lights are on, there are fewer **AI cars**, and deliveries earn the night bonus.
 

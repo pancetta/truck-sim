@@ -139,7 +139,7 @@ body:has(.rear-inset:not([hidden])) .goal {
     font-size: 1.75rem;
     font-weight: 600;
     text-align: center;
-    z-index: 4; /* over the Werkstatt */
+    z-index: 5; /* over the Werkstatt and the start screen */
   }
 }
 
@@ -947,4 +947,200 @@ body:has(.rear-inset:not([hidden])) .goal {
 /* Cab view: the 3D instruments show speed, gear, RPM, fuel, distance and clock, so the dashboard hides. */
 .dash.cab {
   display: none;
+}
+
+/* Menü button (#112): beside the camera button, which is about 110 px wide. */
+.menu-toggle {
+  position: absolute;
+  top: max(24px, env(safe-area-inset-top));
+  right: calc(max(24px, env(safe-area-inset-right)) + 122px);
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 14px;
+  background: rgb(40 40 48 / 0.85);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 0 2px rgb(255 255 255 / 0.8));
+}
+
+/* Start screen (#112): the title over the orbiting view on the left (tables.showroom.shift), the panel on the right, the
+   HUD hidden under it. Only the page scrolls, on short screens. */
+.start {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: max(24px, env(safe-area-inset-right));
+  background: linear-gradient(to left, rgb(20 22 28 / 0.7), transparent 70%);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.start[hidden],
+.start-page[hidden] {
+  display: none;
+}
+
+body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
+  visibility: hidden;
+}
+
+.start-title {
+  position: absolute;
+  top: max(24px, env(safe-area-inset-top));
+  left: max(24px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 40px;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 0.6);
+}
+
+.start-title svg {
+  width: 56px;
+}
+
+.start-panel {
+  box-sizing: border-box;
+  width: min(400px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgb(40 40 48);
+}
+
+.start-page {
+  min-height: 0;
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.start-page h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.start-page p,
+.start-page ul {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.start-page ul {
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.start-page li + li {
+  margin-top: 6px;
+}
+
+.start-page a {
+  color: #e8c547;
+}
+
+.start-page button {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.15);
+  color: #fff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.start-page button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.start-page small {
+  display: block;
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.start-page .start-continue {
+  background: #e8c547;
+  color: #1f232b;
+}
+
+.start-page .start-continue[hidden] {
+  display: none;
+}
+
+.start-maps {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.start-maps button {
+  flex: 1 0 160px;
+  border: 3px solid transparent;
+}
+
+.start-maps button[aria-pressed='true'] {
+  border-color: #e8c547;
+}
+
+.start-page .start-back {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+.start-links {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.start-page .start-links button {
+  padding: 10px 8px;
+  font-size: 15px;
+  text-align: center;
+}
+
+@media (max-height: 480px) {
+  /* The status strip takes the top row's middle, so it goes beside the Werkstatt button (about 115 px wide). */
+  .menu-toggle {
+    top: calc(max(24px, env(safe-area-inset-top)) + 60px);
+    right: auto;
+    left: calc(max(24px, env(safe-area-inset-left)) + 256px);
+  }
+
+  .start-title {
+    font-size: 28px;
+  }
+
+  .start-title svg {
+    width: 40px;
+  }
+
+  .start-panel {
+    max-height: calc(100% - 24px);
+    padding: 12px 14px;
+  }
+
+  .start-page {
+    gap: 8px;
+  }
 }

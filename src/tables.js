@@ -780,6 +780,11 @@ export const city = {
   wallHeight: 0.8, // m, the edge walls along the paved area's open edges
 };
 
+// The start screen's map cards (#112), in order, by the map's id (osm.id): open to play, or locked (shown, not chosen).
+// Each card's name and line are strings.maps[id]. shortcut: only osm is loaded, whichever map is chosen; a second map
+// gives each entry its own osm files, and choosing it then reloads with them.
+export const maps = { monti: { open: true } };
+
 // The Monti map (spec #59), built from OpenStreetMap by src/sim/osm.js. The files are under public/, made by
 // `npm run maps`: the roads and buildings, the street furniture (trees, bollards, fountains, waste baskets), the
 // real buildings round the map for its skyline, and the ground's height grid (#104).
