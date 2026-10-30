@@ -1,0 +1,19 @@
+src/buildings.test.js
+  s_fc4849d3b02d8e::t_381b9ff22030a4 56,58,63-64,66,68,71-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62fe71aaacdd3306485b545978affd57bc75f7c9",
+  "prompts": {},
+  "sessions": {
+    "s_fc4849d3b02d8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68d3c31d-eb22-436a-ad0b-9fb5493ff865",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
