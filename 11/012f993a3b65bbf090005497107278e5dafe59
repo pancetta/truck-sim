@@ -1,0 +1,19 @@
+src/drape.test.js
+  s_bd89fbea6f11d2::t_cde21a7c54b1c1 56-58,66,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "11012f993a3b65bbf090005497107278e5dafe59",
+  "prompts": {},
+  "sessions": {
+    "s_bd89fbea6f11d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cb430c5e-f077-4628-8f1d-25e385eded89",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
