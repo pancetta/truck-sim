@@ -1060,6 +1060,23 @@ The box figures are replaced by our own rounded ones: capsule limbs, a lathed to
 
 Frames held 16.7 ms throughout. At the default 60 people this change sits within the run-to-run noise of main. With 200 people, most of them in full detail, the figures cost about 0.1 ms of the M2's GPU and 18k triangles more than the box figures, with 3 fewer draw calls.
 
+## The city on the terrain (#106)
+
+The road, the paving and kerbs, and the open ground are draped onto the map's terrain at load (`src/drape.js`): a triangle is halved along an edge, or split at its middle, only where the ground bends more than `tables.drape` allows under it (1 cm for the road, 2 cm for the paving and kerbs, 5 cm for the open ground, checked every 2.5 m). Boxes (edge walls, markings, zones, docks, station and home parts) are laid on the ground's plane by their instance matrix. Edge walls are cut where the ground bends along them, 3,258 boxes becoming 3,586. Everything else is lifted to the ground's height. No new materials, so no new shaders: the programs match main's, and the warm-up covers them as before.
+
+**Triangles built:** the road, paving and kerbs grow from 89.6k to 143k, 1.61 times (`tables.drape.budget` 1.75, checked by `src/drape.test.js`; the prototype's even 4 m split grew them about 5 times). The open ground grows from 2 to 45k. Draping takes about 0.3 s in Node (road, paving and kerbs about 190 ms, ground about 145 ms), within the load.
+
+**How measured:** production builds of main (`8ae0ef8`) and this change, Chrome headless (WebGPU on Metal) on the M2, 1180×820 at dpr 2, `?perf&auto` (vsync), the overlay's last 1,200 frames 45 s after the loading screen went, two runs each, load average 2.6–4.8. "Ready" is from navigation to the loading screen going. Relative numbers; the iPad numbers are the owner's `?perf&auto` run.
+
+| | frame ms median / p95 | busy ms median / p95 | render ms median / p95 | draw calls / triangles drawn | ready |
+|---|---|---|---|---|---|
+| main, cab (2 runs) | 16.7 / 16.7–16.8 | 2.8–2.9 / 3.4–3.6 | 2.7–2.8 / 3.2–3.4 | 103 / 355k | 2.33–2.34 s |
+| #106, cab (2 runs) | 16.7 / 16.7 | 2.9–3.2 / 3.8–4.0 | 2.8–3.0 / 3.5–3.7 | 105–106 / 542k | 2.67–2.87 s |
+| main, chase (2 runs) | 16.7 / 16.7–16.8 | 2.9 / 3.5–4.1 | 2.7 / 3.3–3.7 | 94–95 / 366–367k | 2.13–2.17 s |
+| #106, chase (2 runs) | 16.7 / 16.7–16.8 | 2.9–3.0 / 3.7 | 2.7–2.9 / 3.4–3.5 | 96 / 549–552k | 2.62–2.64 s |
+
+Frames held 16.7 ms. The triangles drawn per frame (the view and the sun's shadow map) grow by about half, and the CPU's frame work by 0.1–0.2 ms at most, within the runs' spread. Loading takes 0.3–0.5 s longer.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

@@ -331,10 +331,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
     }
   }));
   // The edge walls along the paved area's open edges, plain boxes on their colliders (each a box turned any way, its
-  // local x along a→b), in pieces of 5 m at most, so each follows the ground under it.
+  // local x along a→b). Where the ground bends along one, it is cut in halves, quarters and so on, down to 5 m at most,
+  // until each piece lies within `drape.open` of the ground along it.
   const edgeWalls = map.colliders.filter((c) => c.kind === 'wall').flatMap(({ points: [a, b, c] }) => {
     const [length, width] = [Math.hypot(b.x - a.x, b.z - a.z), Math.hypot(c.x - b.x, c.z - b.z)];
-    const n = Math.ceil(length / 5);
+    const along = (t) => map.heightAt(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t);
+    const bends = (n) => Array.from({ length: Math.ceil(length / 2.5) }, (_, k) => (k + 0.5) / Math.ceil(length / 2.5)).some((t) => {
+      const [t0, t1] = [Math.floor(t * n) / n, (Math.floor(t * n) + 1) / n]; // the piece t is on
+      return Math.abs(along(t) - (along(t0) + ((along(t1) - along(t0)) * (t - t0)) / (t1 - t0))) > fit.open;
+    });
+    let n = 1;
+    while (n < length / 5 && bends(n)) n *= 2;
     return Array.from({ length: n }, (_, k) => {
       const t = (k + 0.5) / n; // the piece's middle, from a's end to b's
       const [x, z] = [(a.x + c.x) / 2 + (b.x - a.x) * (t - 0.5), (a.z + c.z) / 2 + (b.z - a.z) * (t - 0.5)];
