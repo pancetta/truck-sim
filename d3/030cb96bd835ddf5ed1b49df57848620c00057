@@ -1,0 +1,43 @@
+src/tables.js
+  s_fc4849d3b02d8e::t_2dd72c3f61ba81 869-872
+src/renderer.js
+  s_fc4849d3b02d8e::t_a6fcd9841ff51f 312
+src/buildings.test.js
+  s_fc4849d3b02d8e::t_acc1beaa8a17a0 18
+  s_fc4849d3b02d8e::t_32537996f2ac58 78
+  s_fc4849d3b02d8e::t_d94ecbcb23b678 3-4,6,43,49-77,79-85
+  s_fc4849d3b02d8e::t_e276fcba9fe4ac 86
+src/buildings.js
+  s_fc4849d3b02d8e::t_e5c0cbd0c38c43 49-50,236
+  s_fc4849d3b02d8e::t_acc1beaa8a17a0 22,24,48,68,112-113,155-156
+  s_fc4849d3b02d8e::t_9e785eedd5bd8f 39-47,54-56,60,82-90,92-102,104
+  s_fc4849d3b02d8e::t_a6fcd9841ff51f 142-144,147,186-187,232-234,242,245,251,269,272
+  s_fc4849d3b02d8e::t_00d9e92654328b 51-53
+  s_fc4849d3b02d8e::t_a947c9ec8b4ff1 91,110-111,145,148,153-154,160-161,164
+  s_fc4849d3b02d8e::t_ed3a7cbbe87c69 235
+  s_fc4849d3b02d8e::t_6a3ccad159de06 57,141,146,163
+src/streets.test.js
+  s_fc4849d3b02d8e::t_ed3a7cbbe87c69 66,93
+GLOSSARY.md
+  s_fc4849d3b02d8e::t_9a44cae80e7dac 448-449
+src/streets.js
+  s_fc4849d3b02d8e::t_2dd72c3f61ba81 7,66
+docs/perf/2026-10-baseline.md
+  s_fc4849d3b02d8e::t_4e3bbc778cd03c 1080-1094
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3030cb96bd835ddf5ed1b49df57848620c00057",
+  "prompts": {},
+  "sessions": {
+    "s_fc4849d3b02d8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68d3c31d-eb22-436a-ad0b-9fb5493ff865",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Robert Speck <pancetta@users.noreply.github.com>"
+    }
+  }
+}
