@@ -81,7 +81,8 @@ export function createStreetEvents(scene, map, tables) {
       const n = Math.max(1, Math.floor((to - from - 4) / 4));
       for (let i = 0; i < n; i++) place(stall(((i % 2) - 0.5) * Math.min(1.6, e.width / 4), 0, i), ...at((from + to) / 2 + (i - (n - 1) / 2) * 4));
     } else place(roadworks(to - from, e.width), ...at((from + to) / 2));
-    const mesh = new THREE.Mesh(drape(mergeGeometries(parts), map, Infinity), material); // each corner on the ground under it
+    // Each corner on the ground under it.
+    const mesh = new THREE.Mesh(drape(mergeGeometries(parts), map, Infinity), material);
     mesh.castShadow = mesh.receiveShadow = true;
     return mesh;
   }

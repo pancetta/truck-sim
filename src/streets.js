@@ -7,10 +7,10 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { facadeParts } from './buildings.js';
 import assetInfo from './assetInfo.json';
 
-// Where lanterns hang: { x, y, z, angle }, (x, z) on the wall, y the ground's height there, turned by `angle` about y so the model's +z points out
-// over the road. On the street sides of the planned buildings (buildings.js), halfway between two windows, the one
-// nearest to each point `spacing` m apart along the street (counted from the map's origin, so the rhythm runs on from
-// building to building); `clear` m clear of a speed sign.
+// Where lanterns hang: { x, y, z, angle }, (x, z) on the wall at the ground's height y, turned by `angle` about y so
+// the model's +z points out over the road. On the street sides of the planned buildings (buildings.js), halfway between
+// two windows, the one nearest to each point `spacing` m apart along the street (counted from the map's origin, so the
+// rhythm runs on from building to building); `clear` m clear of a speed sign.
 // `reach`: see roadAhead.
 export function lanternMounts(map, plan, { spacing, clear }, bay, reach) {
   const mounts = [];
@@ -282,8 +282,8 @@ function roadAhead(map, x, z, nx, nz, reach) {
   return p.d - p.edge.width / 2 < reach && (p.x - x) * nx + (p.z - z) * nz > 0;
 }
 
-// Ground height at (x, z), off the road, on the terrain: the raised pavement within tables.osm.pavement m of a road's edge, else open
-// ground (pedestrian paving, a pedestrian edge's too, is only 3 cm up).
+// Ground height at (x, z), off the road, on the terrain: the raised pavement within tables.osm.pavement m of a road's
+// edge, else open ground (pedestrian paving, a pedestrian edge's too, is only 3 cm up).
 function groundAt(map, tables, x, z) {
   let p = map.graph.nearest(x, z);
   // A pedestrian edge is flush, but a road's pavement may still lie beside it under (x, z).

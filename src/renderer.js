@@ -254,7 +254,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
     return material;
   }
 
-  // Centred on the map, so it reaches under the skyline ring on every side; on the terrain (drape.js), a little under it.
+  // Centred on the map, so it reaches under the skyline ring on every side; on the terrain (drape.js), a little under
+  // it.
   const { bounds } = map;
   const fit = tables.drape;
   const flatGround = new THREE.PlaneGeometry(2000, 2000).rotateX(-Math.PI / 2).translate((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
@@ -319,7 +320,8 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // Raised pavements with kerbs along the roads, and the pedestrian ways and squares paved level with the road
   // (roads.js), built with the buildings, a few hundred ms too. The paving's texture loads after the first frame.
   const { pavement } = tables.streets;
-  const pavers = groundMaterial(pavement, { polygonOffset: true, polygonOffsetUnits: 4 }, true); // under the kerb tops, as the asphalt is
+  // Pushed back a few depth steps, as the asphalt is, so the kerb tops always win.
+  const pavers = groundMaterial(pavement, { polygonOffset: true, polygonOffsetUnits: 4 }, true);
   const kerbs = new THREE.MeshStandardMaterial({ color: pavement.kerbColour, roughness: 0.8 });
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
     const { top, stones } = pavementGeometry(osmPavements(map, [...pieces, ...exitPieces], tables), pavement, roadHeight / 2);

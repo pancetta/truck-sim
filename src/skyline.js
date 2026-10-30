@@ -29,8 +29,8 @@ export function cutRing(items, pieces) {
 // meshes: `walls` from `base` to `top`, with the window picture (paintSkylineWindows) in one of the tints (on churches
 // and monuments, in stone and stretched into tall arches), and flat `roofs`, with a dome where OSM has one (`dome` its
 // height, or true for a half sphere). No normals (flat shading), no shadows either way, and drawn after the city, so
-// its depth test skips what the city hides. `materials` is { walls, roof }. Each stands on the lowest ground (`ground`, a
-// map's heightAt) under its outline, far enough off in the haze for the rest to sink unseen.
+// its depth test skips what the city hides. `materials` is { walls, roof }. Each stands on the lowest ground
+// (`ground`, a map's heightAt) under its outline, far enough off in the haze for the rest to sink unseen.
 export function ringMeshes(items, tables, materials, ground) {
   const t = tables.skyline;
   const random = seeded(t.seed);

@@ -38,11 +38,11 @@ function look(tables, random, floors, height) {
 }
 
 // The city's buildings, one per outline (map.buildings, cut back from the roads), with the height from the map and as
-// many floors as fit under it, standing at the `ground`'s height under its middle. Each has its footprint's box and `points`, turned so its sides run with the outside to
-// their left, `floors`, `height`, the look (see look()) and a side per wall from each corner to the next; `dir` is the
-// DIRS direction nearest to the way it faces. A side is a street side unless another building stands against it: a
-// party wall, left blank. Spots are on the street (the spot table), so no building is a spot's and none has a dock
-// opening: a dock's edge stands on its own (see the renderer's dock bays).
+// many floors as fit under it, at the `ground`'s height under its middle. Each has its footprint's box and `points`,
+// turned so its sides run with the outside to their left, `floors`, `height`, the look (see look()) and a side per wall
+// from each corner to the next; `dir` is the DIRS direction nearest to the way it faces. A side is a street side unless
+// another building stands against it: a party wall, left blank. Spots are on the street (the spot table), so no
+// building is a spot's and none has a dock opening: a dock's edge stands on its own (see the renderer's dock bays).
 export function planBuildings(map, tables) {
   const t = tables.buildings;
   const random = seeded(t.seed);
