@@ -63,7 +63,7 @@ describe('Streets on the Monti map', () => {
   });
 
   // The street sides' facade parts, by 10 m square, and those within a few metres of (x, z).
-  const parts = montiPlan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables).map((p) => ({ ...p, ground: b.ground }))));
+  const parts = montiPlan.flatMap((b) => b.sides.filter((s) => s.street).flatMap((s) => facadeParts(b, s, tables)));
   const square = (x, z) => `${Math.floor(x / 10)},${Math.floor(z / 10)}`;
   const bySquare = Map.groupBy(parts, (p) => square(p.x, p.z));
   const near = (x, z) => [-10, 0, 10].flatMap((dx) => [-10, 0, 10].flatMap((dz) => bySquare.get(square(x + dx, z + dz)) ?? []));
@@ -90,7 +90,7 @@ describe('Streets on the Monti map', () => {
     const isSill = (s) => s.cell === 'plain' && s.size[0] === 1.6 && s.size[2] === 0.28;
     expect(boxes.length).toBeGreaterThan(0);
     expect(boxes.length).toBeLessThan(parts.filter(isSill).length / 2);
-    for (const { x, y, z } of boxes) expect(near(x, z).some((s) => isSill(s) && Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.ground + s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
+    for (const { x, y, z } of boxes) expect(near(x, z).some((s) => isSill(s) && Math.hypot(s.x - x, s.z - z) < 0.05 && Math.abs(s.y + s.size[1] / 2 - y) < 1e-6)).toBe(true);
   });
 
   it('stands pots and props on the pavement where they are on it, and on the ground elsewhere, on the terrain', () => {

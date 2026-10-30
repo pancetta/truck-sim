@@ -866,6 +866,10 @@ export const buildings = {
   floor: 3.5, // m, each upper floor
   parapet: 1, // m of wall above the top floor, with the cornice
   bay: 3.2, // m per window bay, at least
+  // On a slope (#107) a street side steps in runs of whole bays over pavement at most `step` m apart in height, each
+  // run's floors level; each door and shop front stands on the pavement in front of it, within `door` m.
+  step: 1,
+  door: 0.1,
   grime: 2.5, // m of darkening at the foot of each wall, from `grimeShade` of the wall's colour at the ground
   grimeShade: 0.62,
   closedShutters: 0.3, // share of windows with their shutters closed

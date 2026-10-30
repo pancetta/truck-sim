@@ -309,7 +309,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // (lanterns, pots and flower boxes; streets.js) is placed then too.
   loads.push(new Promise((resolve) => setTimeout(resolve)).then(() => {
     const plan = planBuildings(map, tables);
-    Object.assign(buildingParts, buildingMeshes(plan, tables, cells, buildingMaterials, map));
+    Object.assign(buildingParts, buildingMeshes(plan, tables, cells, buildingMaterials));
     scene.add(...buildingParts.meshes);
     streets.dress(plan);
   }));

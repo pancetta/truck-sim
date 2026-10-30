@@ -1077,6 +1077,21 @@ The road, the paving and kerbs, and the open ground are draped onto the map's te
 
 Frames held 16.7 ms. The triangles drawn per frame (the view and the sun's shadow map) grow by about half, and the CPU's frame work by 0.1–0.2 ms at most, within the runs' spread. Loading takes 0.3–0.5 s longer.
 
+## Buildings stepped on slopes (#107)
+
+Each building side is cut into runs of window bays whose pavement lies within `tables.buildings.step` (1 m), each run's floors level and each door on the pavement in front of it; the roof stays level, so runs down the slope get more floors. Planning the buildings takes about 73 ms in Node (a pavement height per bay); the extra floors and per-run plinths add a few hundred facade parts. No new materials.
+
+**How measured:** production builds of main (`3a43475`) and this change, as for #106, one run each, load average 6–10.
+
+| | frame ms median / p95 | busy ms median / p95 | render ms median / p95 | draw calls / triangles drawn | ready |
+|---|---|---|---|---|---|
+| main, cab | 16.7 / 16.8 | 2.9 / 3.7 | 2.7 / 3.5 | 106 / 542k | 2.68 s |
+| #107, cab | 16.7 / 16.7 | 3.0 / 3.7 | 2.8 / 3.4 | 104 / 542k | 3.01 s |
+| main, chase | 16.7 / 16.7 | 3.3 / 4.0 | 3.1 / 3.7 | 95 / 552k | 3.05 s |
+| #107, chase | 16.7 / 16.7 | 3.0 / 3.8 | 2.9 / 3.5 | 97 / 554k | 2.75 s |
+
+Unchanged within the runs' spread: frames held 16.7 ms, and the ready times swap order between the two views, so their difference is load noise.
+
 ## Files
 
 The instrumented copies, drivers and raw JSONL results lived in the investigating session's scratchpad and aren't in the repo. The harness (overlay and autopilot route) is in the repo as the dev-only `?perf` mode: `src/perf.js` and `src/autopilot.js`, with tunables in `tables.perf`.

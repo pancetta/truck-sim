@@ -4,7 +4,7 @@
 // pavements (roads.js).
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { facadeParts } from './buildings.js';
+import { facadeParts, groundAt } from './buildings.js';
 import assetInfo from './assetInfo.json';
 
 // Where lanterns hang: { x, y, z, angle }, (x, z) on the wall at the ground's height y, turned by `angle` about y so
@@ -63,7 +63,7 @@ export function facadeProps(map, plan, tables) {
           if (!pair.some((p) => map.signs.some((c) => Math.hypot(c.x - p.x, c.z - p.z) < 1))) pots.push(...pair);
         } else if (boxed && part.cell.startsWith('glass') && ahead(part)) {
           // On the sill, whose top is 0.95 m under the window's middle; the glass is 1 cm out, the sill 28 cm deep.
-          boxes.push({ x: part.x + nx * 0.14, y: b.ground + part.y - 0.95, z: part.z + nz * 0.14, angle });
+          boxes.push({ x: part.x + nx * 0.14, y: part.y - 0.95, z: part.z + nz * 0.14, angle });
         }
       }
     }
@@ -280,15 +280,6 @@ export function glowMaterial(colour, glow) {
 function roadAhead(map, x, z, nx, nz, reach) {
   const p = map.graph.nearest(x + nx, z + nz);
   return p.d - p.edge.width / 2 < reach && (p.x - x) * nx + (p.z - z) * nz > 0;
-}
-
-// Ground height at (x, z), off the road, on the terrain: the raised pavement within tables.osm.pavement m of a road's
-// edge, else open ground (pedestrian paving, a pedestrian edge's too, is only 3 cm up).
-function groundAt(map, tables, x, z) {
-  let p = map.graph.nearest(x, z);
-  // A pedestrian edge is flush, but a road's pavement may still lie beside it under (x, z).
-  if (p.edge.pedestrian) p = map.graph.edges.filter((e) => !e.pedestrian).map((e) => map.graph.project(e, x, z)).reduce((a, b) => (b.d < a.d ? b : a));
-  return map.heightAt(x, z) + (p.d <= p.edge.width / 2 + tables.osm.pavement ? tables.streets.pavement.height : 0);
 }
 
 const hash = (x, z) => Math.abs(Math.sin(x * 12.9898 + z * 78.233)); // stable pseudo-random per place, as in renderer.js
