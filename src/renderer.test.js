@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Color, Vector3 } from 'three/webgpu';
-import { shadowCentre, parkedHeading, daylight } from './renderer.js';
-import { lighting } from './tables.js';
+import { shadowCentre, parkedHeading, daylight, chaseY } from './renderer.js';
+import { lighting, camera } from './tables.js';
 
 describe('Renderer: shadow area', () => {
   // The shadow camera's axes as the renderer sets them up.
@@ -73,5 +73,43 @@ describe('Renderer: day and night (#52)', () => {
       expect(now.direction.y).toBeGreaterThanOrEqual(Math.sin(lighting.lowSun) - 1e-9);
       last = { sun: now.sun, sky: bright(now.sky), direction: now.direction.clone() };
     }
+  });
+});
+
+describe('Renderer: chase camera on slopes (#108)', () => {
+  const opts = { clear: camera.chaseClear, step: 2.5 };
+  const arm = 14;
+  const above = 6;
+  // The truck at the origin, heading +z, so the arm runs back along -z; `ground(s)` is the height s m back.
+  const at = (ground) => (x, z) => ground(-z);
+  // The lowest the line from the camera at `y` to the look point clears the ground by, every 0.1 m along the arm.
+  const clearance = (ground, y, lookY) => {
+    let least = Infinity;
+    for (let s = 0.1; s <= arm; s += 0.1) least = Math.min(least, lookY + (s / arm) * (y - lookY) - ground(s));
+    return least;
+  };
+
+  it('stays at its height over the truck on flat ground and where the ground falls away behind (a climb)', () => {
+    expect(chaseY(at(() => 30), 0, 0, 0, -1, arm, above, 32, opts)).toBe(36);
+    expect(chaseY(at((s) => 30 - 0.2 * s), 0, 0, 0, -1, arm, above, 32, opts)).toBe(36);
+  });
+
+  it('rises over ground rising behind the truck (a descent), so it never dips into it', () => {
+    const ground = (s) => 30 + 0.5 * s; // steeper than any street, so its height alone is not enough
+    const y = chaseY(at(ground), 0, 0, 0, -1, arm, above, 32, opts);
+    expect(y).toBeGreaterThan(36);
+    expect(y - ground(arm)).toBeGreaterThanOrEqual(camera.chaseClear - 1e-9);
+    expect(clearance(ground, y, 32)).toBeGreaterThan(0);
+  });
+
+  it('keeps its line of sight over a crest between it and the truck', () => {
+    const ground = (s) => 30 + Math.max(0, 4 - Math.abs(s - 7)); // a 4 m crest halfway back
+    const y = chaseY(at(ground), 0, 0, 0, -1, arm, above, 32, opts);
+    expect(y).toBeGreaterThan(36);
+    expect(clearance(ground, y, 32)).toBeGreaterThan(camera.chaseClear - 0.5); // sampled every 2.5 m, not everywhere
+  });
+
+  it('copes with an arm pulled all the way in', () => {
+    expect(chaseY(at(() => 30), 0, 0, 0, -1, 0, above, 32, opts)).toBe(36);
   });
 });

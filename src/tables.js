@@ -922,6 +922,9 @@ export const minimap = {
   streetLabel: 2.5, // units, height of a main street's name
   streetLength: 120, // m of main road a street needs to be named (squares and stubs would crowd the map)
   rate: 15, // Hz, redraws of the truck marker and route; roads, spots and letters are drawn once
+  // The ground's relief under the roads (#108): m per pixel it is worked out at, and its opacity per unit of slope
+  // towards or away from the light, up to `alpha`
+  relief: { cell: 5, gain: 3, alpha: 0.35 },
 };
 
 export const controls = {
@@ -982,6 +985,12 @@ export const camera = {
   // inside the building for a moment, which only leaves out that building's near wall.
   chasePullIn: 15,
   lookHeight: 2, // m above the truck's position the camera aims at
+  // m the chase camera and its line of sight to the truck keep over the ground; it rises where a slope behind the truck
+  // or a crest between them would come closer (#108)
+  chaseClear: 1.5,
+  // Share of the truck's pitch and roll the cab view takes out, as a driver's head stays about upright: with the view
+  // pitched as the truck, a climb looked flat (#103), and the horizon banked with the street by up to 0.22 rad (#108)
+  cabLevel: 0.7,
   cabEye: [0.55, 1.95, 1.55], // driver's eye in truck space (x left, y up, z forward), m; under the headliner (cab.js)
   cabLook: [0.55, 0, 20], // point in truck space the cab camera aims at: the road ahead
   gimmickLook: [0.2, 1.75, 2.35], // where it aims in the Werkstatt to show the cab gimmick

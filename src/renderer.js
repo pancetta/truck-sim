@@ -93,6 +93,20 @@ export function parkedHeading([a, b, c]) {
   return Math.atan2(ux, uz);
 }
 
+// The chase camera's world y at `arm` m from (x, z) along (dx, dz) (#108): `above` m over the ground at (x, z), or
+// higher where needed for its line of sight down to the look point (world y `lookY` over (x, z)) to keep `clear` m
+// over the ground under it, sampled at most `step` m apart. So it never dips into a slope rising behind the truck
+// or looks through a crest.
+export function chaseY(heightAt, x, z, dx, dz, arm, above, lookY, { clear, step }) {
+  let y = heightAt(x, z) + above;
+  const n = Math.ceil(arm / step);
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    y = Math.max(y, lookY + (heightAt(x + dx * arm * t, z + dz * arm * t) + clear - lookY) / t);
+  }
+  return y;
+}
+
 // Where the shadow area is centred for a camera focus: the focus moved to the nearest whole shadow-map texel across
 // the sun's view (light.x and light.y; light.z points to the sun), so each texel keeps covering the same ground as
 // the area follows the camera. Moving it freely made shadow edges shimmer while driving.
@@ -954,6 +968,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, cam.fog[1]);
   const eye = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
+  const level = new THREE.Quaternion(); // the cab view's turn (render())
+  const euler = new THREE.Euler();
+  const chaseGround = { clear: cam.chaseClear, step: 2.5 }; // m; the height grid's cells are 10 m
   let lastFrame = performance.now();
   let cabView = true;
   let inCab = true; // whether the last frame drew the view from the seat
@@ -1090,6 +1107,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     body.cab.interior.visible = inCab;
     shift(!!showroom);
     if (!showroom) [orbit, arm] = [0, tables.showroom.radius];
+    camera.up.set(0, 1, 0); // only the cab view tilts it
     if (showroom === 'orbit') {
       const { radius, height, lookHeight, speed, wallGap, armSpeed } = tables.showroom;
       orbit += speed * dt;
@@ -1098,12 +1116,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
       // In front of the first building in the way, so no wall fills the picture; easing back out behind it.
       const room = Math.min(radius, canopyRoom(x, z, dx, dz), ...blocks.map((b) => rayToOutline(x, z, dx, dz, b.points) - wallGap));
       arm = Math.min(room, arm + armSpeed * dt);
-      camera.position.set(x + dx * arm, groundY + height, z + dz * arm);
+      camera.position.set(x + dx * arm, chaseY(map.heightAt, x, z, dx, dz, arm, height, groundY + lookHeight, chaseGround), z + dz * arm);
       camera.lookAt(x, groundY + lookHeight, z);
     } else if (inCab) {
-      // Truck-space points, so the camera follows anything that moves the truck.
+      // At a truck-space point, so the camera follows anything that moves the truck.
       camera.position.copy(truck.localToWorld(eye.fromArray(cam.cabEye).add(body.cab.interior.position)));
-      camera.lookAt(truck.localToWorld(lookAt.fromArray(showroom ? cam.gimmickLook : cam.cabLook).add(body.cab.interior.position)));
+      if (showroom) camera.lookAt(truck.localToWorld(lookAt.fromArray(cam.gimmickLook).add(body.cab.interior.position)));
+      else {
+        // Aimed as the truck is, but with cabLevel of its pitch and roll taken out, so slopes show (#108).
+        const keep = 1 - cam.cabLevel;
+        level.setFromEuler(euler.set(-pitch * keep, heading, roll * keep, 'YXZ'));
+        camera.up.applyQuaternion(level);
+        camera.lookAt(lookAt.fromArray(cam.cabLook).sub(eye.fromArray(cam.cabEye)).applyQuaternion(level).add(camera.position));
+      }
     } else {
       // Chase camera: behind and above the truck, pulled in before a building in the way (as after reversing
       // into a dock) and raised as it does so the truck doesn't fill the view; quickly but not at once, and eases
@@ -1116,8 +1141,9 @@ export function createRenderer(canvas, tables, map, onProgress) {
       if (!wasChased) chaseArm = room;
       else chaseArm = room < chaseArm ? Math.max(room, chaseArm - cam.chasePullIn * dt) : Math.min(room, chaseArm + tables.showroom.armSpeed * dt);
       const height = cam.chaseHeight + higher + (reach - chaseArm) * cam.chaseRise;
-      camera.position.set(x + dx * chaseArm, groundY + height, z + dz * chaseArm);
-      camera.lookAt(x, groundY + cam.lookHeight, z);
+      const lookY = groundY + cam.lookHeight;
+      camera.position.set(x + dx * chaseArm, chaseY(map.heightAt, x, z, dx, dz, chaseArm, height, lookY, chaseGround), z + dz * chaseArm);
+      camera.lookAt(x, lookY, z);
     }
     drawingRear = rear || warmRear;
     if (drawingRear) {

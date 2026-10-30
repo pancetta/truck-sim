@@ -18,6 +18,26 @@ export function createMinimap(canvas, map, tables) {
   let drawn = -Infinity; // performance.now() of the last redraw
   const at = (x, z) => [((x - bounds.minX) / unit) * scale, ((z - bounds.minZ) / unit) * scale]; // canvas px of a point
 
+  // Relief (#108): the ground's slopes lit from the north-west (top left), faintly lighter towards the light and darker
+  // away, one pixel per `relief.cell` m, stretched under the roads. A flat map leaves it clear.
+  const relief = document.createElement('canvas');
+  {
+    const { cell, gain, alpha } = tables.minimap.relief;
+    [relief.width, relief.height] = [Math.ceil((bounds.maxX - bounds.minX) / cell), Math.ceil((bounds.maxZ - bounds.minZ) / cell)];
+    const rctx = relief.getContext('2d');
+    const image = rctx.createImageData(relief.width, relief.height);
+    for (let j = 0; j < relief.height; j++) {
+      for (let i = 0; i < relief.width; i++) {
+        const [x, z] = [bounds.minX + (i + 0.5) * cell, bounds.minZ + (j + 0.5) * cell];
+        const facing = map.slopeAt(x, z, 1, 0, cell) + map.slopeAt(x, z, 0, 1, cell); // > 0: falls towards the light
+        const k = (j * relief.width + i) * 4;
+        image.data.fill(facing > 0 ? 255 : 0, k, k + 3);
+        image.data[k + 3] = Math.min(alpha, Math.abs(facing) * gain) * 255;
+      }
+    }
+    rctx.putImageData(image, 0, 0);
+  }
+
   // Sizes the canvases for the screen's pixel ratio, which changes with browser zoom or a move to another
   // screen. Roads and spot discs never change, so they're drawn once onto `base`, and the spot
   // letters, which go over the truck marker, onto `labels`.
@@ -25,6 +45,7 @@ export function createMinimap(canvas, map, tables) {
     ratio = devicePixelRatio;
     scale = px * ratio;
     [canvas.width, canvas.height] = [base.width, base.height] = [labels.width, labels.height] = at(bounds.maxX, bounds.maxZ);
+    bctx.drawImage(relief, 0, 0, base.width, base.height);
     bctx.strokeStyle = hex(palette.pavement);
     bctx.lineJoin = bctx.lineCap = 'round';
     for (const e of map.graph.edges) {
