@@ -44,6 +44,38 @@ export const creditsFrom = (markdown) =>
     .map((line) => line.split('|').map((cell) => cell.trim()))
     .map(([, asset, , source, licence]) => ({ asset, source, licence }));
 
+// Calls `act` with the enabled button in `element` that a finger or mouse lets go of where it pressed (#115): iOS Safari
+// makes a tap's click late or drops it while the page is busy, so the tap acts on the release. That tap's own click is
+// then dropped wherever it lands (the overlay may be gone by then); a keyboard's click, with no pointer before it, acts.
+let tapped = null; // true once the last pointer's release acted, so its click is dropped; null until listening
+export function onTap(element, act) {
+  if (tapped === null) {
+    const document = element.ownerDocument;
+    document.addEventListener('pointerdown', () => (tapped = false), true);
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!tapped) return;
+        tapped = false;
+        e.stopPropagation();
+        e.preventDefault();
+      },
+      true,
+    );
+  }
+  tapped = false;
+  const button = (e) => e.target.closest('button:enabled');
+  let pressed = null;
+  element.addEventListener('pointerdown', (e) => (pressed = e.button === 0 ? button(e) : null));
+  element.addEventListener('pointerup', (e) => {
+    if (!pressed || button(e) !== pressed) return;
+    pressed = null;
+    tapped = true;
+    act(button(e));
+  });
+  element.addEventListener('click', (e) => button(e) && act(button(e)));
+}
+
 export function createStart(root, tables, strings, credits, { onNewGame, onReset, onChooseMap, onReplay }) {
   const s = strings.start;
   const back = `<button type="button" class="start-back" data-to="main">${s.back}</button>`;
@@ -121,14 +153,12 @@ export function createStart(root, tables, strings, credits, { onNewGame, onReset
     for (const c of cards) c.setAttribute('aria-pressed', c.dataset.map === id);
   };
 
-  overlay.addEventListener('click', (e) => {
-    const target = (name) => e.target.closest(`[data-${name}]`)?.dataset;
-    if (target('to')) page(target('to').to);
-    if (target('map')) {
-      choose(target('map').map);
-      onChooseMap(target('map').map);
+  onTap(overlay, ({ dataset: { to, map, action } }) => {
+    if (to) page(to);
+    if (map) {
+      choose(map);
+      onChooseMap(map);
     }
-    const action = target('action')?.action;
     if (action === 'continue') overlay.hidden = true;
     if (action === 'new') onNewGame();
     if (action === 'reset' && confirm(strings.resetConfirm)) onReset();

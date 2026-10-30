@@ -11,7 +11,7 @@ import { createOrders } from './orders.js';
 import { createMinimap } from './minimap.js';
 import { createWerkstatt } from './werkstatt.js';
 import { createBlend } from './blend.js';
-import { createStart, creditsFrom } from './start.js';
+import { createStart, creditsFrom, onTap } from './start.js';
 import { createTutorial } from './tutorial.js';
 import creditsMarkdown from '../CREDITS.md?raw';
 
@@ -124,7 +124,7 @@ const menuButton = document.createElement('button');
 menuButton.type = 'button';
 menuButton.className = 'menu-toggle';
 menuButton.textContent = strings.start.menu;
-menuButton.addEventListener('click', () => start.show(sim.state, true, save.map()));
+onTap(menuButton, () => start.show(sim.state, true, save.map()));
 document.getElementById('controls').append(menuButton);
 
 let last = performance.now();

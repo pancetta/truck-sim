@@ -1056,6 +1056,10 @@ body:has(.start:not([hidden])) > :not(#scene, #start, #rotate) {
   cursor: pointer;
 }
 
+.start-page button:active:enabled {
+  filter: brightness(0.75); /* shows the tap at once, before what it does (#115) */
+}
+
 .start-page button:disabled {
   opacity: 0.45;
   cursor: default;

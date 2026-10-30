@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import { creditsFrom, howToArt } from './start.js';
+import { creditsFrom, howToArt, onTap } from './start.js';
 import { strings } from './strings.js';
 import * as tables from './tables.js';
 
@@ -38,4 +38,42 @@ test('every how-to page has its title, text and drawing; every tutorial step its
   for (const page of Object.values(strings.start.howToPages)) expect(page).toMatchObject({ title: expect.any(String), text: expect.arrayContaining([expect.any(String)]) });
   expect(Object.keys(strings.tutorial.steps)).toEqual(tables.tutorial.steps);
   expect(tables.tutorial.steps.filter((id) => strings.tutorial.steps[id].next)).toEqual(tables.tutorial.waits); // their buttons' labels
+});
+
+test('a tap acts on its release on the button it pressed, once; its click is dropped, a keyboard click acts (#115)', () => {
+  // shortcut: a fake DOM, the page's capturing listeners before the element's, no bubbling between elements.
+  const listeners = (target) => (target.on = {}) && Object.assign(target, { addEventListener: (type, fn) => (target.on[type] ??= []).push(fn) });
+  const document = listeners({});
+  const overlay = Object.assign(listeners({}), { ownerDocument: document });
+  const go = { closest: (sel) => (sel === 'button:enabled' ? go : null) };
+  const locked = { closest: () => null }; // a disabled map card
+  const page = { closest: () => null }; // outside the overlay, e.g. the game under it once it's gone
+  const acted = [];
+  onTap(overlay, (b) => acted.push(b));
+  const fire = (type, target, inOverlay = true) => {
+    let stopped = false;
+    const e = { type, target, button: 0, stopPropagation: () => (stopped = true), preventDefault: () => {} };
+    for (const fn of document.on[type] ?? []) fn(e);
+    if (inOverlay && !stopped) for (const fn of overlay.on[type] ?? []) fn(e);
+    return !stopped;
+  };
+
+  fire('pointerdown', go);
+  fire('pointerup', go);
+  expect(acted).toEqual([go]);
+  expect(fire('click', page, false)).toBe(false); // the tap's click, landing under the gone overlay
+  fire('click', go); // a keyboard's click
+  expect(acted).toEqual([go, go]);
+
+  fire('pointerdown', go);
+  fire('pointerup', locked); // let go elsewhere
+  fire('pointerdown', locked);
+  fire('pointerup', locked);
+  expect(acted).toHaveLength(2);
+
+  fire('pointerdown', go);
+  fire('pointerup', go); // its click never comes
+  expect(fire('pointerdown', page, false)).toBe(true);
+  expect(fire('click', page, false)).toBe(true); // so the next tap's click isn't dropped
+  expect(acted).toHaveLength(3);
 });
