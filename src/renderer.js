@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { texture, uniform, uv, equirectUV, normalWorldGeometry, positionWorld, positionLocal, cameraPosition, fog, densityFogFactor, rangeFogFactor, vec2, vec3, mix, luminance, smoothstep, attribute, time } from 'three/tsl';
+import { texture, uniform, viewportTexture, screenUV, equirectUV, normalWorldGeometry, positionWorld, positionLocal, cameraPosition, fog, densityFogFactor, rangeFogFactor, vec2, vec3, mix, luminance, smoothstep, attribute, time } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -964,13 +964,13 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const wetMaterials = [asphalt.material, pavers, kerbs].map((material) => ({ material, colour: material.color.clone(), roughness: material.roughness }));
   const dry = { fog: cam.fog, haze: lighting.haze, sun: 1, sky: 1, grey: 0, wet: 0 }; // the clear weather's look
 
-  // The night lights, rain and reversing camera drawn in the first frame (behind the loading screen) too, so their
-  // shaders are ready: the reversing camera's first draw otherwise stalled play by ~3 s in Chrome. The reversing
-  // camera's view only has its shaders built, a few per frame after the loading screen (#114; see render()).
+  // The first frame (behind the loading screen) draws the night lights, rain and reversing camera too, and every object
+  // whether in view or not, so all their shaders are ready: three builds an object's shaders when it is first drawn,
+  // which stalled play by up to seconds as objects came into view or the reversing camera first showed.
   let warmUp = true;
-  // A later load's objects joining the scene, one step per frame: each joins unshadowed, and casts its shadow the frame
-  // after, so each frame builds at most one of its shaders (a tree's take ~70 ms each in Chrome). Their draw goes
-  // through `pipeline`, whose set-up compileAsync can't build for.
+  // A later load's objects joining the scene, one step per frame, each drawn in view or not: each joins unshadowed, and
+  // casts its shadow the frame after, so each frame builds at most one of its shaders (a tree's take ~70 ms each in
+  // Chrome). A step returns the object.
   const joining = [];
   let drawingRear = false; // whether this frame draws the reversing camera's view (inView counts its frustum then)
 
@@ -990,18 +990,19 @@ export function createRenderer(canvas, tables, map, onProgress) {
   let shifted = false; // whether the picture is moved aside for the Werkstatt panel
 
   // Reversing camera as an inset over the view (owner's decision on #43): while the gear is R and `rearHold` s
-  // after, the scene from the roof camera goes into a small render target, then onto the inset's rectangle,
-  // mirrored like a real one. The rectangle is the inside of the `.rear-inset` frame (style.css), measured when it
-  // shows and on resize.
+  // after, the scene from the roof camera is drawn into the inset's rectangle of the screen, over the view, then
+  // mirrored like a real one from a copy of the screen. Drawn onto the screen as the view is, it uses the view's
+  // shaders: three keys an object's shaders by what it is drawn into, and a render target of its own needed a second
+  // set, built in the first reverse (seconds on a slow CPU). The rectangle is the inside of the `.rear-inset` frame
+  // (style.css), measured when it shows and on resize.
   const rearCamera = new THREE.PerspectiveCamera(cam.rearFov, 1, 0.1, cam.rearFar);
   rearCamera.layers.enable(SHADOW_ONLY);
-  const rearTarget = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType }); // keeps light above 1 for the tone mapping
   const insetScene = new THREE.Scene();
   const insetCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   // Drawn over the finished view without clearing it, so no depth test against it.
   const insetMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
-  // Mirrored left to right; and render targets are sampled from the top, so v is turned too (as QuadMesh does).
-  insetMaterial.colorNode = texture(rearTarget.texture, uv().oneMinus());
+  const insetEdges = uniform(new THREE.Vector2()); // the inset's left and right edge, as shares of the screen's width
+  insetMaterial.colorNode = viewportTexture(vec2(insetEdges.x.add(insetEdges.y).sub(screenUV.x), screenUV.y));
   insetScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), insetMaterial));
   const frame = document.createElement('div');
   frame.className = 'rear-inset';
@@ -1015,8 +1016,7 @@ export function createRenderer(canvas, tables, map, onProgress) {
     Object.assign(inset, { x: left + frame.clientLeft, y: top + frame.clientTop, width: frame.clientWidth, height: frame.clientHeight });
     rearCamera.aspect = inset.width / inset.height;
     rearCamera.updateProjectionMatrix();
-    const ratio = renderer.getPixelRatio();
-    rearTarget.setSize(Math.round(inset.width * ratio), Math.round(inset.height * ratio));
+    insetEdges.value.set(inset.x / window.innerWidth, (inset.x + inset.width) / window.innerWidth);
   }
 
   function resize() {
@@ -1044,8 +1044,16 @@ export function createRenderer(canvas, tables, map, onProgress) {
   // while driving, 'orbit' for the Werkstatt's circling camera, or 'cab' to show the gimmick from the seat.
   function render(state, input, look, showroom) {
     const now = performance.now();
+    // Drawn this frame in view or not (see warmUp), frustumCulled set back after the view's draw.
+    const unculled = [];
+    const uncull = (object) =>
+      object.traverse((o) => {
+        if (o.frustumCulled) unculled.push(o);
+        o.frustumCulled = false;
+      });
+    if (warmUp) uncull(scene);
     if (joining.length) {
-      joining.shift()();
+      uncull(joining.shift()());
       warmCars = true; // a joining car mesh may have no car in view: shown anyway, so its shaders are built now
     }
     // Resized right before this frame draws into it, so no frame shows a cleared or stretched buffer.
@@ -1219,26 +1227,25 @@ export function createRenderer(canvas, tables, map, onProgress) {
     streetEvents.update(state.events);
     streets.update(camera.position, inView, night);
     pipeline.render(scene, camera);
+    for (const o of unculled) o.frustumCulled = true;
     if (drawingRear) {
-      // Straight into the target, in linear colour; the inset's draw through the pipeline converts it for the screen.
+      // Into the inset's rectangle over the view, its sky covering what of the view is there; then the inset mirrors it
+      // from a copy of the screen, drawn as it is (its colours are the screen's already).
       // The truck from outside (SHADOW_ONLY in the cab), so its back edge shows at the bottom as a guide.
       body.cab.interior.visible = false;
-      renderer.setRenderTarget(rearTarget);
-      // Unshown, as a warm-up, only its shaders are built: three's compileAsync builds one object's at a time, between
-      // frames, where drawing built them all in one frame (seconds on the WebGL 2 backend behind a 6× slower CPU).
-      // Without scheduler.yield (Safari) it builds one per frame, so ?perf shows when it is done.
-      if (rearTime > 0) renderer.render(scene, rearCamera);
-      else renderer.compileAsync(scene, rearCamera).then(() => performance.measure('reversing camera warm-up', { start: now }), console.error);
-      renderer.setRenderTarget(null);
+      const { autoClear, toneMapping, outputColorSpace } = renderer;
+      // Straight onto the screen: with tone mapping on, three clears and draws through a target of its own, which it
+      // then copies over the screen.
+      const direct = { toneMapping: THREE.NoToneMapping, outputColorSpace: THREE.LinearSRGBColorSpace };
+      renderer.autoClear = false;
+      Object.assign(renderer, direct).clearDepth();
+      Object.assign(renderer, { toneMapping, outputColorSpace });
+      renderer.setViewport(inset.x, inset.y, inset.width, inset.height);
+      pipeline.render(scene, rearCamera);
+      Object.assign(renderer, direct).render(insetScene, insetCamera);
+      Object.assign(renderer, { autoClear, toneMapping, outputColorSpace });
+      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
       body.cab.interior.visible = inCab;
-      if (rear) {
-        const autoClear = renderer.autoClear;
-        renderer.autoClear = false;
-        renderer.setViewport(inset.x, inset.y, inset.width, inset.height);
-        pipeline.render(insetScene, insetCamera);
-        renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-        renderer.autoClear = autoClear;
-      }
     }
   }
 
@@ -1334,22 +1341,17 @@ export function createRenderer(canvas, tables, map, onProgress) {
   const ready = Promise.all([renderer.init(), models]);
   models.then(() => {
     performance.measure('models and textures', { start: sceneStart });
-    // A later load's objects have their shaders for the reversing camera built, a few per frame, and then join the
-    // scene one per frame (see joining); drawn at once, they stalled play for that frame (by up to 0.7 s in Chrome,
-    // seconds on WebGL 2).
+    // A later load's objects join the scene one per frame (see joining); drawn at once, they stalled play for that
+    // frame (by up to 0.7 s in Chrome, seconds on WebGL 2).
     for (const [name, load] of [...laterLoads, ['full sky', async () => showFullSky && showFullSky(await loadSky(lighting.sky))]]) {
       const start = performance.now();
       const staged = new THREE.Group();
       // A load or build that fails is logged, and whatever it staged still joins.
-      load(staged).catch(console.error).then(async () => {
-        renderer.setRenderTarget(rearTarget);
-        const rear = renderer.compileAsync(staged, rearCamera, scene);
-        renderer.setRenderTarget(null);
-        await rear.catch(console.error);
+      load(staged).catch(console.error).then(() => {
         for (const o of [...staged.children]) {
           const casts = o.castShadow;
-          joining.push(() => scene.add(Object.assign(o, { castShadow: false })));
-          if (casts) joining.push(() => (o.castShadow = true));
+          joining.push(() => (scene.add(Object.assign(o, { castShadow: false })), o));
+          if (casts) joining.push(() => Object.assign(o, { castShadow: true }));
         }
         performance.measure(name, { start });
       });

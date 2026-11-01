@@ -1111,7 +1111,26 @@ Unchanged within the runs' spread: frames held 16.7 ms, and the ready times swap
 
 At 6× each object's shader build is itself over 100 ms, so the reversing camera's warm-up shows as about 30 frames of 120–150 ms instead of one long one; at 1× they stay under 100 ms. The remaining 0.15–0.17 s frames at 1× are the trees joining: each tree species' program takes about 70 ms to link in Chrome. On the WebGPU backend (1×, one run) the first frame came at 2.3 s with a 0.7 s warm-up frame.
 
-**Stalls:** with a hook counting three's shader builds, the first reverse, nightfall (21:00) and reversing at night built nothing new and no frame took over 16.8 ms, on WebGL 2 and WebGPU. Chrome has `scheduler.yield`; Safari doesn't, and there three's `compileAsync` yields a frame per object, so the reversing camera's warm-up (about 75 objects) takes at least that many frames. `?perf` shows when it is done ("reversing camera warm-up"). The start screen normally covers it; a Neues Spiel over a Save skips the start screen, so reversing in its first second or two could still stall on the iPad.
+**Stalls:** with a hook counting three's shader builds, the first reverse, nightfall (21:00) and reversing at night built nothing new and no frame took over 16.8 ms, on WebGL 2 and WebGPU. Chrome has `scheduler.yield`; Safari doesn't, and there three's `compileAsync` yields a frame per object, so the reversing camera's warm-up (about 75 objects) takes at least that many frames. `?perf` showed when it was done ("reversing camera warm-up"; gone since the next section). The start screen normally covers it; a Neues Spiel over a Save skips the start screen, so reversing in its first second or two could still stall on the iPad.
+
+## Stutter after loading (owner's report, 2026-11-01)
+
+**Report:** the game stutters and lags from the start, on the iPhone and the iPad. Chrome on the Mac showed nothing at 1×.
+
+**Cause:** three r186 puts the render context (what an object is drawn into) in each object's shader cache key, so the reversing camera, drawing into a render target of its own, needed a second build of every shader. #114's `compileAsync` warm-up of those ran during play; without `scheduler.yield` (Safari) one object per frame. It wasn't done 12 s after load, so a reverse then still stalled 0.9–1.6 s, and the warm-up's builds hitched play for about 7 s after load (at 4×).
+
+**What changed:** the reversing camera draws onto the screen itself, into the inset's rectangle over the view, so it uses the main view's shaders; the inset then mirrors it from a copy of the screen (`viewportTexture`). No warm-up for it is left. The warm-up frame draws every object with frustum culling off, and each later-loaded object's join steps do the same, so their shaders for the view and the sun's shadow are built behind the loading screen or in their join frame.
+
+**How measured:** production builds of `5381989` (*before*) and this change, Chrome headless on the M2, 1180×820 at dpr 2, 4× CPU throttling, `Scheduler.prototype.yield` deleted to behave like Safari, `?perf&auto`, the reversing camera forced on 12 s after the page opened, two runs each, load average about 3. Program links counted with a `linkProgram` hook.
+
+| | first frame | stalls over 40 ms after load | first reverse | programs linked (WebGL 2) |
+|---|---|---|---|---|
+| before, WebGPU | 7.9–8.0 s | 23–26, 2.4–2.6 s in all, over ~7 s | 0.86–0.88 s | |
+| after, WebGPU | 8.2–8.3 s | 14–15, 1.15–1.18 s in all, within 1.3 s | 24–25 ms | |
+| before, WebGL 2 | 8.6 s | 25–29, 3.4–3.6 s in all, over ~7 s | 1.44–1.56 s | 126, 63 after load |
+| after, WebGL 2 | 8.8–8.9 s | 14–18, 1.2–1.8 s in all, within 1.3–3.3 s | 22–32 ms | 83, 12 after load |
+
+What stalls are left after load are the later loads joining. The start screen normally covers them. Reversing now copies the whole screen each frame for the inset; check its cost in a real-iPad `?perf` run.
 
 ## Files
 
